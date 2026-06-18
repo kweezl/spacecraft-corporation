@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/kweezl/spacecraft-cadet/internal/config"
+	"github.com/caarlos0/env/v11"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
 	"github.com/kweezl/spacecraft-cadet/internal/token"
 	"go.uber.org/fx"
@@ -110,7 +110,7 @@ func register(lc fx.Lifecycle, m *Manager) {
 // Module provides the Manager and runs it via the fx lifecycle. Its OnStart
 // hook runs after the migrator invoke, so the schema already exists.
 var Module = fx.Module("session",
-	fx.Provide(config.Parse[Config]),
+	fx.Provide(env.ParseAs[Config]),
 	fx.Provide(NewFactory),
 	fx.Provide(newManager),
 	fx.Invoke(register),

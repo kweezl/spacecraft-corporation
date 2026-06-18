@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/kweezl/spacecraft-cadet/internal/config"
+	"github.com/caarlos0/env/v11"
 	"go.uber.org/fx"
 )
 
@@ -77,6 +77,6 @@ func provide(cfg Config) (*Cipher, error) { return NewCipher(cfg.Key) }
 
 // Module provides a *Cipher built from ENCRYPTION_KEY.
 var Module = fx.Module("crypto",
-	fx.Provide(config.Parse[Config]),
+	fx.Provide(env.ParseAs[Config]),
 	fx.Provide(provide),
 )
