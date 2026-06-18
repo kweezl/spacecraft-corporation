@@ -6,3 +6,6 @@ packages:
   github.com/kweezl/spacecraft-cadet/internal/features/ping:
     interfaces:
       Repository:
+  github.com/kweezl/spacecraft-cadet/internal/token:
+    interfaces:
+      Repository:
