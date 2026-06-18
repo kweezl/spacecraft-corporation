@@ -17,24 +17,21 @@ const (
 	Ping Name = "ping"
 )
 
-// allNames is the ordered list of known features; it is also the default set
-// when FEATURES is unset.
-var allNames = []Name{Ping}
-
-// known indexes allNames for validation.
-var known = func() map[Name]struct{} {
-	m := make(map[Name]struct{}, len(allNames))
-	for _, n := range allNames {
-		m[n] = struct{}{}
-	}
-	return m
-}()
-
-// All returns a copy of every known feature name.
+// All returns every known feature name. It is the single source of truth for
+// the feature set; the default-on set (FEATURES unset) and validation both
+// derive from it.
 func All() []Name {
-	out := make([]Name, len(allNames))
-	copy(out, allNames)
-	return out
+	return []Name{Ping}
+}
+
+// valid reports whether n is a known feature.
+func valid(n Name) bool {
+	for _, known := range All() {
+		if n == known {
+			return true
+		}
+	}
+	return false
 }
 
 // UnmarshalText lets caarlos0/env parse []Name from a comma-separated list and
@@ -46,7 +43,7 @@ func (n *Name) UnmarshalText(text []byte) error {
 		*n = ""
 		return nil
 	}
-	if _, ok := known[candidate]; !ok {
+	if !valid(candidate) {
 		return fmt.Errorf("unknown feature %q", string(text))
 	}
 	*n = candidate
