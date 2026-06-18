@@ -4,8 +4,8 @@ package db
 import (
 	"context"
 
+	"github.com/caarlos0/env/v11"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kweezl/spacecraft-cadet/internal/config"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -39,6 +39,6 @@ func New(lc fx.Lifecycle, cfg Config, log *zap.Logger) (*pgxpool.Pool, error) {
 
 // Module provides *pgxpool.Pool.
 var Module = fx.Module("db",
-	fx.Provide(config.Parse[Config]),
+	fx.Provide(env.ParseAs[Config]),
 	fx.Provide(New),
 )
