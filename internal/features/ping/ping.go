@@ -8,6 +8,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/fx"
 )
 
@@ -17,15 +18,29 @@ type Repository interface {
 	Count(ctx context.Context, guildID string) (int64, error)
 }
 
+// newCounter creates and registers the /ping call counter.
+func newCounter(reg *prometheus.Registry) prometheus.Counter {
+	c := prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "spacecraft",
+		Subsystem: "ping",
+		Name:      "commands_total",
+		Help:      "Total number of /ping commands handled.",
+	})
+	reg.MustRegister(c)
+	return c
+}
+
 // NewCommand builds the /ping command. Enable/disable is decided at the module
-// level (see Module), so this always returns a command.
-func NewCommand(repo Repository) *registry.Command {
+// level (see Module), so this always returns a command. calls is incremented
+// once per invocation.
+func NewCommand(repo Repository, calls prometheus.Counter) *registry.Command {
 	return &registry.Command{
 		Def: &discordgo.ApplicationCommand{
 			Name:        "ping",
 			Description: "Replies with pong and the running ping count",
 		},
 		Handler: func(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate) error {
+			calls.Inc()
 			guildID := i.GuildID
 			userID := interactionUserID(i)
 			if err := repo.Record(ctx, guildID, userID); err != nil {
@@ -52,6 +67,13 @@ func interactionUserID(i *discordgo.InteractionCreate) string {
 	return ""
 }
 
+// provideCommand wires the repository and a freshly registered call counter
+// into the command, keeping prometheus.Counter out of the fx graph (so multiple
+// features can't collide on the same provided type).
+func provideCommand(repo Repository, reg *prometheus.Registry) *registry.Command {
+	return NewCommand(repo, newCounter(reg))
+}
+
 // Module provides the /ping repository and contributes the command into the
 // registry's "commands" group. Whether it loads at all is decided by the
 // composition root (internal/app) from the FEATURES env var.
@@ -59,7 +81,7 @@ func Module() fx.Option {
 	return fx.Module("ping",
 		fx.Provide(newRepository),
 		fx.Provide(fx.Annotate(
-			NewCommand,
+			provideCommand,
 			fx.ResultTags(`group:"commands"`),
 		)),
 	)

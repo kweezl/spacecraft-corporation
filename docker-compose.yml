@@ -26,7 +26,10 @@ services:
       DEV_GUILD_ID: ${DEV_GUILD_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       APP_NAME: ${APP_NAME:-spacecraft-cadet}
-      FEATURE_PING_ENABLED: ${FEATURE_PING_ENABLED:-true}
+      FEATURES: ${FEATURES:-ping}
+      HEALTH_ADDR: ${HEALTH_ADDR:-:8080}
+    expose:
+      - "8080"
     depends_on:
       postgres:
         condition: service_healthy
