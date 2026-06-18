@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: bot
+      POSTGRES_PASSWORD: bot
+      POSTGRES_DB: spacecraft
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build:
+      context: .
+      target: dev
+    environment:
+      DATABASE_URL: postgres://bot:bot@postgres:5432/spacecraft?sslmode=disable
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY}
+      COMMAND_SCOPE: ${COMMAND_SCOPE:-guild}
+      DEV_GUILD_ID: ${DEV_GUILD_ID:-}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      APP_NAME: ${APP_NAME:-spacecraft-cadet}
+      FEATURE_PING_ENABLED: ${FEATURE_PING_ENABLED:-true}
+    volumes:
+      - .:/src
+    ports:
+      - "2345:2345"   # delve
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata_dev:
