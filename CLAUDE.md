@@ -162,10 +162,20 @@ The `health` module exposes, on `HEALTH_ADDR` (default `:8080`):
   `200 ready`. Green only after **all** modules' `OnStart` ran.
 - `GET /metrics` — Prometheus exposition (Go runtime collectors + app metrics).
 
-App metrics register into the injected `*prometheus.Registry`; e.g. `ping`
-exports `spacecraft_ping_commands_total`. A new metric = inject the registry and
-`MustRegister` (keep `prometheus.Counter`/etc. out of the fx graph so features
-don't collide on a shared provided type — see `ping.provideCommand`).
+App metrics register into the injected `*prometheus.Registry`. Command calls are
+counted centrally by the registry as `discord_command_total{command="..."}` (so
+features don't each need a counter).
+
+**Metrics naming convention** (`prometheus.CounterOpts` etc.):
+- `Namespace` = module name / area (e.g. `discord`)
+- `Subsystem` = the func / command / contextual feature (e.g. `command`)
+- `Name` = what we collect (e.g. `total`)
+- If a metric is genuinely shared across modules with no single owner, leave
+  `Namespace` and `Subsystem` empty and use only `Name`.
+
+**Metrics live in their own file.** Declare metric constructors in a dedicated
+`metrics.go` within the owning package (see `internal/discord/registry/
+metrics.go`); don't mix metric declarations into files holding other types.
 
 Kubernetes probes (kubelet does the HTTP GET, so distroless needs no shell):
 ```yaml
