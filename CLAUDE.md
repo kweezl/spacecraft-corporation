@@ -48,7 +48,8 @@ registration scope is **configurable** (`guild` vs `global`).
   the composition root.
 - **`app`** (composition root, `internal/app`) — assembles the fx option list:
   always-on core modules plus the feature modules selected from `FEATURES`
-  (parsed once via `feature.Load()`). Holds the `feature.Name → Module()` map.
+  (parsed once via `feature.Load()`); `selectFeatures` switches each enabled
+  `feature.Name` to its `Module()`.
 - **`feature`** (`internal/feature`) — the `Name` enum + `Load()` that parses
   `FEATURES` into a validated `[]Name` (unknown names error at parse).
 
@@ -203,8 +204,7 @@ the first slice — they're project infrastructure, not features.)
   `fx.New` and cannot add/remove modules at runtime.
 - New feature = (1) add a `feature.Name` const in `internal/feature`, (2) add a
   `Module() fx.Option` under `internal/features/` contributing `Command`s via
-  the fx group, (3) register `Name → Module` in `internal/app`'s
-  `featureModules` map.
+  the fx group, (3) add a `case` for it in `internal/app`'s `selectFeatures`.
 - Never touch `*discordgo.Session` directly in handlers — go through the
   `Session` wrapper.
 - Never store secrets in plaintext; bot tokens are AES-GCM encrypted.
