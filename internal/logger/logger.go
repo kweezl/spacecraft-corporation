@@ -5,7 +5,6 @@ package logger
 import (
 	"context"
 
-	"github.com/caarlos0/env/v11"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -42,13 +41,4 @@ func registerSync(lc fx.Lifecycle, log *zap.Logger) {
 			return nil
 		},
 	})
-}
-
-// Module provides the logger and flushes it on shutdown. Core module.
-func Module() fx.Option {
-	return fx.Module("logger",
-		fx.Provide(env.ParseAs[Config]),
-		fx.Provide(New),
-		fx.Invoke(registerSync),
-	)
 }
