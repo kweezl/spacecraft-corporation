@@ -13,7 +13,7 @@ import (
 //	-ldflags "-X github.com/kweezl/spacecraft-cadet/internal/appconfig.version=<ver>"
 //
 // It is intentionally a package var, not an env var.
-var version = "dev"
+var version = "0.0.0-unspecified"
 
 // AppConfig is the shared, read-only application identity. Name comes from env;
 // Version is not env-sourced (env:"-") and is filled from the build-time
