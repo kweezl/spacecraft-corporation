@@ -66,6 +66,7 @@ func interactionUserID(i *discordgo.InteractionCreate) string {
 // Module contributes the /ping command into the registry's "commands" group.
 var Module = fx.Module("ping",
 	fx.Provide(config.Parse[Config]),
+	fx.Provide(newRepository),
 	fx.Provide(fx.Annotate(
 		NewCommand,
 		fx.ResultTags(`group:"commands"`),
