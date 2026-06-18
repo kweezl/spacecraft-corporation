@@ -5,6 +5,7 @@ package logger
 import (
 	"context"
 
+	"github.com/kweezl/spacecraft-cadet/internal/appconfig"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -17,7 +18,8 @@ type Config struct {
 }
 
 // New builds a *zap.Logger: JSON encoder, stderr output, stacktraces at error+.
-func New(cfg Config) (*zap.Logger, error) {
+// Every log line carries app_name and app_version from AppConfig.
+func New(cfg Config, app appconfig.AppConfig) (*zap.Logger, error) {
 	zcfg := zap.NewProductionConfig()
 	zcfg.Encoding = "json"
 	zcfg.OutputPaths = []string{"stderr"}
@@ -26,7 +28,19 @@ func New(cfg Config) (*zap.Logger, error) {
 	// Disable zap's built-in stacktrace policy; we set our own threshold below.
 	zcfg.DisableStacktrace = true
 
-	return zcfg.Build(zap.AddStacktrace(zapcore.ErrorLevel))
+	log, err := zcfg.Build(zap.AddStacktrace(zapcore.ErrorLevel))
+	if err != nil {
+		return nil, err
+	}
+	return withAppFields(log, app), nil
+}
+
+// withAppFields attaches app_name and app_version to every log line.
+func withAppFields(log *zap.Logger, app appconfig.AppConfig) *zap.Logger {
+	return log.With(
+		zap.String("app_name", app.Name),
+		zap.String("app_version", app.Version),
+	)
 }
 
 func registerSync(lc fx.Lifecycle, log *zap.Logger) {

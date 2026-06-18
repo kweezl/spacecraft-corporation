@@ -32,8 +32,9 @@ registration scope is **configurable** (`guild` vs `global`).
   ldflags** (`-X .../appconfig.version=...`), not read from env, and supplied as
   a Docker build arg.
 - **`logger`** — `*zap.Logger`, JSON to stderr, `AddStacktrace(ErrorLevel)`,
-  level from `LOG_LEVEL`, `Sync()` on shutdown. fx wiring logs via
-  `fx.WithLogger(fxevent.ZapLogger)`.
+  level from `LOG_LEVEL` (parsed straight into `zapcore.Level`), `Sync()` on
+  shutdown. `New` takes `appconfig.AppConfig`, so **every** log line carries
+  `app_name` + `app_version`. fx wiring logs via `fx.WithLogger(fxevent.ZapLogger)`.
 - **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL`.
 - **`migrator`** — runs goose migrations on startup before sessions serve.
 - **`crypto`** — AES-GCM encrypt/decrypt helper (key from `ENCRYPTION_KEY`).
@@ -248,8 +249,11 @@ the first slice — they're project infrastructure, not features.)
   `module.go`, that returns its `fx.Module(...)`. Each module adds
   `logger.Decorate("<name>")` as the first option, so its log lines carry a
   `module=<name>` field (scoped to that module via `fx.Decorate`; lazy, so it's
-  a no-op for modules that don't log). Modules do not self-gate. Which feature
-  modules load is
+  a no-op for modules that don't log). **Exception:** `appconfig` does not
+  decorate — `logger` depends on it (importing `logger` there would be a cycle)
+  and it doesn't log. Combined with the logger's app fields, a typical line
+  carries `app_name`, `app_version`, and `module`. Modules do not self-gate.
+  Which feature modules load is
   decided once by the composition root (`internal/app`) from `FEATURES`; core
   modules always load. This is a startup decision — fx builds the graph once at
   `fx.New` and cannot add/remove modules at runtime.
