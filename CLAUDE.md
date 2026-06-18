@@ -244,8 +244,12 @@ the first slice — they're project infrastructure, not features.)
   hand-roll when no suitable package exists, the dependency is disproportionate
   to the need, or it would compromise a core constraint — and say why.
 - TDD: write tests first. Regenerate mocks with `mockery` when interfaces change.
-- Every module exposes `func Module() fx.Option` (not a `var`) that returns its
-  `fx.Module(...)`. Modules do not self-gate. Which feature modules load is
+- Every module exposes `func Module() fx.Option` (not a `var`), in its own
+  `module.go`, that returns its `fx.Module(...)`. Each module adds
+  `logger.Decorate("<name>")` as the first option, so its log lines carry a
+  `module=<name>` field (scoped to that module via `fx.Decorate`; lazy, so it's
+  a no-op for modules that don't log). Modules do not self-gate. Which feature
+  modules load is
   decided once by the composition root (`internal/app`) from `FEATURES`; core
   modules always load. This is a startup decision — fx builds the graph once at
   `fx.New` and cannot add/remove modules at runtime.
