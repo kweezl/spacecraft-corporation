@@ -30,5 +30,7 @@ func NewRepositoryForTest(pool *pgxpool.Pool, cipher *crypto.Cipher) Repository 
 	return newRepository(pool, cipher)
 }
 
-// Module provides the token Repository.
-var Module = fx.Module("token", fx.Provide(newRepository))
+// Module provides the token Repository. Core module.
+func Module() fx.Option {
+	return fx.Module("token", fx.Provide(newRepository))
+}

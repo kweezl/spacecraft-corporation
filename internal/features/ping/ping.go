@@ -10,7 +10,6 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
 	"go.uber.org/fx"
-	"go.uber.org/zap"
 )
 
 // Config is this feature's env config.
@@ -24,13 +23,9 @@ type Repository interface {
 	Count(ctx context.Context, guildID string) (int64, error)
 }
 
-// NewCommand returns the /ping command, or nil when the feature is disabled.
-// A nil command is skipped by the registry, which is how modules disable.
-func NewCommand(cfg Config, repo Repository, log *zap.Logger) *registry.Command {
-	if !cfg.Enabled {
-		log.Info("ping feature disabled")
-		return nil
-	}
+// NewCommand builds the /ping command. Enable/disable is decided at the module
+// level (see Module), so this always returns a command.
+func NewCommand(repo Repository) *registry.Command {
 	return &registry.Command{
 		Def: &discordgo.ApplicationCommand{
 			Name:        "ping",
@@ -63,12 +58,23 @@ func interactionUserID(i *discordgo.InteractionCreate) string {
 	return ""
 }
 
-// Module contributes the /ping command into the registry's "commands" group.
-var Module = fx.Module("ping",
-	fx.Provide(env.ParseAs[Config]),
-	fx.Provide(newRepository),
-	fx.Provide(fx.Annotate(
-		NewCommand,
-		fx.ResultTags(`group:"commands"`),
-	)),
-)
+// Module gates the /ping feature on FEATURE_PING_ENABLED. When disabled it
+// contributes nothing to the graph (fx.Options()); a config parse error fails
+// startup (fx.Error). When enabled it provides the repository and contributes
+// the command into the registry's "commands" group.
+func Module() fx.Option {
+	cfg, err := env.ParseAs[Config]()
+	if err != nil {
+		return fx.Error(fmt.Errorf("ping: load config: %w", err))
+	}
+	if !cfg.Enabled {
+		return fx.Options()
+	}
+	return fx.Module("ping",
+		fx.Provide(newRepository),
+		fx.Provide(fx.Annotate(
+			NewCommand,
+			fx.ResultTags(`group:"commands"`),
+		)),
+	)
+}
