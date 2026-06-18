@@ -27,6 +27,12 @@ go.work.sum
 # env file
 .env
 
+# Local design docs (kept out of git, not committed)
+/docs/
+
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# air hot-reload build output
+tmp/
