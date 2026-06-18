@@ -5,7 +5,6 @@ package appconfig
 
 import (
 	"github.com/caarlos0/env/v11"
-	"go.uber.org/fx"
 )
 
 // version is injected at build time via:
@@ -31,9 +30,4 @@ func Load() (AppConfig, error) {
 	}
 	c.Version = version
 	return c, nil
-}
-
-// Module exposes AppConfig to the fx graph. Core module: always loaded.
-func Module() fx.Option {
-	return fx.Module("appconfig", fx.Provide(Load))
 }
