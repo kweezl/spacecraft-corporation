@@ -7,7 +7,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-ARG VERSION=dev
+ARG VERSION=0.0.0-unspecified
 RUN CGO_ENABLED=0 go build \
     -ldflags "-X github.com/kweezl/spacecraft-cadet/internal/appconfig.version=${VERSION}" \
     -o /bot ./cmd/bot

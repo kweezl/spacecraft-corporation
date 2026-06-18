@@ -20,8 +20,8 @@ func TestLoad_OverrideName(t *testing.T) {
 	assert.Equal(t, "custom-bot", cfg.Name)
 }
 
-func TestLoad_VersionDefaultsToDev(t *testing.T) {
+func TestLoad_VersionDefaultsToUnspecified(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, "dev", cfg.Version)
+	assert.Equal(t, "0.0.0-unspecified", cfg.Version)
 }
