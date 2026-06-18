@@ -65,5 +65,7 @@ func (r *Registry) Dispatch(ctx context.Context, resp Responder, i *discordgo.In
 	return h(ctx, resp, i)
 }
 
-// Module provides the Registry built from the fx command group.
-var Module = fx.Module("registry", fx.Provide(New))
+// Module provides the Registry built from the fx command group. Core module.
+func Module() fx.Option {
+	return fx.Module("registry", fx.Provide(New))
+}

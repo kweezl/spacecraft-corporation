@@ -37,8 +37,10 @@ func New(lc fx.Lifecycle, cfg Config, log *zap.Logger) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// Module provides *pgxpool.Pool.
-var Module = fx.Module("db",
-	fx.Provide(env.ParseAs[Config]),
-	fx.Provide(New),
-)
+// Module provides *pgxpool.Pool. Core module.
+func Module() fx.Option {
+	return fx.Module("db",
+		fx.Provide(env.ParseAs[Config]),
+		fx.Provide(New),
+	)
+}

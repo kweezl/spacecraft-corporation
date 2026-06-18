@@ -21,14 +21,14 @@ func main() {
 		fx.WithLogger(func(log *zap.Logger) fxevent.Logger {
 			return &fxevent.ZapLogger{Logger: log}
 		}),
-		appconfig.Module,
-		logger.Module,
-		db.Module,
-		migrator.Module,
-		mycrypto.Module,
-		token.Module,
-		registry.Module,
-		ping.Module,
-		session.Module,
+		appconfig.Module(),
+		logger.Module(),
+		db.Module(),
+		migrator.Module(),
+		mycrypto.Module(),
+		token.Module(),
+		registry.Module(),
+		ping.Module(),
+		session.Module(),
 	).Run()
 }
