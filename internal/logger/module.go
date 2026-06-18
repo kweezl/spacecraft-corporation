@@ -8,6 +8,7 @@ import (
 // Module provides the logger and flushes it on shutdown. Core module.
 func Module() fx.Option {
 	return fx.Module("logger",
+		Decorate("logger"),
 		fx.Provide(env.ParseAs[Config]),
 		fx.Provide(New),
 		fx.Invoke(registerSync),
