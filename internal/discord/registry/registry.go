@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/fx"
 )
 
@@ -30,6 +31,7 @@ type Command struct {
 type Registry struct {
 	handlers map[string]Handler
 	defs     []*discordgo.ApplicationCommand
+	counter  *prometheus.CounterVec
 }
 
 // Params collects all *Command values from the "commands" fx group. A nil entry
@@ -37,11 +39,18 @@ type Registry struct {
 type Params struct {
 	fx.In
 	Commands []*Command `group:"commands"`
+	Counter  *prometheus.CounterVec
 }
 
 // New builds a Registry, ignoring nil (disabled) commands.
 func New(p Params) *Registry {
-	r := &Registry{handlers: make(map[string]Handler)}
+	counter := p.Counter
+	if counter == nil {
+		// Direct (non-fx) construction in tests: a throwaway registry keeps the
+		// counter usable so Dispatch needs no nil check.
+		counter = newCommandCounter(prometheus.NewRegistry())
+	}
+	r := &Registry{handlers: make(map[string]Handler), counter: counter}
 	for _, c := range p.Commands {
 		if c == nil {
 			continue
@@ -62,10 +71,14 @@ func (r *Registry) Dispatch(ctx context.Context, resp Responder, i *discordgo.In
 	if !ok {
 		return fmt.Errorf("no handler for command %q", name)
 	}
+	r.counter.WithLabelValues(name).Inc()
 	return h(ctx, resp, i)
 }
 
 // Module provides the Registry built from the fx command group. Core module.
 func Module() fx.Option {
-	return fx.Module("registry", fx.Provide(New))
+	return fx.Module("registry",
+		fx.Provide(newCommandCounter),
+		fx.Provide(New),
+	)
 }
