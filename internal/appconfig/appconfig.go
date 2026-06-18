@@ -15,24 +15,22 @@ import (
 // It is intentionally a package var, not an env var.
 var version = "dev"
 
-// envConfig holds only env-sourced fields.
-type envConfig struct {
-	Name string `env:"APP_NAME" envDefault:"spacecraft-cadet"`
-}
-
-// AppConfig is the shared, read-only application identity.
+// AppConfig is the shared, read-only application identity. Name comes from env;
+// Version is not env-sourced (env:"-") and is filled from the build-time
+// `version` var, since ldflags -X can only target a package var, not a field.
 type AppConfig struct {
-	Name    string
-	Version string
+	Name    string `env:"APP_NAME" envDefault:"spacecraft-cadet"`
+	Version string `env:"-"`
 }
 
 // Load builds AppConfig from APP_NAME (env) and the build-time version.
 func Load() (AppConfig, error) {
-	c, err := config.Parse[envConfig]()
+	c, err := config.Parse[AppConfig]()
 	if err != nil {
 		return AppConfig{}, err
 	}
-	return AppConfig{Name: c.Name, Version: version}, nil
+	c.Version = version
+	return c, nil
 }
 
 // Module exposes AppConfig to the fx graph.
