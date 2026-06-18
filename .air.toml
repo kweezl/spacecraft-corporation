@@ -1,0 +1,15 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Disable optimizations/inlining so the debugger maps lines correctly.
+  cmd = "go build -gcflags='all=-N -l' -o ./tmp/bot ./cmd/bot"
+  # full_bin overrides the run command: launch under delve, headless, on :2345.
+  full_bin = "dlv exec ./tmp/bot --headless --listen=:2345 --api-version=2 --accept-multiclient --continue"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "docs", ".git", ".github"]
+  delay = 1000
+  stop_on_error = true
+
+[misc]
+  clean_on_exit = true
