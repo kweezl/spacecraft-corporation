@@ -10,9 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/caarlos0/env/v11"
-	"go.uber.org/fx"
 )
 
 // Config is this module's env config.
@@ -74,11 +71,3 @@ func (c *Cipher) Decrypt(enc string) (string, error) {
 }
 
 func provide(cfg Config) (*Cipher, error) { return NewCipher(cfg.Key) }
-
-// Module provides a *Cipher built from ENCRYPTION_KEY. Core module.
-func Module() fx.Option {
-	return fx.Module("crypto",
-		fx.Provide(env.ParseAs[Config]),
-		fx.Provide(provide),
-	)
-}

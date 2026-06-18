@@ -7,7 +7,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kweezl/spacecraft-cadet/internal/crypto"
-	"go.uber.org/fx"
 )
 
 // Token is a decrypted bot token for one tenant guild.
@@ -28,9 +27,4 @@ func newRepository(pool *pgxpool.Pool, cipher *crypto.Cipher) Repository {
 // NewRepositoryForTest exposes the repository constructor for integration tests.
 func NewRepositoryForTest(pool *pgxpool.Pool, cipher *crypto.Cipher) Repository {
 	return newRepository(pool, cipher)
-}
-
-// Module provides the token Repository. Core module.
-func Module() fx.Option {
-	return fx.Module("token", fx.Provide(newRepository))
 }

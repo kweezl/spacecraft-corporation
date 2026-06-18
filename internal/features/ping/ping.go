@@ -8,7 +8,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
-	"go.uber.org/fx"
 )
 
 // Repository persists ping invocations.
@@ -51,17 +50,4 @@ func interactionUserID(i *discordgo.InteractionCreate) string {
 		return i.User.ID
 	}
 	return ""
-}
-
-// Module provides the /ping repository and contributes the command into the
-// registry's "commands" group. Whether it loads at all is decided by the
-// composition root (internal/app) from the FEATURES env var.
-func Module() fx.Option {
-	return fx.Module("ping",
-		fx.Provide(newRepository),
-		fx.Provide(fx.Annotate(
-			NewCommand,
-			fx.ResultTags(`group:"commands"`),
-		)),
-	)
 }

@@ -74,11 +74,3 @@ func (r *Registry) Dispatch(ctx context.Context, resp Responder, i *discordgo.In
 	r.counter.WithLabelValues(name).Inc()
 	return h(ctx, resp, i)
 }
-
-// Module provides the Registry built from the fx command group. Core module.
-func Module() fx.Option {
-	return fx.Module("registry",
-		fx.Provide(newCommandCounter),
-		fx.Provide(New),
-	)
-}

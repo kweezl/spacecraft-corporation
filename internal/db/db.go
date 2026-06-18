@@ -4,7 +4,6 @@ package db
 import (
 	"context"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -35,12 +34,4 @@ func New(lc fx.Lifecycle, cfg Config, log *zap.Logger) (*pgxpool.Pool, error) {
 		},
 	})
 	return pool, nil
-}
-
-// Module provides *pgxpool.Pool. Core module.
-func Module() fx.Option {
-	return fx.Module("db",
-		fx.Provide(env.ParseAs[Config]),
-		fx.Provide(New),
-	)
 }
