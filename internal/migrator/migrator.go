@@ -36,4 +36,6 @@ func Run(pool *pgxpool.Pool, log *zap.Logger) error {
 // Module runs migrations as an fx invoke. Invokes execute during fx
 // construction, before any lifecycle OnStart hook (e.g. the session manager),
 // guaranteeing the schema exists before sessions load tokens.
-var Module = fx.Module("migrator", fx.Invoke(Run))
+func Module() fx.Option {
+	return fx.Module("migrator", fx.Invoke(Run))
+}

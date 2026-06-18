@@ -108,10 +108,12 @@ func register(lc fx.Lifecycle, m *Manager) {
 }
 
 // Module provides the Manager and runs it via the fx lifecycle. Its OnStart
-// hook runs after the migrator invoke, so the schema already exists.
-var Module = fx.Module("session",
-	fx.Provide(env.ParseAs[Config]),
-	fx.Provide(NewFactory),
-	fx.Provide(newManager),
-	fx.Invoke(register),
-)
+// hook runs after the migrator invoke, so the schema already exists. Core module.
+func Module() fx.Option {
+	return fx.Module("session",
+		fx.Provide(env.ParseAs[Config]),
+		fx.Provide(NewFactory),
+		fx.Provide(newManager),
+		fx.Invoke(register),
+	)
+}

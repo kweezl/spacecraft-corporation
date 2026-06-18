@@ -22,7 +22,7 @@ func TestPool_ConnectsAndPings(t *testing.T) {
 
 	app := fxtest.New(t,
 		fx.Provide(func() *zap.Logger { return zap.NewNop() }),
-		db.Module,
+		db.Module(),
 		fx.Invoke(func(p interface{ Ping(context.Context) error }) {
 			assert.NoError(t, p.Ping(context.Background()))
 		}),

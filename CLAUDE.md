@@ -184,9 +184,15 @@ the first slice — they're project infrastructure, not features.)
   hand-roll when no suitable package exists, the dependency is disproportionate
   to the need, or it would compromise a core constraint — and say why.
 - TDD: write tests first. Regenerate mocks with `mockery` when interfaces change.
-- New feature = new `fx.Module` under `internal/features/`, gated by a
-  `FEATURE_<NAME>_ENABLED` env in its own config struct, contributing `Command`s
-  via the fx group.
+- Every module exposes `func Module() fx.Option` (not a `var`). Core modules
+  always return their `fx.Module(...)`. Feature modules read their own
+  `FEATURE_<NAME>_ENABLED` env inside `Module()` and return `fx.Options()` (a
+  no-op) when disabled, or `fx.Error(err)` if their config fails to parse — so a
+  disabled feature contributes nothing to the graph and `main` never reads
+  feature env. Note: this is a startup decision; fx builds the graph once at
+  `fx.New` and cannot add/remove modules at runtime.
+- New feature = new `Module() fx.Option` under `internal/features/`, gated as
+  above, contributing `Command`s via the fx group.
 - Never touch `*discordgo.Session` directly in handlers — go through the
   `Session` wrapper.
 - Never store secrets in plaintext; bot tokens are AES-GCM encrypted.
