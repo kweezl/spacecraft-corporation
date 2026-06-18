@@ -4,13 +4,18 @@ import (
 	"testing"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/kweezl/spacecraft-cadet/internal/appconfig"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
+var testApp = appconfig.AppConfig{Name: "spacecraft-cadet", Version: "1.2.3"}
+
 func TestNew_DefaultLevel(t *testing.T) {
-	log, err := New(Config{Level: zapcore.InfoLevel})
+	log, err := New(Config{Level: zapcore.InfoLevel}, testApp)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	assert.True(t, log.Core().Enabled(zapcore.InfoLevel))
@@ -18,9 +23,22 @@ func TestNew_DefaultLevel(t *testing.T) {
 }
 
 func TestNew_DebugLevel(t *testing.T) {
-	log, err := New(Config{Level: zapcore.DebugLevel})
+	log, err := New(Config{Level: zapcore.DebugLevel}, testApp)
 	require.NoError(t, err)
 	assert.True(t, log.Core().Enabled(zapcore.DebugLevel))
+}
+
+// TestWithAppFields confirms every log line carries app_name and app_version.
+func TestWithAppFields(t *testing.T) {
+	core, logs := observer.New(zapcore.InfoLevel)
+	log := withAppFields(zap.New(core), testApp)
+	log.Info("hello")
+
+	entries := logs.All()
+	require.Len(t, entries, 1)
+	m := entries[0].ContextMap()
+	assert.Equal(t, "spacecraft-cadet", m["app_name"])
+	assert.Equal(t, "1.2.3", m["app_version"])
 }
 
 func TestConfig_DefaultsToInfo(t *testing.T) {
