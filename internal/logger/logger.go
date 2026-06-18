@@ -10,23 +10,19 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Config is this module's env config.
+// Config is this module's env config. zapcore.Level implements TextUnmarshaler,
+// so caarlos0/env parses LOG_LEVEL directly (and rejects invalid levels).
 type Config struct {
-	Level string `env:"LOG_LEVEL" envDefault:"info"`
+	Level zapcore.Level `env:"LOG_LEVEL" envDefault:"info"`
 }
 
 // New builds a *zap.Logger: JSON encoder, stderr output, stacktraces at error+.
 func New(cfg Config) (*zap.Logger, error) {
-	level, err := zapcore.ParseLevel(cfg.Level)
-	if err != nil {
-		return nil, err
-	}
-
 	zcfg := zap.NewProductionConfig()
 	zcfg.Encoding = "json"
 	zcfg.OutputPaths = []string{"stderr"}
 	zcfg.ErrorOutputPaths = []string{"stderr"}
-	zcfg.Level = zap.NewAtomicLevelAt(level)
+	zcfg.Level = zap.NewAtomicLevelAt(cfg.Level)
 	// Disable zap's built-in stacktrace policy; we set our own threshold below.
 	zcfg.DisableStacktrace = true
 
