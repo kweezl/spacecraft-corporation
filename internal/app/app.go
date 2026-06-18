@@ -20,12 +20,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// featureModules maps each optional feature to its fx module constructor.
-// Adding a feature = implement feature.Name + register it here.
-var featureModules = map[feature.Name]func() fx.Option{
-	feature.Ping: ping.Module,
-}
-
 // coreModules are always loaded.
 func coreModules() []fx.Option {
 	return []fx.Option{
@@ -43,15 +37,17 @@ func coreModules() []fx.Option {
 	}
 }
 
-// selectFeatures maps enabled feature names to their fx options.
+// selectFeatures maps enabled feature names to their fx options. Adding a
+// feature = add a case here (plus its feature.Name and Module()).
 func selectFeatures(names []feature.Name) ([]fx.Option, error) {
 	opts := make([]fx.Option, 0, len(names))
 	for _, name := range names {
-		ctor, ok := featureModules[name]
-		if !ok {
+		switch name {
+		case feature.Ping:
+			opts = append(opts, ping.Module())
+		default:
 			return nil, fmt.Errorf("no module registered for feature %q", name)
 		}
-		opts = append(opts, ctor())
 	}
 	return opts, nil
 }
