@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,4 +52,24 @@ func TestRegistry_UnknownCommand(t *testing.T) {
 	reg := New(Params{Commands: nil})
 	err := reg.Dispatch(context.Background(), &fakeResponder{}, interaction("nope"))
 	require.Error(t, err)
+}
+
+func TestRegistry_CountsDispatchByCommand(t *testing.T) {
+	counter := newCommandCounter(prometheus.NewRegistry())
+	cmd := &Command{
+		Def: &discordgo.ApplicationCommand{Name: "ping"},
+		Handler: func(_ context.Context, r Responder, i *discordgo.InteractionCreate) error {
+			return r.Respond(i.Interaction, "pong")
+		},
+	}
+	reg := New(Params{Commands: []*Command{cmd}, Counter: counter})
+
+	for range 3 {
+		require.NoError(t, reg.Dispatch(context.Background(), &fakeResponder{}, interaction("ping")))
+	}
+	// Unknown commands are rejected before counting (no label cardinality leak).
+	_ = reg.Dispatch(context.Background(), &fakeResponder{}, interaction("nope"))
+
+	assert.Equal(t, float64(3), testutil.ToFloat64(counter.WithLabelValues("ping")))
+	assert.Equal(t, float64(0), testutil.ToFloat64(counter.WithLabelValues("nope")))
 }
