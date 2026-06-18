@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/kweezl/spacecraft-cadet/internal/config"
+	"github.com/caarlos0/env/v11"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -65,7 +65,7 @@ func interactionUserID(i *discordgo.InteractionCreate) string {
 
 // Module contributes the /ping command into the registry's "commands" group.
 var Module = fx.Module("ping",
-	fx.Provide(config.Parse[Config]),
+	fx.Provide(env.ParseAs[Config]),
 	fx.Provide(newRepository),
 	fx.Provide(fx.Annotate(
 		NewCommand,

@@ -5,7 +5,7 @@ package logger
 import (
 	"context"
 
-	"github.com/kweezl/spacecraft-cadet/internal/config"
+	"github.com/caarlos0/env/v11"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -46,7 +46,7 @@ func registerSync(lc fx.Lifecycle, log *zap.Logger) {
 
 // Module provides the logger and flushes it on shutdown.
 var Module = fx.Module("logger",
-	fx.Provide(config.Parse[Config]),
+	fx.Provide(env.ParseAs[Config]),
 	fx.Provide(New),
 	fx.Invoke(registerSync),
 )

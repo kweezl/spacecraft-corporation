@@ -4,7 +4,7 @@
 package appconfig
 
 import (
-	"github.com/kweezl/spacecraft-cadet/internal/config"
+	"github.com/caarlos0/env/v11"
 	"go.uber.org/fx"
 )
 
@@ -25,7 +25,7 @@ type AppConfig struct {
 
 // Load builds AppConfig from APP_NAME (env) and the build-time version.
 func Load() (AppConfig, error) {
-	c, err := config.Parse[AppConfig]()
+	c, err := env.ParseAs[AppConfig]()
 	if err != nil {
 		return AppConfig{}, err
 	}
