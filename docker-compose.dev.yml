@@ -26,11 +26,13 @@ services:
       DEV_GUILD_ID: ${DEV_GUILD_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       APP_NAME: ${APP_NAME:-spacecraft-cadet}
-      FEATURE_PING_ENABLED: ${FEATURE_PING_ENABLED:-true}
+      FEATURES: ${FEATURES:-ping}
+      HEALTH_ADDR: ${HEALTH_ADDR:-:8080}
     volumes:
       - .:/src
     ports:
       - "2345:2345"   # delve
+      - "8080:8080"   # ops: /healthz /readyz /metrics
     depends_on:
       postgres:
         condition: service_healthy

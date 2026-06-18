@@ -37,6 +37,12 @@ registration scope is **configurable** (`guild` vs `global`).
 - **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL`.
 - **`migrator`** — runs goose migrations on startup before sessions serve.
 - **`crypto`** — AES-GCM encrypt/decrypt helper (key from `ENCRYPTION_KEY`).
+- **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:8080`): `/healthz`
+  (liveness), `/readyz` (readiness), `/metrics` (Prometheus). Provides a
+  `Readiness` flag and an injectable `*prometheus.Registry` (no global default
+  registry). Started early so probes answer during startup. Readiness goes green
+  via `MarkReady`, appended **last** by the composition root, so `/readyz`
+  returns 200 only after every module's `OnStart` (incl. session connect) ran.
 - **`sessionmanager`** — loads enabled tokens from DB (decrypts via `crypto`),
   opens one `discordgo.Session` per token, registers commands per session at the
   configured scope, fans `InteractionCreate` events into the command router.
@@ -77,6 +83,7 @@ config aggregator**. Each module defines and loads its own env struct via
 | `logger` | `LOG_LEVEL` (default `info`) |
 | `sessionmanager` | `COMMAND_SCOPE` (`guild`\|`global`), `DEV_GUILD_ID`, `ENCRYPTION_KEY`, `BOOTSTRAP_BOT_TOKEN` (optional, seeds first token) |
 | `crypto` | `ENCRYPTION_KEY` |
+| `health` | `HEALTH_ADDR` (default `:8080`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-cadet`); `Version` injected via build-time ldflags |
 
@@ -147,6 +154,31 @@ Port `2345` is published by `docker-compose.dev.yml`. Attach from GoLand via a
 air rebuilds and relaunches under delve, so the debugger reconnects to the new
 process.
 
+## Observability (probes & metrics)
+
+The `health` module exposes, on `HEALTH_ADDR` (default `:8080`):
+- `GET /healthz` — liveness; always `200 ok` once the server is listening.
+- `GET /readyz` — readiness; `503 starting` until the app fully starts, then
+  `200 ready`. Green only after **all** modules' `OnStart` ran.
+- `GET /metrics` — Prometheus exposition (Go runtime collectors + app metrics).
+
+App metrics register into the injected `*prometheus.Registry`; e.g. `ping`
+exports `spacecraft_ping_commands_total`. A new metric = inject the registry and
+`MustRegister` (keep `prometheus.Counter`/etc. out of the fx graph so features
+don't collide on a shared provided type — see `ping.provideCommand`).
+
+Kubernetes probes (kubelet does the HTTP GET, so distroless needs no shell):
+```yaml
+livenessProbe:
+  httpGet: { path: /healthz, port: 8080 }
+readinessProbe:
+  httpGet: { path: /readyz, port: 8080 }
+startupProbe:
+  httpGet: { path: /healthz, port: 8080 }
+  failureThreshold: 30   # allow slow first start (DB + N Discord sessions)
+  periodSeconds: 2
+```
+
 ## CI/CD & linting
 
 - **GitHub Actions** (`.github/workflows/ci.yml`) runs on push/PR:
@@ -167,6 +199,7 @@ internal/logger/
 internal/db/
 internal/migrator/           # + migrations/*.sql (embedded)
 internal/crypto/
+internal/health/             # liveness/readiness probes + /metrics
 internal/discord/session/    # SessionManager + Session wrapper
 internal/discord/registry/   # command registry + router + Command type
 internal/features/ping/

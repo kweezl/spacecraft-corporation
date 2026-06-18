@@ -9,6 +9,8 @@ import (
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
 	"github.com/kweezl/spacecraft-cadet/internal/features/ping"
 	"github.com/kweezl/spacecraft-cadet/internal/features/ping/mocks"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -37,13 +39,15 @@ func TestPingHandler_RecordsAndReplies(t *testing.T) {
 	repo.EXPECT().Record(mock.Anything, "g1", "u1").Return(nil).Once()
 	repo.EXPECT().Count(mock.Anything, "g1").Return(int64(3), nil).Once()
 
-	cmd := ping.NewCommand(repo)
+	calls := prometheus.NewCounter(prometheus.CounterOpts{Name: "test_ping_total", Help: "x"})
+	cmd := ping.NewCommand(repo, calls)
 	require.NotNil(t, cmd)
 
 	resp := &fakeResponder{}
 	err := cmd.Handler(context.Background(), resp, guildInteraction("g1", "u1"))
 	require.NoError(t, err)
 	assert.Equal(t, "pong (#3)", resp.last)
+	assert.Equal(t, float64(1), testutil.ToFloat64(calls))
 }
 
 // TestModule_RegistersPing verifies the module wires its command into the
@@ -57,6 +61,7 @@ func TestModule_RegistersPing(t *testing.T) {
 	var reg *registry.Registry
 	app := fxtest.New(t,
 		fx.Provide(func() *pgxpool.Pool { return pool }),
+		fx.Provide(prometheus.NewRegistry),
 		ping.Module(),
 		registry.Module(),
 		fx.Populate(&reg),

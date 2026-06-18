@@ -16,6 +16,7 @@ RUN CGO_ENABLED=0 go build \
 FROM gcr.io/distroless/static-debian12:nonroot AS prod
 COPY --from=build /bot /bot
 USER nonroot:nonroot
+EXPOSE 8080
 ENTRYPOINT ["/bot"]
 
 # --- dev (hot reload + debugger) --------------------------------------------
@@ -25,5 +26,5 @@ RUN go install github.com/air-verse/air@latest \
  && go install github.com/go-delve/delve/cmd/dlv@latest
 COPY go.mod go.sum ./
 RUN go mod download
-EXPOSE 2345
+EXPOSE 2345 8080
 ENTRYPOINT ["air", "-c", ".air.toml"]

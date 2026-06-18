@@ -12,6 +12,7 @@ import (
 	"github.com/kweezl/spacecraft-cadet/internal/discord/session"
 	"github.com/kweezl/spacecraft-cadet/internal/feature"
 	"github.com/kweezl/spacecraft-cadet/internal/features/ping"
+	"github.com/kweezl/spacecraft-cadet/internal/health"
 	"github.com/kweezl/spacecraft-cadet/internal/logger"
 	"github.com/kweezl/spacecraft-cadet/internal/migrator"
 	"github.com/kweezl/spacecraft-cadet/internal/token"
@@ -28,6 +29,8 @@ func coreModules() []fx.Option {
 		}),
 		appconfig.Module(),
 		logger.Module(),
+		// health starts early so probes answer (503) while later modules start.
+		health.Module(),
 		db.Module(),
 		migrator.Module(),
 		crypto.Module(),
@@ -63,5 +66,9 @@ func Options() ([]fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(coreModules(), features...), nil
+	opts := append(coreModules(), features...)
+	// MarkReady is appended LAST so its OnStart hook runs after every other
+	// module's: readiness goes green only once all modules have started.
+	opts = append(opts, fx.Invoke(health.MarkReady))
+	return opts, nil
 }
