@@ -2,6 +2,7 @@ package session
 
 import (
 	"github.com/caarlos0/env/v11"
+	"github.com/kweezl/spacecraft-cadet/internal/logger"
 	"go.uber.org/fx"
 )
 
@@ -9,6 +10,7 @@ import (
 // hook runs after the migrator invoke, so the schema already exists. Core module.
 func Module() fx.Option {
 	return fx.Module("session",
+		logger.Decorate("session"),
 		fx.Provide(env.ParseAs[Config]),
 		fx.Provide(NewFactory),
 		fx.Provide(newManager),
