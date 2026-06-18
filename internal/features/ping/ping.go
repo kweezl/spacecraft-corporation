@@ -7,15 +7,9 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/caarlos0/env/v11"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
 	"go.uber.org/fx"
 )
-
-// Config is this feature's env config.
-type Config struct {
-	Enabled bool `env:"FEATURE_PING_ENABLED" envDefault:"true"`
-}
 
 // Repository persists ping invocations.
 type Repository interface {
@@ -58,18 +52,10 @@ func interactionUserID(i *discordgo.InteractionCreate) string {
 	return ""
 }
 
-// Module gates the /ping feature on FEATURE_PING_ENABLED. When disabled it
-// contributes nothing to the graph (fx.Options()); a config parse error fails
-// startup (fx.Error). When enabled it provides the repository and contributes
-// the command into the registry's "commands" group.
+// Module provides the /ping repository and contributes the command into the
+// registry's "commands" group. Whether it loads at all is decided by the
+// composition root (internal/app) from the FEATURES env var.
 func Module() fx.Option {
-	cfg, err := env.ParseAs[Config]()
-	if err != nil {
-		return fx.Error(fmt.Errorf("ping: load config: %w", err))
-	}
-	if !cfg.Enabled {
-		return fx.Options()
-	}
 	return fx.Module("ping",
 		fx.Provide(newRepository),
 		fx.Provide(fx.Annotate(

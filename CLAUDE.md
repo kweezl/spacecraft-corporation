@@ -44,7 +44,13 @@ registration scope is **configurable** (`guild` vs `global`).
 - **`commandregistry`** — collects `Command`s from feature modules via an fx
   group, builds the route map, dispatches interactions to handlers.
 - **feature modules** (first: **`ping`**) — each provides `Command`s into the
-  group. Disabled modules contribute nothing.
+  group. They are plain modules (no self-gating); which ones load is decided by
+  the composition root.
+- **`app`** (composition root, `internal/app`) — assembles the fx option list:
+  always-on core modules plus the feature modules selected from `FEATURES`
+  (parsed once via `feature.Load()`). Holds the `feature.Name → Module()` map.
+- **`feature`** (`internal/feature`) — the `Name` enum + `Load()` that parses
+  `FEATURES` into a validated `[]Name` (unknown names error at parse).
 
 ### Key interfaces
 
@@ -66,8 +72,12 @@ config aggregator**. Each module defines and loads its own env struct via
 | `logger` | `LOG_LEVEL` (default `info`) |
 | `sessionmanager` | `COMMAND_SCOPE` (`guild`\|`global`), `DEV_GUILD_ID`, `ENCRYPTION_KEY`, `BOOTSTRAP_BOT_TOKEN` (optional, seeds first token) |
 | `crypto` | `ENCRYPTION_KEY` |
-| `ping` | `FEATURE_PING_ENABLED` |
+| `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-cadet`); `Version` injected via build-time ldflags |
+
+Feature on/off is the one exception to per-module ownership: it's a composition
+concern, owned by the composition root (`internal/app`) via `FEATURES`, not a
+per-feature env var.
 
 `.env.example` documents the union for operators; no single Go struct holds it.
 
@@ -144,7 +154,9 @@ process.
 ## Project layout
 
 ```
-cmd/bot/main.go              # fx.New(...).Run()
+cmd/bot/main.go              # app.Options() -> fx.New(...).Run()
+internal/app/                # composition root: core + selected features
+internal/feature/            # Name enum + FEATURES parsing/validation
 internal/appconfig/
 internal/logger/
 internal/db/
@@ -184,15 +196,15 @@ the first slice — they're project infrastructure, not features.)
   hand-roll when no suitable package exists, the dependency is disproportionate
   to the need, or it would compromise a core constraint — and say why.
 - TDD: write tests first. Regenerate mocks with `mockery` when interfaces change.
-- Every module exposes `func Module() fx.Option` (not a `var`). Core modules
-  always return their `fx.Module(...)`. Feature modules read their own
-  `FEATURE_<NAME>_ENABLED` env inside `Module()` and return `fx.Options()` (a
-  no-op) when disabled, or `fx.Error(err)` if their config fails to parse — so a
-  disabled feature contributes nothing to the graph and `main` never reads
-  feature env. Note: this is a startup decision; fx builds the graph once at
+- Every module exposes `func Module() fx.Option` (not a `var`) that returns its
+  `fx.Module(...)`. Modules do not self-gate. Which feature modules load is
+  decided once by the composition root (`internal/app`) from `FEATURES`; core
+  modules always load. This is a startup decision — fx builds the graph once at
   `fx.New` and cannot add/remove modules at runtime.
-- New feature = new `Module() fx.Option` under `internal/features/`, gated as
-  above, contributing `Command`s via the fx group.
+- New feature = (1) add a `feature.Name` const in `internal/feature`, (2) add a
+  `Module() fx.Option` under `internal/features/` contributing `Command`s via
+  the fx group, (3) register `Name → Module` in `internal/app`'s
+  `featureModules` map.
 - Never touch `*discordgo.Session` directly in handlers — go through the
   `Session` wrapper.
 - Never store secrets in plaintext; bot tokens are AES-GCM encrypted.

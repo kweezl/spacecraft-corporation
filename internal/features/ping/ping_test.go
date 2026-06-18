@@ -46,29 +46,10 @@ func TestPingHandler_RecordsAndReplies(t *testing.T) {
 	assert.Equal(t, "pong (#3)", resp.last)
 }
 
-// TestModule_Disabled_ContributesNothing verifies the feature gate: with
-// FEATURE_PING_ENABLED=false the module is a no-op and registers no command.
-func TestModule_Disabled_ContributesNothing(t *testing.T) {
-	t.Setenv("FEATURE_PING_ENABLED", "false")
-
-	var reg *registry.Registry
-	app := fxtest.New(t,
-		ping.Module(),
-		registry.Module(),
-		fx.Populate(&reg),
-	)
-	app.RequireStart()
-	defer app.RequireStop()
-
-	assert.Empty(t, reg.Commands())
-}
-
-// TestModule_Enabled_RegistersPing verifies the enabled path wires the command
-// into the registry. A pool is provided for the repository dependency; pgxpool
-// connects lazily, so no live database is needed for graph construction.
-func TestModule_Enabled_RegistersPing(t *testing.T) {
-	t.Setenv("FEATURE_PING_ENABLED", "true")
-
+// TestModule_RegistersPing verifies the module wires its command into the
+// registry. A pool is provided for the repository dependency; pgxpool connects
+// lazily, so no live database is needed for graph construction.
+func TestModule_RegistersPing(t *testing.T) {
 	pool, err := pgxpool.New(context.Background(), "postgres://user:pass@localhost:5432/db")
 	require.NoError(t, err)
 	defer pool.Close()
