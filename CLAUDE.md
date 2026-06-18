@@ -50,8 +50,12 @@ registration scope is **configurable** (`guild` vs `global`).
   always-on core modules plus the feature modules selected from `FEATURES`
   (parsed once via `feature.Load()`); `selectFeatures` switches each enabled
   `feature.Name` to its `Module()`.
-- **`feature`** (`internal/feature`) — the `Name` enum + `Load()` that parses
-  `FEATURES` into a validated `[]Name` (unknown names error at parse).
+- **`feature`** (`internal/feature`) — the `Name` enum, a `Feature` catalog
+  (each with optional `Requires []Name`), and `Load()` which parses `FEATURES`
+  into a validated `[]Name` (unknown names error at parse) and resolves the
+  transitive closure of required features. Enabling a feature auto-enables its
+  requirements; fx then wires construction order, so selection order is
+  irrelevant.
 
 ### Key interfaces
 
@@ -202,9 +206,10 @@ the first slice — they're project infrastructure, not features.)
   decided once by the composition root (`internal/app`) from `FEATURES`; core
   modules always load. This is a startup decision — fx builds the graph once at
   `fx.New` and cannot add/remove modules at runtime.
-- New feature = (1) add a `feature.Name` const in `internal/feature`, (2) add a
-  `Module() fx.Option` under `internal/features/` contributing `Command`s via
-  the fx group, (3) add a `case` for it in `internal/app`'s `selectFeatures`.
+- New feature = (1) add a `feature.Name` const + a `catalog()` entry (with any
+  `Requires`) in `internal/feature`, (2) add a `Module() fx.Option` under
+  `internal/features/` contributing `Command`s via the fx group, (3) add a
+  `case` for it in `internal/app`'s `selectFeatures`.
 - Never touch `*discordgo.Session` directly in handlers — go through the
   `Session` wrapper.
 - Never store secrets in plaintext; bot tokens are AES-GCM encrypted.
