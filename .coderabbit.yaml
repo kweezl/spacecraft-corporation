@@ -29,8 +29,8 @@ reviews:
         Handlers must reply via registry.Responder, never touch
         *discordgo.Session directly. Use "server" for the domain term, mapping
         discordgo's guild fields at the boundary. Tests are TDD with
-        testify + mockery mocks. Secrets (BOT_TOKEN, DATABASE_URL) must never be
-        logged or committed.
+        testify + mockery mocks. Secrets (BOT_TOKEN, POSTGRES_PASSWORD) must never
+        be logged or committed.
     - path: "internal/migrator/migrations/*.sql"
       instructions: >-
         Goose migrations are embedded via embed.FS and run on startup. Ensure
