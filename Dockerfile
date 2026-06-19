@@ -13,7 +13,10 @@ RUN CGO_ENABLED=0 go build \
     -o /bot ./cmd/bot
 
 # --- prod (minimal runtime) --------------------------------------------------
-FROM gcr.io/distroless/static-debian12:nonroot AS prod
+FROM alpine:3.24 AS prod
+# ca-certificates for outbound TLS (Discord, Postgres); a dedicated non-root user.
+RUN apk add --no-cache ca-certificates \
+ && adduser -D -H -u 65532 nonroot
 COPY --from=build /bot /bot
 USER nonroot:nonroot
 EXPOSE 8080
