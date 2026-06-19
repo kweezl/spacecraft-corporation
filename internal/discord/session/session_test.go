@@ -16,6 +16,7 @@ import (
 type fakeDiscord struct {
 	token          string
 	opened, closed bool
+	connected      bool
 	created        []created
 	interaction    func(*discordgo.InteractionCreate)
 	guildCreate    []func(*discordgo.GuildCreate)
@@ -34,8 +35,9 @@ func (f *fakeDiscord) AddGuildCreateHandler(fn func(*discordgo.GuildCreate)) {
 	f.guildCreate = append(f.guildCreate, fn)
 }
 func (f *fakeDiscord) AddGuildDeleteHandler(func(*discordgo.GuildDelete)) {}
-func (f *fakeDiscord) Open() error                                        { f.opened = true; return nil }
-func (f *fakeDiscord) Close() error                                       { f.closed = true; return nil }
+func (f *fakeDiscord) Open() error                                        { f.opened = true; f.connected = true; return nil }
+func (f *fakeDiscord) Close() error                                       { f.closed = true; f.connected = false; return nil }
+func (f *fakeDiscord) Connected() bool                                    { return f.connected }
 func (f *fakeDiscord) CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error {
 	f.created = append(f.created, created{serverID: serverID, name: cmd.Name})
 	return nil
@@ -146,6 +148,22 @@ func TestManager_Stop_ClosesSession(t *testing.T) {
 	require.NoError(t, m.Start(context.Background()))
 	require.NoError(t, m.Stop(context.Background()))
 	assert.True(t, fake.closed)
+}
+
+func TestReadinessCheck_ReflectsGatewayLifecycle(t *testing.T) {
+	var fake *fakeDiscord
+	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	probe := newReadinessCheck(m).Probe
+
+	// Not ready before the session is opened.
+	assert.Error(t, probe(context.Background()))
+
+	require.NoError(t, m.Start(context.Background()))
+	assert.NoError(t, probe(context.Background()), "ready once the gateway is connected")
+
+	require.NoError(t, m.Stop(context.Background()))
+	assert.Error(t, probe(context.Background()), "not ready again after the session closes")
 }
 
 func TestConfig_BotToken_PrefersFile(t *testing.T) {
