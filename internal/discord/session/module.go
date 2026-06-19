@@ -18,6 +18,12 @@ func Module() fx.Option {
 			newManager,
 			fx.ParamTags(``, ``, ``, ``, `group:"guild_create"`, `group:"guild_delete"`, ``, ``),
 		)),
+		// Contribute a "discord" readiness probe (gateway connected) to the
+		// instrumentation group.
+		fx.Provide(fx.Annotate(
+			newReadinessCheck,
+			fx.ResultTags(`group:"readiness_checks"`),
+		)),
 		fx.Invoke(register),
 	)
 }

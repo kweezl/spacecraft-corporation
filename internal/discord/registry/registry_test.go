@@ -7,6 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,4 +73,33 @@ func TestRegistry_CountsDispatchByCommand(t *testing.T) {
 
 	assert.Equal(t, float64(3), testutil.ToFloat64(counter.WithLabelValues("ping")))
 	assert.Equal(t, float64(0), testutil.ToFloat64(counter.WithLabelValues("nope")))
+}
+
+func TestRegistry_RecordsDurationByCommand(t *testing.T) {
+	duration := newCommandDuration(prometheus.NewRegistry())
+	cmd := &Command{
+		Def: &discordgo.ApplicationCommand{Name: "ping"},
+		Handler: func(_ context.Context, r Responder, i *discordgo.InteractionCreate) error {
+			return r.Respond(i.Interaction, "pong")
+		},
+	}
+	reg := New(Params{Commands: []*Command{cmd}, Duration: duration})
+
+	for range 3 {
+		require.NoError(t, reg.Dispatch(context.Background(), &fakeResponder{}, interaction("ping")))
+	}
+	// Unknown commands are rejected before timing, so they record no sample.
+	_ = reg.Dispatch(context.Background(), &fakeResponder{}, interaction("nope"))
+
+	assert.Equal(t, uint64(3), histSampleCount(t, duration, "ping"))
+	assert.Equal(t, uint64(0), histSampleCount(t, duration, "nope"))
+}
+
+// histSampleCount returns how many observations the histogram recorded for the
+// given command label.
+func histSampleCount(t *testing.T, h *prometheus.HistogramVec, command string) uint64 {
+	t.Helper()
+	var m dto.Metric
+	require.NoError(t, h.WithLabelValues(command).(prometheus.Histogram).Write(&m))
+	return m.GetHistogram().GetSampleCount()
 }
