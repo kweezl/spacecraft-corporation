@@ -40,10 +40,14 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   level from `LOG_LEVEL` (parsed straight into `zapcore.Level`), `Sync()` on
   shutdown. `New` takes `appconfig.AppConfig`, so **every** log line carries
   `app_name` + `app_version`. fx wiring logs via `fx.WithLogger(fxevent.ZapLogger)`.
-- **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL`.
+- **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL` (or the
+  file-mounted `DATABASE_URL_FILE`, which wins — same secret pattern as
+  `BOT_TOKEN_FILE`).
 - **`migrator`** — runs goose migrations on startup before the session serves.
-- **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:8080`): `/healthz`
-  (liveness), `/readyz` (readiness), `/metrics` (Prometheus). Provides a
+- **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:9464`, isolated
+  from the app port so `8080` is free for the future public admin API):
+  `/healthz` (liveness), `/readyz` (readiness), `/metrics` (Prometheus).
+  `9464` is the OpenTelemetry Prometheus-exporter convention. Provides a
   `Readiness` flag and an injectable `*prometheus.Registry` (no global default
   registry). Started early so probes answer during startup. Readiness goes green
   via `MarkReady`, appended **last** by the composition root, so `/readyz`
@@ -85,10 +89,10 @@ config aggregator**. Each module defines and loads its own env struct via
 
 | Module | Env keys |
 |---|---|
-| `db` | `DATABASE_URL` |
+| `db` | `DATABASE_URL` **or** `DATABASE_URL_FILE` (mounted secret; file wins). Under Docker, compose assembles `DATABASE_URL` from `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` so the app and the `postgres` container share one credential set |
 | `logger` | `LOG_LEVEL` (default `info`) |
 | `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins), `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
-| `health` | `HEALTH_ADDR` (default `:8080`) |
+| `health` | `HEALTH_ADDR` (default `:9464`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `Version` injected via build-time ldflags |
 
@@ -141,7 +145,13 @@ Prod is `docker compose up`; dev is
 
 `.air.toml` at repo root drives local hot reload: watches `**/*.go`, rebuilds on
 change, and (for debugging) launches the binary under delve rather than running
-it directly — see below.
+it directly — see below. The build bakes a version tag via ldflags the same way
+prod does, read from the `VERSION` env var (default `dev`); run a custom tag with
+`VERSION=mytag docker compose -f docker-compose.dev.yml up`. `send_interrupt` is
+on so a rebuild sends SIGINT (not SIGKILL), letting fx `OnStop` hooks run. The
+dev image pins `GOCACHE` to `/home/dev/.cache/go-build` — outside the
+bind-mounted `/src` and air's `tmp_dir` — so air's cleanup never wipes the build
+cache and rebuilds stay incremental.
 
 ### Step debugging (delve)
 
@@ -160,7 +170,7 @@ process.
 
 ## Observability (probes & metrics)
 
-The `health` module exposes, on `HEALTH_ADDR` (default `:8080`):
+The `health` module exposes, on `HEALTH_ADDR` (default `:9464`):
 - `GET /healthz` — liveness; always `200 ok` once the server is listening.
 - `GET /readyz` — readiness; `503 starting` until the app fully starts, then
   `200 ready`. Green only after **all** modules' `OnStart` ran.
@@ -181,14 +191,14 @@ features don't each need a counter).
 `metrics.go` within the owning package (see `internal/discord/registry/
 metrics.go`); don't mix metric declarations into files holding other types.
 
-Kubernetes probes (kubelet does the HTTP GET, so distroless needs no shell):
+Kubernetes probes (kubelet does the HTTP GET, so the image needs no shell):
 ```yaml
 livenessProbe:
-  httpGet: { path: /healthz, port: 8080 }
+  httpGet: { path: /healthz, port: 9464 }
 readinessProbe:
-  httpGet: { path: /readyz, port: 8080 }
+  httpGet: { path: /readyz, port: 9464 }
 startupProbe:
-  httpGet: { path: /healthz, port: 8080 }
+  httpGet: { path: /healthz, port: 9464 }
   failureThreshold: 30   # allow slow first start (DB + Discord connect)
   periodSeconds: 2
 ```

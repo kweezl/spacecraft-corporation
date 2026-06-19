@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/caarlos0/env/v11"
-	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
+
+	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 )
 
 var testApp = appconfig.AppConfig{Name: "spacecraft-corporation", Version: "1.2.3"}

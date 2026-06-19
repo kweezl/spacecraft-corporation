@@ -20,7 +20,7 @@ import (
 
 // Config is this module's env config.
 type Config struct {
-	Addr string `env:"HEALTH_ADDR" envDefault:":8080"`
+	Addr string `env:"HEALTH_ADDR" envDefault:":9464"`
 }
 
 // Readiness tracks whether the application has finished starting.

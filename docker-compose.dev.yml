@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: bot
-      POSTGRES_PASSWORD: bot
-      POSTGRES_DB: spacecraft
+      POSTGRES_USER: ${POSTGRES_USER:-bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
+      POSTGRES_DB: ${POSTGRES_DB:-spacecraft}
     ports:
       - "5432:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bot"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bot}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -19,20 +19,25 @@ services:
     build:
       context: .
       target: dev
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     environment:
-      DATABASE_URL: postgres://bot:bot@postgres:5432/spacecraft?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-bot}:${POSTGRES_PASSWORD:-bot}@postgres:5432/${POSTGRES_DB:-spacecraft}?sslmode=disable
       BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
       COMMAND_SCOPE: ${COMMAND_SCOPE:-server}
       DEV_SERVER_ID: ${DEV_SERVER_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       APP_NAME: ${APP_NAME:-spacecraft-corporation}
+      # Custom build tag baked into the dev binary by air's ldflags.
+      VERSION: ${VERSION:-dev}
       FEATURES: ${FEATURES:-ping}
-      HEALTH_ADDR: ${HEALTH_ADDR:-:8080}
+      HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
     volumes:
       - .:/src
     ports:
       - "2345:2345"   # delve
-      - "8080:8080"   # ops: /healthz /readyz /metrics
+      - "9464:9464"   # ops: /healthz /readyz /metrics
     depends_on:
       postgres:
         condition: service_healthy

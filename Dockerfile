@@ -2,7 +2,7 @@
 ARG GO_VERSION=1.26
 
 # --- build -------------------------------------------------------------------
-FROM golang:${GO_VERSION} AS build
+FROM golang:${GO_VERSION}-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -13,18 +13,35 @@ RUN CGO_ENABLED=0 go build \
     -o /bot ./cmd/bot
 
 # --- prod (minimal runtime) --------------------------------------------------
-FROM gcr.io/distroless/static-debian12:nonroot AS prod
+FROM alpine:3.24 AS prod
+# ca-certificates for outbound TLS (Discord, Postgres); a dedicated non-root user.
+RUN apk add --no-cache ca-certificates \
+ && adduser -D -H -u 65532 nonroot
 COPY --from=build /bot /bot
 USER nonroot:nonroot
-EXPOSE 8080
+EXPOSE 9464
 ENTRYPOINT ["/bot"]
 
 # --- dev (hot reload + debugger) --------------------------------------------
-FROM golang:${GO_VERSION} AS dev
+FROM golang:${GO_VERSION}-alpine AS dev
+# Create a user matching the host UID/GID so files written into the bind-mounted
+# source tree (go.mod updates, generated code) are owned by the host developer,
+# not root. Override via build args: UID=$(id -u) GID=$(id -g).
+ARG UID=1000
+ARG GID=1000
+RUN addgroup -g ${GID} dev \
+ && adduser -D -u ${UID} -G dev dev
 WORKDIR /src
+# Keep the Go build cache in a stable dev-owned dir, deliberately OUTSIDE the
+# bind-mounted /src (and air's tmp_dir under it) so air's cleanup never wipes it
+# and incremental rebuilds stay fast.
+ENV GOCACHE=/home/dev/.cache/go-build
 RUN go install github.com/air-verse/air@latest \
  && go install github.com/go-delve/delve/cmd/dlv@latest
 COPY go.mod go.sum ./
-RUN go mod download
-EXPOSE 2345 8080
+RUN go mod download \
+ && mkdir -p ${GOCACHE} \
+ && chown -R dev:dev /go /src /home/dev
+USER dev
+EXPOSE 2345 9464
 ENTRYPOINT ["air", "-c", ".air.toml"]

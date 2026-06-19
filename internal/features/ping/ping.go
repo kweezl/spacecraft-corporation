@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
+
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 )
 
