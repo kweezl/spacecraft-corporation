@@ -12,6 +12,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -73,14 +74,21 @@ func Reset(t *testing.T, dsn string) *pgxpool.Pool {
 }
 
 // SeedServer inserts an approved servers row for a Discord snowflake so child
-// tables (which reference servers.id) have a parent to point at. Idempotent.
-func SeedServer(t *testing.T, pool *pgxpool.Pool, serverID string) {
+// tables (which reference servers.id) have a parent to point at, and returns that
+// servers.id — the UUID child repositories now key on. Idempotent: a repeated
+// call returns the existing row's id.
+func SeedServer(t *testing.T, pool *pgxpool.Pool, serverID string) uuid.UUID {
 	t.Helper()
-	_, err := pool.Exec(context.Background(),
+	var id uuid.UUID
+	// DO UPDATE (a no-op touch of server_id) so RETURNING yields the id on both
+	// insert and conflict; DO NOTHING would return no row on conflict.
+	err := pool.QueryRow(context.Background(),
 		`INSERT INTO servers (id, server_id, name, approved, created_at, updated_at)
 		 VALUES (gen_random_uuid(), $1, '', true, now(), now())
-		 ON CONFLICT (server_id) DO NOTHING`, serverID)
+		 ON CONFLICT (server_id) DO UPDATE SET server_id = EXCLUDED.server_id
+		 RETURNING id`, serverID).Scan(&id)
 	if err != nil {
 		t.Fatalf("testdb: seed server %q: %v", serverID, err)
 	}
+	return id
 }

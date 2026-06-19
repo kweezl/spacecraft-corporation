@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
@@ -36,18 +37,19 @@ type Mapping struct {
 	RoleID  string
 }
 
-// Repository persists the per-server command→role mapping.
+// Repository persists the per-server command→role mapping. serverID is the
+// resolved servers.id.
 type Repository interface {
 	// RolesFor returns the role IDs granted access to a command on a server.
-	RolesFor(ctx context.Context, serverID, command string) ([]string, error)
+	RolesFor(ctx context.Context, serverID uuid.UUID, command string) ([]string, error)
 	// Grant maps a role to a command (idempotent), recording the granting user.
-	Grant(ctx context.Context, serverID, command, roleID, createdByUserID string) error
+	Grant(ctx context.Context, serverID uuid.UUID, command, roleID, createdByUserID string) error
 	// Revoke removes a single role mapping for a command.
-	Revoke(ctx context.Context, serverID, command, roleID string) error
+	Revoke(ctx context.Context, serverID uuid.UUID, command, roleID string) error
 	// Clear removes every role mapping for a command.
-	Clear(ctx context.Context, serverID, command string) error
+	Clear(ctx context.Context, serverID uuid.UUID, command string) error
 	// List returns every mapping on a server, for the management command.
-	List(ctx context.Context, serverID string) ([]Mapping, error)
+	List(ctx context.Context, serverID uuid.UUID) ([]Mapping, error)
 }
 
 // Gate answers the session's CommandAccess check from the role mapping, reading
@@ -127,9 +129,8 @@ func subCommand(name, desc string, withRole, requireCommand bool) *discordgo.App
 }
 
 func handle(store *Store, loc *i18n.Localizer) registry.Handler {
-	return func(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate) error {
+	return func(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
 		data := i.ApplicationCommandData()
-		serverID := i.GuildID
 		if len(data.Options) == 0 {
 			return r.RespondEphemeral(i.Interaction, loc.Render(ctx, serverID, "permissions.no_subcommand", nil))
 		}
@@ -170,7 +171,7 @@ func handle(store *Store, loc *i18n.Localizer) registry.Handler {
 
 // listMessage renders the mapping for one command, or for the whole server when
 // command is empty.
-func listMessage(ctx context.Context, store *Store, loc *i18n.Localizer, serverID, command string) (string, error) {
+func listMessage(ctx context.Context, store *Store, loc *i18n.Localizer, serverID uuid.UUID, command string) (string, error) {
 	if command != "" {
 		roles, err := store.RolesFor(ctx, serverID, command)
 		if err != nil {

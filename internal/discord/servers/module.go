@@ -18,8 +18,9 @@ func Module() fx.Option {
 		fx.Provide(env.ParseAs[Config]),
 		fx.Provide(newRepository),
 		fx.Provide(newManager),
-		// Expose the manager as the session's approval gate.
-		fx.Provide(func(m *Manager) session.ServerApproval { return m }),
+		// Expose the manager as the session's server resolver (snowflake -> id +
+		// approval, cached).
+		fx.Provide(func(m *Manager) session.ServerResolver { return m }),
 		// Contribute guild lifecycle reactions into the session's groups.
 		fx.Provide(fx.Annotate(
 			func(m *Manager) session.GuildCreateFunc { return m.OnGuildCreate },
