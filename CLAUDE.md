@@ -42,8 +42,10 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   `app_name` + `app_version`. fx wiring logs via `fx.WithLogger(fxevent.ZapLogger)`.
 - **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL`.
 - **`migrator`** — runs goose migrations on startup before the session serves.
-- **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:8080`): `/healthz`
-  (liveness), `/readyz` (readiness), `/metrics` (Prometheus). Provides a
+- **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:9464`, isolated
+  from the app port so `8080` is free for the future public admin API):
+  `/healthz` (liveness), `/readyz` (readiness), `/metrics` (Prometheus).
+  `9464` is the OpenTelemetry Prometheus-exporter convention. Provides a
   `Readiness` flag and an injectable `*prometheus.Registry` (no global default
   registry). Started early so probes answer during startup. Readiness goes green
   via `MarkReady`, appended **last** by the composition root, so `/readyz`
@@ -88,7 +90,7 @@ config aggregator**. Each module defines and loads its own env struct via
 | `db` | `DATABASE_URL` |
 | `logger` | `LOG_LEVEL` (default `info`) |
 | `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins), `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
-| `health` | `HEALTH_ADDR` (default `:8080`) |
+| `health` | `HEALTH_ADDR` (default `:9464`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `Version` injected via build-time ldflags |
 
@@ -160,7 +162,7 @@ process.
 
 ## Observability (probes & metrics)
 
-The `health` module exposes, on `HEALTH_ADDR` (default `:8080`):
+The `health` module exposes, on `HEALTH_ADDR` (default `:9464`):
 - `GET /healthz` — liveness; always `200 ok` once the server is listening.
 - `GET /readyz` — readiness; `503 starting` until the app fully starts, then
   `200 ready`. Green only after **all** modules' `OnStart` ran.
@@ -181,14 +183,14 @@ features don't each need a counter).
 `metrics.go` within the owning package (see `internal/discord/registry/
 metrics.go`); don't mix metric declarations into files holding other types.
 
-Kubernetes probes (kubelet does the HTTP GET, so distroless needs no shell):
+Kubernetes probes (kubelet does the HTTP GET, so the image needs no shell):
 ```yaml
 livenessProbe:
-  httpGet: { path: /healthz, port: 8080 }
+  httpGet: { path: /healthz, port: 9464 }
 readinessProbe:
-  httpGet: { path: /readyz, port: 8080 }
+  httpGet: { path: /readyz, port: 9464 }
 startupProbe:
-  httpGet: { path: /healthz, port: 8080 }
+  httpGet: { path: /healthz, port: 9464 }
   failureThreshold: 30   # allow slow first start (DB + Discord connect)
   periodSeconds: 2
 ```
