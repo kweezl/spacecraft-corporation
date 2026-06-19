@@ -1,6 +1,52 @@
+# Prod stack: build the image once, run migrations once, then run the bot.
+#
+#   docker compose build          # build the image only (no containers start)
+#   docker compose up             # migrate runs to completion, then bot starts
+#
+# migrate and bot share ONE built image (same tag) so the binary is compiled a
+# single time and reused across both services.
+
+# Shared image + build definition. The explicit `image:` tag is what lets migrate
+# and bot reuse a single build instead of compose building one image per service.
+x-bot-image: &bot-image
+  image: spacecraft-corporation:${APP_VERSION:-0.0.0-unspecified}
+  build:
+    context: .
+    target: prod
+    args:
+      APP_VERSION: ${APP_VERSION:-0.0.0-unspecified}
+
+# Shared runtime env. migrate only needs the DB settings; bot needs all of them.
+# Kept in one block for simplicity (the unused token is harmless to migrate).
+x-bot-env: &bot-env
+  # The app assembles its DSN from these POSTGRES_* parts (db.Config.DSN); host is
+  # the `postgres` service, port is the in-network 5432.
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER:-bot}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
+  POSTGRES_DB: ${POSTGRES_DB:-spacecraft}
+  POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
+  # Safer for prod: mount the password as a file instead of POSTGRES_PASSWORD.
+  # Comment out POSTGRES_PASSWORD, uncomment the line + the secrets blocks below,
+  # and put the password in ./secrets/postgres_password (file wins).
+  # POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+  BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
+  # Safer for prod: mount the token as a file instead of the env var above.
+  # Comment out BOT_TOKEN, uncomment the line + the secrets blocks below, and
+  # put the token in ./secrets/bot_token.
+  # BOT_TOKEN_FILE: /run/secrets/bot_token
+  APPROVED_SERVER_ID: ${APPROVED_SERVER_ID:-}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  APP_NAME: ${APP_NAME:-spacecraft-corporation}
+  APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
+  APP_OWNER_DISCORD_ID: ${APP_OWNER_DISCORD_ID:-}
+  FEATURES: ${FEATURES:-ping}
+  HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
+
 services:
   postgres:
-    image: postgres:16
+    image: postgres:${POSTGRES_VERSION:-16}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-bot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
@@ -8,41 +54,45 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bot}"]
+      # -d targets the real database; without it pg_isready defaults to a DB
+      # named after the user ("bot"), which doesn't exist and spams Postgres logs
+      # with FATAL on every probe (the check still passes either way).
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bot} -d ${POSTGRES_DB:-spacecraft}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  bot:
-    build:
-      context: .
-      target: prod
-      args:
-        VERSION: ${VERSION:-0.0.0-unspecified}
+  # Build-only scenario: `docker compose build` (or `make build`) builds the
+  # shared image without starting anything. Profile-gated so it never runs on
+  # `up`; it exists to name the build target and reuses the shared tag.
+  build:
+    <<: *bot-image
+    profiles: ["build"]
+    entrypoint: ["true"]   # never started on `up`; exists only as a build target
+
+  # One-shot migrations: applies the schema with `--migrate`, then exits 0.
+  # The bot waits for this to complete before it starts (see depends_on below).
+  migrate:
+    <<: *bot-image
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-bot}:${POSTGRES_PASSWORD:-bot}@postgres:5432/${POSTGRES_DB:-spacecraft}?sslmode=disable
-      # Safer for prod: mount the DSN (it embeds the password) as a file instead
-      # of the env var above. Comment out DATABASE_URL, uncomment the line + the
-      # secrets blocks below, and put the connection string in ./secrets/database_url.
-      # DATABASE_URL_FILE: /run/secrets/database_url
-      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
-      # Safer for prod: mount the token as a file instead of the env var above.
-      # Comment out BOT_TOKEN, uncomment the line + the secrets blocks below, and
-      # put the token in ./secrets/bot_token.
-      # BOT_TOKEN_FILE: /run/secrets/bot_token
-      APPROVED_SERVER_ID: ${APPROVED_SERVER_ID:-}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      APP_NAME: ${APP_NAME:-spacecraft-corporation}
-      FEATURES: ${FEATURES:-ping}
-      HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
-    # secrets:
-    #   - bot_token
-    #   - database_url
+      <<: *bot-env
+    command: ["--migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  bot:
+    <<: *bot-image
+    environment:
+      <<: *bot-env
     expose:
       - "9464"   # ops: /healthz /readyz /metrics
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:
@@ -50,5 +100,5 @@ volumes:
 # secrets:
 #   bot_token:
 #     file: ./secrets/bot_token   # gitignored; or use `external: true`
-#   database_url:
-#     file: ./secrets/database_url   # gitignored; or use `external: true`
+#   postgres_password:
+#     file: ./secrets/postgres_password   # gitignored; or use `external: true`

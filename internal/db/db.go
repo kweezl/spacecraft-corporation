@@ -3,7 +3,9 @@ package db
 
 import (
 	"context"
-	"errors"
+	"net"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,38 +13,47 @@ import (
 	"go.uber.org/zap"
 )
 
-// Config is this module's env config.
+// Config is this module's env config. The connection string is assembled from
+// the POSTGRES_* parts (the same set that configures the `postgres` container),
+// so there is no separate DATABASE_URL to keep in sync.
 //
-// The connection string is a secret (it embeds the password). Provide it
-// directly via DATABASE_URL (convenient for dev), or point DATABASE_URL_FILE at
-// a mounted secret file — the ",file" option makes env read that file's
-// contents. Prefer the file in prod (Docker/K8s secret): files can be 0400, live
-// in tmpfs, and don't leak via `docker inspect` or /proc/<pid>/environ the way
-// env vars can. URLFile wins if both are set. Mirrors BOT_TOKEN/BOT_TOKEN_FILE.
+// The password is the secret: prefer POSTGRES_PASSWORD_FILE pointing at a mounted
+// secret file — the ",file" option makes env read that file's contents, which
+// can be 0400, live in tmpfs, and don't leak via `docker inspect` or
+// /proc/<pid>/environ the way env vars can. PasswordFile wins over Password.
+// Mirrors BOT_TOKEN/BOT_TOKEN_FILE.
 type Config struct {
-	URL     string `env:"DATABASE_URL"`
-	URLFile string `env:"DATABASE_URL_FILE,file"`
+	Host         string `env:"POSTGRES_HOST" envDefault:"localhost"`
+	Port         int    `env:"POSTGRES_PORT" envDefault:"5432"`
+	User         string `env:"POSTGRES_USER" envDefault:"bot"`
+	Password     string `env:"POSTGRES_PASSWORD" envDefault:"bot"`
+	PasswordFile string `env:"POSTGRES_PASSWORD_FILE,file"`
+	DB           string `env:"POSTGRES_DB" envDefault:"spacecraft"`
+	SSLMode      string `env:"POSTGRES_SSLMODE" envDefault:"disable"`
 }
 
-// databaseURL resolves the DSN, preferring the file-mounted secret. Whitespace
-// is trimmed so a trailing newline in a secret file doesn't corrupt the DSN.
-func (c Config) databaseURL() (string, error) {
-	if u := strings.TrimSpace(c.URLFile); u != "" {
-		return u, nil
+// DSN builds the pgx connection string from the POSTGRES_* parts. The password
+// prefers the file-mounted secret over POSTGRES_PASSWORD, trimmed so a trailing
+// newline in a secret file doesn't corrupt it. url.UserPassword percent-encodes
+// the credentials so special characters survive.
+func (c Config) DSN() string {
+	pw := strings.TrimSpace(c.Password)
+	if f := strings.TrimSpace(c.PasswordFile); f != "" {
+		pw = f
 	}
-	if u := strings.TrimSpace(c.URL); u != "" {
-		return u, nil
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.User, pw),
+		Host:     net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
+		Path:     "/" + c.DB,
+		RawQuery: url.Values{"sslmode": {c.SSLMode}}.Encode(),
 	}
-	return "", errors.New("db: set DATABASE_URL or DATABASE_URL_FILE")
+	return u.String()
 }
 
 // New creates a pool and wires Ping (on start) / Close (on stop) into fx.
 func New(lc fx.Lifecycle, cfg Config, log *zap.Logger) (*pgxpool.Pool, error) {
-	dsn, err := cfg.databaseURL()
-	if err != nil {
-		return nil, err
-	}
-	pool, err := pgxpool.New(context.Background(), dsn)
+	pool, err := pgxpool.New(context.Background(), cfg.DSN())
 	if err != nil {
 		return nil, err
 	}

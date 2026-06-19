@@ -16,7 +16,7 @@ func Module() fx.Option {
 		fx.Provide(NewFactory),
 		fx.Provide(fx.Annotate(
 			newManager,
-			fx.ParamTags(``, ``, ``, ``, `group:"guild_create"`, `group:"guild_delete"`, ``),
+			fx.ParamTags(``, ``, ``, ``, `group:"guild_create"`, `group:"guild_delete"`, ``, ``),
 		)),
 		fx.Invoke(register),
 	)

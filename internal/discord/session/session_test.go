@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 )
 
@@ -79,9 +80,14 @@ func newTestRegistry() *registry.Registry {
 
 func startManager(t *testing.T, gate ServerApproval) *fakeDiscord {
 	t.Helper()
+	return startManagerWithApp(t, gate, appconfig.AppConfig{})
+}
+
+func startManagerWithApp(t *testing.T, gate ServerApproval, app appconfig.AppConfig) *fakeDiscord {
+	t.Helper()
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, gate, nil, nil, zap.NewNop())
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, gate, nil, nil, zap.NewNop(), app)
 	require.NoError(t, m.Start(context.Background()))
 	require.NotNil(t, fake)
 	assert.True(t, fake.opened)
@@ -106,10 +112,19 @@ func TestManager_DispatchesFromApprovedServer(t *testing.T) {
 	assert.Equal(t, "pong", fake.lastReply)
 }
 
-func TestManager_IgnoresUnapprovedServer(t *testing.T) {
+func TestManager_RepliesToUnapprovedServer(t *testing.T) {
 	fake := startManager(t, gateFunc(func(id string) bool { return id == "g1" }))
 	fake.fireCommand("g2")
-	assert.Empty(t, fake.lastReply, "command from unapproved server must be ignored")
+	assert.Contains(t, fake.lastReply, "isn't approved",
+		"unapproved server should get an approval-required reply")
+}
+
+func TestManager_UnapprovedReply_MentionsOwnerWhenSet(t *testing.T) {
+	fake := startManagerWithApp(t,
+		gateFunc(func(string) bool { return false }),
+		appconfig.AppConfig{OwnerDiscordID: "12345"})
+	fake.fireCommand("g2")
+	assert.Contains(t, fake.lastReply, "<@12345>", "owner should be mentioned when configured")
 }
 
 func TestManager_IgnoresDirectMessages(t *testing.T) {
@@ -127,7 +142,7 @@ func TestManager_NilGate_ApprovesEverything(t *testing.T) {
 func TestManager_Stop_ClosesSession(t *testing.T) {
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, nil, zap.NewNop())
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, nil, zap.NewNop(), appconfig.AppConfig{})
 	require.NoError(t, m.Start(context.Background()))
 	require.NoError(t, m.Stop(context.Background()))
 	assert.True(t, fake.closed)

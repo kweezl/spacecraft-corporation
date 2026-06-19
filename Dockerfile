@@ -7,9 +7,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-ARG VERSION=0.0.0-unspecified
+ARG APP_VERSION=0.0.0-unspecified
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-X github.com/kweezl/spacecraft-corporation/internal/appconfig.version=${VERSION}" \
+    -ldflags "-X github.com/kweezl/spacecraft-corporation/internal/appconfig.version=${APP_VERSION}" \
     -o /bot ./cmd/bot
 
 # --- prod (minimal runtime) --------------------------------------------------
@@ -36,8 +36,17 @@ WORKDIR /src
 # bind-mounted /src (and air's tmp_dir under it) so air's cleanup never wipes it
 # and incremental rebuilds stay fast.
 ENV GOCACHE=/home/dev/.cache/go-build
+# Dev tools are baked into the image (on PATH at /go/bin) so dev.fmt / dev.mock
+# exec a pinned binary instead of `go run`-ing one on every call. Versions come
+# in as build args (defaults kept in sync with the Makefile + .github/ci.yml).
+ARG GOLANGCI_VERSION=v2.12.2
+ARG MOCKERY_VERSION=v2.53.0
+ARG GOOSE_VERSION=v3.27.1
 RUN go install github.com/air-verse/air@latest \
- && go install github.com/go-delve/delve/cmd/dlv@latest
+ && go install github.com/go-delve/delve/cmd/dlv@latest \
+ && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION} \
+ && go install github.com/vektra/mockery/v2@${MOCKERY_VERSION} \
+ && go install github.com/pressly/goose/v3/cmd/goose@${GOOSE_VERSION}
 COPY go.mod go.sum ./
 RUN go mod download \
  && mkdir -p ${GOCACHE} \
