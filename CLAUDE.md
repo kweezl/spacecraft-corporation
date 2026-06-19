@@ -17,12 +17,17 @@ reference data + per-user planning state."
 - **Testing:** TDD. Mocks via `mockery`. Assertions via `testify/assert` + `testify/require`
 - **Hosting:** Docker Compose (bot + postgres). Code on GitHub.
 
-## Multi-tenancy (core constraint)
+## Bot model (single bot)
 
-Genuine multi-tenant hosting: one OS process manages **multiple `discordgo`
-sessions, one per bot token**, with tokens loaded from Postgres. Bot tokens are
-**encrypted at rest with AES-GCM** (key from `ENCRYPTION_KEY`). Slash-command
-registration scope is **configurable** (`guild` vs `global`).
+One bot identity that you own. It runs **a single `discordgo` session** from
+`BOT_TOKEN` (env) and is added to other Discord **servers** via an OAuth2 invite
+link — no per-server tokens, no token storage. To gate who can add it, turn off
+"Public Bot" in the Developer Portal (only the app owner can invite) and/or keep
+a server allowlist. Slash-command registration scope is **configurable**:
+`server` (instant, to `DEV_SERVER_ID`) or `global` (~1h propagation).
+
+Terminology: **"server"** is our domain term for a Discord guild. discordgo's API
+still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
 
 ## fx modules
 
@@ -36,18 +41,17 @@ registration scope is **configurable** (`guild` vs `global`).
   shutdown. `New` takes `appconfig.AppConfig`, so **every** log line carries
   `app_name` + `app_version`. fx wiring logs via `fx.WithLogger(fxevent.ZapLogger)`.
 - **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL`.
-- **`migrator`** — runs goose migrations on startup before sessions serve.
-- **`crypto`** — AES-GCM encrypt/decrypt helper (key from `ENCRYPTION_KEY`).
+- **`migrator`** — runs goose migrations on startup before the session serves.
 - **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:8080`): `/healthz`
   (liveness), `/readyz` (readiness), `/metrics` (Prometheus). Provides a
   `Readiness` flag and an injectable `*prometheus.Registry` (no global default
   registry). Started early so probes answer during startup. Readiness goes green
   via `MarkReady`, appended **last** by the composition root, so `/readyz`
   returns 200 only after every module's `OnStart` (incl. session connect) ran.
-- **`sessionmanager`** — loads enabled tokens from DB (decrypts via `crypto`),
-  opens one `discordgo.Session` per token, registers commands per session at the
-  configured scope, fans `InteractionCreate` events into the command router.
-  Lifecycle-managed.
+- **`session`** — opens the single `discordgo.Session` from `BOT_TOKEN`,
+  registers commands at the configured scope, and fans `InteractionCreate`
+  events into the command router. Lifecycle-managed. Uses a `Discord` interface +
+  `Factory` so the manager is testable with a fake (no live connection in tests).
 - **`commandregistry`** — collects `Command`s from feature modules via an fx
   group, builds the route map, dispatches interactions to handlers.
 - **feature modules** (first: **`ping`**) — each provides `Command`s into the
@@ -67,10 +71,11 @@ registration scope is **configurable** (`guild` vs `global`).
 ### Key interfaces
 
 - `Command` — name, description, options, handler func. Collected via fx group.
-- `Session` — thin wrapper over `*discordgo.Session`; handlers/tests never touch
-  discordgo directly (mockable).
-- Per-module repository interfaces (`TokenRepository`, `PingRepository`, …),
-  mocked with `mockery`.
+- `Responder` / `Discord` — handlers reply through `Responder`, never touching
+  `*discordgo.Session` directly; the session manager uses the `Discord`
+  interface (mockable).
+- Per-module repository interfaces (e.g. `ping.Repository`), mocked with
+  `mockery`.
 
 ## Config (decentralized)
 
@@ -82,8 +87,7 @@ config aggregator**. Each module defines and loads its own env struct via
 |---|---|
 | `db` | `DATABASE_URL` |
 | `logger` | `LOG_LEVEL` (default `info`) |
-| `sessionmanager` | `COMMAND_SCOPE` (`guild`\|`global`), `DEV_GUILD_ID`, `ENCRYPTION_KEY`, `BOOTSTRAP_BOT_TOKEN` (optional, seeds first token) |
-| `crypto` | `ENCRYPTION_KEY` |
+| `session` | `BOT_TOKEN`, `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
 | `health` | `HEALTH_ADDR` (default `:8080`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-cadet`); `Version` injected via build-time ldflags |
@@ -96,14 +100,13 @@ per-feature env var.
 
 ## Data model (goose migrations)
 
-- **`bot_tokens`** — `id`, `guild_id`, `token` (AES-GCM ciphertext), `enabled`, `created_at`.
-- **`ping_log`** — `id`, `guild_id`, `user_id`, `created_at`.
+- **`ping_log`** — `id`, `server_id`, `user_id`, `created_at`.
 
 ## Command flow (`/ping`)
 
-Interaction → `sessionmanager` receives `InteractionCreate` on owning session →
-router looks up `ping` → handler calls `PingRepository.Record(guildID, userID)`
-→ replies `pong`. Registration scope follows `COMMAND_SCOPE`.
+Interaction → `session` receives `InteractionCreate` → router looks up `ping` →
+handler calls `Repository.Record(serverID, userID)` → replies `pong (#N)`.
+Registration scope follows `COMMAND_SCOPE`.
 
 ## Build & run (Docker)
 
@@ -186,7 +189,7 @@ readinessProbe:
   httpGet: { path: /readyz, port: 8080 }
 startupProbe:
   httpGet: { path: /healthz, port: 8080 }
-  failureThreshold: 30   # allow slow first start (DB + N Discord sessions)
+  failureThreshold: 30   # allow slow first start (DB + Discord connect)
   periodSeconds: 2
 ```
 
@@ -209,9 +212,8 @@ internal/appconfig/
 internal/logger/
 internal/db/
 internal/migrator/           # + migrations/*.sql (embedded)
-internal/crypto/
 internal/health/             # liveness/readiness probes + /metrics
-internal/discord/session/    # SessionManager + Session wrapper
+internal/discord/session/    # single-session manager + discordgo wrapper
 internal/discord/registry/   # command registry + router + Command type
 internal/features/ping/
 .mockery.yaml         # mock generation config
@@ -226,15 +228,15 @@ docker-compose.dev.yml   # local dev (air + delve, port 2345)
 
 ## First deliverable scope (YAGNI)
 
-`/ping` end to end: goose migrations create `bot_tokens` + `ping_log`;
-`sessionmanager` starts sessions from DB tokens (one bootstrap token suffices),
-decrypting via `crypto`; `/ping` records to Postgres and replies.
+`/ping` end to end: goose migrations create `ping_log`; the `session` module
+opens the bot from `BOT_TOKEN`; `/ping` records to Postgres and replies
+`pong (#N)`.
 
-**Not** in the first slice: token-admin/registration UX, key rotation, sharding,
-and any game-data feature modules beyond `ping`. Multi-tenancy lives in the
-boundaries now; only `ping` is built on top. (Dev/prod compose, air hot reload,
-delve debugging, golangci-lint, and the GitHub Actions CI workflow *are* part of
-the first slice — they're project infrastructure, not features.)
+**Not** in the first slice: sharding, a server allowlist / approval flow, and
+any game-data feature modules beyond `ping`. (Dev/prod compose, air hot reload,
+delve debugging, golangci-lint, the GitHub Actions CI workflow, and the health
+probes/metrics *are* part of the first slice — project infrastructure, not
+features.)
 
 ## Conventions
 
@@ -261,6 +263,9 @@ the first slice — they're project infrastructure, not features.)
   `Requires`) in `internal/feature`, (2) add a `Module() fx.Option` under
   `internal/features/` contributing `Command`s via the fx group, (3) add a
   `case` for it in `internal/app`'s `selectFeatures`.
-- Never touch `*discordgo.Session` directly in handlers — go through the
-  `Session` wrapper.
-- Never store secrets in plaintext; bot tokens are AES-GCM encrypted.
+- Never touch `*discordgo.Session` directly in handlers — reply via the
+  `registry.Responder`; the session manager uses the `Discord` interface.
+- "server" is the domain term for a Discord guild; map discordgo's `guild`
+  fields onto `server`-named values at the boundary.
+- `BOT_TOKEN` is a secret — it lives only in env (never committed; `.env` is
+  gitignored), never in the database or logs.

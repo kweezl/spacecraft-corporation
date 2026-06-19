@@ -23,14 +23,14 @@ func TestRun_CreatesTables(t *testing.T) {
 	defer pool.Close()
 
 	// Clean slate so the test is repeatable.
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS ping_log, bot_tokens, goose_db_version`)
+	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS ping_log, goose_db_version`)
 
 	require.NoError(t, migrator.Run(pool, zap.NewNop()))
 
 	var n int
 	err = pool.QueryRow(ctx,
 		`SELECT count(*) FROM information_schema.tables
-		 WHERE table_name IN ('bot_tokens','ping_log')`).Scan(&n)
+		 WHERE table_name = 'ping_log'`).Scan(&n)
 	require.NoError(t, err)
-	assert.Equal(t, 2, n)
+	assert.Equal(t, 1, n)
 }

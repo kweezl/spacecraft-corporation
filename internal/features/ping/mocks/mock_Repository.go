@@ -21,9 +21,9 @@ func (_m *MockRepository) EXPECT() *MockRepository_Expecter {
 	return &MockRepository_Expecter{mock: &_m.Mock}
 }
 
-// Count provides a mock function with given fields: ctx, guildID
-func (_m *MockRepository) Count(ctx context.Context, guildID string) (int64, error) {
-	ret := _m.Called(ctx, guildID)
+// Count provides a mock function with given fields: ctx, serverID
+func (_m *MockRepository) Count(ctx context.Context, serverID string) (int64, error) {
+	ret := _m.Called(ctx, serverID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Count")
@@ -32,16 +32,16 @@ func (_m *MockRepository) Count(ctx context.Context, guildID string) (int64, err
 	var r0 int64
 	var r1 error
 	if rf, ok := ret.Get(0).(func(context.Context, string) (int64, error)); ok {
-		return rf(ctx, guildID)
+		return rf(ctx, serverID)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, string) int64); ok {
-		r0 = rf(ctx, guildID)
+		r0 = rf(ctx, serverID)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, guildID)
+		r1 = rf(ctx, serverID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -56,12 +56,12 @@ type MockRepository_Count_Call struct {
 
 // Count is a helper method to define mock.On call
 //   - ctx context.Context
-//   - guildID string
-func (_e *MockRepository_Expecter) Count(ctx interface{}, guildID interface{}) *MockRepository_Count_Call {
-	return &MockRepository_Count_Call{Call: _e.mock.On("Count", ctx, guildID)}
+//   - serverID string
+func (_e *MockRepository_Expecter) Count(ctx interface{}, serverID interface{}) *MockRepository_Count_Call {
+	return &MockRepository_Count_Call{Call: _e.mock.On("Count", ctx, serverID)}
 }
 
-func (_c *MockRepository_Count_Call) Run(run func(ctx context.Context, guildID string)) *MockRepository_Count_Call {
+func (_c *MockRepository_Count_Call) Run(run func(ctx context.Context, serverID string)) *MockRepository_Count_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string))
 	})
@@ -78,9 +78,9 @@ func (_c *MockRepository_Count_Call) RunAndReturn(run func(context.Context, stri
 	return _c
 }
 
-// Record provides a mock function with given fields: ctx, guildID, userID
-func (_m *MockRepository) Record(ctx context.Context, guildID string, userID string) error {
-	ret := _m.Called(ctx, guildID, userID)
+// Record provides a mock function with given fields: ctx, serverID, userID
+func (_m *MockRepository) Record(ctx context.Context, serverID string, userID string) error {
+	ret := _m.Called(ctx, serverID, userID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Record")
@@ -88,7 +88,7 @@ func (_m *MockRepository) Record(ctx context.Context, guildID string, userID str
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = rf(ctx, guildID, userID)
+		r0 = rf(ctx, serverID, userID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -103,13 +103,13 @@ type MockRepository_Record_Call struct {
 
 // Record is a helper method to define mock.On call
 //   - ctx context.Context
-//   - guildID string
+//   - serverID string
 //   - userID string
-func (_e *MockRepository_Expecter) Record(ctx interface{}, guildID interface{}, userID interface{}) *MockRepository_Record_Call {
-	return &MockRepository_Record_Call{Call: _e.mock.On("Record", ctx, guildID, userID)}
+func (_e *MockRepository_Expecter) Record(ctx interface{}, serverID interface{}, userID interface{}) *MockRepository_Record_Call {
+	return &MockRepository_Record_Call{Call: _e.mock.On("Record", ctx, serverID, userID)}
 }
 
-func (_c *MockRepository_Record_Call) Run(run func(ctx context.Context, guildID string, userID string)) *MockRepository_Record_Call {
+func (_c *MockRepository_Record_Call) Run(run func(ctx context.Context, serverID string, userID string)) *MockRepository_Record_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(string), args[2].(string))
 	})
