@@ -1,38 +1,104 @@
+# Local dev stack: hot-reload bot (air + delve) over a bind-mounted source tree.
+#
+#   docker compose -f docker-compose.dev.yml build   # build the dev image only
+#   docker compose -f docker-compose.dev.yml up       # migrate, then run the bot
+#
+# migrate compiles+runs the binary once with --migrate (the bot under air no
+# longer applies migrations), and the bot waits for it before starting.
+
+# Shared dev image + build definition; the explicit tag lets migrate and bot
+# reuse a single build.
+x-bot-image: &bot-image
+  image: spacecraft-corporation-dev:${APP_VERSION:-dev}
+  build:
+    context: .
+    target: dev
+    args:
+      UID: ${UID:-1000}
+      GID: ${GID:-1000}
+      GOLANGCI_VERSION: ${GOLANGCI_VERSION:-v2.12.2}
+      MOCKERY_VERSION: ${MOCKERY_VERSION:-v2.53.0}
+      GOOSE_VERSION: ${GOOSE_VERSION:-v3.27.1}
+
+# Shared runtime env for migrate + bot.
+x-bot-env: &bot-env
+  # The app assembles its DSN from these POSTGRES_* parts (db.Config.DSN); host is
+  # the `postgres` service, port is the in-network 5432.
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: ${POSTGRES_USER:-bot}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
+  POSTGRES_DB: ${POSTGRES_DB:-spacecraft}
+  POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
+  BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
+  APPROVED_SERVER_ID: ${APPROVED_SERVER_ID:-}
+  LOG_LEVEL: ${LOG_LEVEL:-debug}
+  APP_NAME: ${APP_NAME:-spacecraft-corporation}
+  APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
+  APP_OWNER_DISCORD_ID: ${APP_OWNER_DISCORD_ID:-}
+  # Custom build tag baked into the dev binary by air's ldflags.
+  APP_VERSION: ${APP_VERSION:-dev}
+  FEATURES: ${FEATURES:-ping}
+  HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
+
 services:
   postgres:
-    image: postgres:16
+    image: postgres:${POSTGRES_VERSION:-16}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-bot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
       POSTGRES_DB: ${POSTGRES_DB:-spacecraft}
     ports:
-      - "5432:5432"
+      # Host port is configurable to avoid clashing with another local Postgres
+      # (e.g. another compose stack already on 5432). The in-container port and
+      # the app's POSTGRES_PORT always use 5432.
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bot}"]
+      # -d targets the real database; without it pg_isready defaults to a DB
+      # named after the user ("bot"), which doesn't exist and spams Postgres logs
+      # with FATAL on every probe (the check still passes either way).
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bot} -d ${POSTGRES_DB:-spacecraft}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    # Infra: postgres is part of the persistent base the (restartable) bot
+    # connects to. `all` is the full one-shot stack.
+    profiles:
+      - all
+      - infra
+
+  # Build-only scenario: build the dev image without starting anything.
+  # Profile-gated so it never runs on `up`.
+  build:
+    <<: *bot-image
+    profiles: ["build"]
+    entrypoint: ["true"]
+
+  # One-shot migrations: `go run` the binary with --migrate against the mounted
+  # source, then exit 0. Part of `infra` so the schema is applied when the DB is
+  # brought up, independently of the (restartable) bot.
+  migrate:
+    <<: *bot-image
+    environment:
+      <<: *bot-env
+    volumes:
+      - .:/src
+    entrypoint: ["go", "run", "./cmd/bot"]
+    command: ["--migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - all
+      - infra
 
   bot:
-    build:
-      context: .
-      target: dev
-      args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
+    <<: *bot-image
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-bot}:${POSTGRES_PASSWORD:-bot}@postgres:5432/${POSTGRES_DB:-spacecraft}?sslmode=disable
-      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
-      COMMAND_SCOPE: ${COMMAND_SCOPE:-server}
-      DEV_SERVER_ID: ${DEV_SERVER_ID:-}
-      LOG_LEVEL: ${LOG_LEVEL:-debug}
-      APP_NAME: ${APP_NAME:-spacecraft-corporation}
-      # Custom build tag baked into the dev binary by air's ldflags.
-      VERSION: ${VERSION:-dev}
-      FEATURES: ${FEATURES:-ping}
-      HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
+      <<: *bot-env
     volumes:
       - .:/src
     ports:
@@ -41,6 +107,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # app only: `dev.up-infra` (infra) must NOT start the air-run bot.
+    profiles:
+      - all
+      - app
 
 volumes:
   pgdata_dev:

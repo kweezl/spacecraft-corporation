@@ -28,7 +28,15 @@ func TestSelectFeatures_UnregisteredFails(t *testing.T) {
 
 func TestOptions_DefaultBuilds(t *testing.T) {
 	t.Setenv("FEATURES", "ping")
-	opts, err := Options()
+	opts, err := Options(false)
+	require.NoError(t, err)
+	assert.NotEmpty(t, opts)
+}
+
+func TestOptions_MigrateBuilds(t *testing.T) {
+	// Migrate mode ignores FEATURES entirely and never fails on them.
+	t.Setenv("FEATURES", "ghost")
+	opts, err := Options(true)
 	require.NoError(t, err)
 	assert.NotEmpty(t, opts)
 }

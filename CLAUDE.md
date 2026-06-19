@@ -11,7 +11,8 @@ reference data + per-user planning state."
 - **Discord library:** `bwmarrin/discordgo`
 - **DI / modules:** `uber-go/fx` — every feature is an `fx.Module`, enable/disable independently
 - **Database:** PostgreSQL via `pgx` / `pgxpool`
-- **Migrations:** `goose`, SQL embedded via `embed.FS`, run on startup
+- **Migrations:** `goose`, SQL embedded via `embed.FS`, run as a one-shot
+  `--migrate` step (not on bot startup)
 - **Config:** `caarlos0/env`, decentralized per module (see Config)
 - **Logging:** `uber-go/zap` — JSON encoder, stderr, stacktraces at error level and above
 - **Testing:** TDD. Mocks via `mockery`. Assertions via `testify/assert` + `testify/require`
@@ -22,28 +23,45 @@ reference data + per-user planning state."
 One bot identity that you own. It runs **a single `discordgo` session** from
 `BOT_TOKEN` (env) and is added to other Discord **servers** via an OAuth2 invite
 link — no per-server tokens, no token storage. To gate who can add it, turn off
-"Public Bot" in the Developer Portal (only the app owner can invite) and/or keep
-a server allowlist. Slash-command registration scope is **configurable**:
-`server` (instant, to `DEV_SERVER_ID`) or `global` (~1h propagation).
+"Public Bot" in the Developer Portal (only the app owner can invite) and/or rely
+on the **server approval allowlist** (the `servers` module): commands from
+unapproved servers are not dispatched — instead the bot replies that the server
+must be approved by the bot owner (mentioning `APP_OWNER_DISCORD_ID` when set).
+Slash commands are registered **per joined server** on `GuildCreate` (instant, vs
+~1h for global), so there is no dev-server env var.
 
 Terminology: **"server"** is our domain term for a Discord guild. discordgo's API
 still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
 
 ## fx modules
 
-- **`appconfig`** — provides shared `AppConfig{ Name, Version }` only. Knows
-  nothing about other modules' settings. `Name` comes from the `APP_NAME` env
-  var (default `spacecraft-corporation`). `Version` is injected at **build time via
+- **`appconfig`** — provides shared `AppConfig{ Name, Version, OwnerDiscordID }`.
+  Knows nothing about other modules' settings. `Name` comes from the `APP_NAME`
+  env var (default `spacecraft-corporation`); `OwnerDiscordID` from the optional
+  `APP_OWNER_DISCORD_ID` (the bot owner's Discord user ID, surfaced by `session`
+  in the unapproved-server reply). `Version` is injected at **build time via
   ldflags** (`-X .../appconfig.version=...`), not read from env, and supplied as
-  a Docker build arg.
+  a Docker build arg. Its `Load` also pins the **process-wide timezone** from
+  `APP_TIMEZONE` (IANA name, default `UTC`) by setting `time.Local`; since the
+  logger depends on `AppConfig`, fx runs this before the logger is built, so log
+  timestamps render in the chosen zone. The IANA tzdata is embedded in the binary
+  (`import _ "time/tzdata"` in `cmd/bot`) so named zones resolve without OS tzdata.
 - **`logger`** — `*zap.Logger`, JSON to stderr, `AddStacktrace(ErrorLevel)`,
   level from `LOG_LEVEL` (parsed straight into `zapcore.Level`), `Sync()` on
   shutdown. `New` takes `appconfig.AppConfig`, so **every** log line carries
   `app_name` + `app_version`. fx wiring logs via `fx.WithLogger(fxevent.ZapLogger)`.
-- **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL` (or the
-  file-mounted `DATABASE_URL_FILE`, which wins — same secret pattern as
-  `BOT_TOKEN_FILE`).
-- **`migrator`** — runs goose migrations on startup before the session serves.
+- **`db`** — `*pgxpool.Pool` with lifecycle hooks. Assembles the DSN from the
+  `POSTGRES_*` parts via `Config.DSN()` (there is no `DATABASE_URL`); the password
+  may come from the file-mounted `POSTGRES_PASSWORD_FILE`, which wins — same
+  secret pattern as `BOT_TOKEN_FILE`.
+- **`migrator`** — applies the embedded goose migrations, then triggers
+  `fx.Shutdowner` so the process exits. Loaded **only** in one-shot migrate mode
+  (the `--migrate` CLI flag); the long-running bot never includes it and so never
+  migrates. The composition root picks the slim migrate graph (db + migrator) vs
+  the bot graph via `app.Options(migrate bool)`, fed from the `--migrate` flag in
+  `cmd/bot/main.go`. Under Docker a dedicated `migrate` compose service runs
+  `--migrate` to completion before the `bot` service starts
+  (`depends_on: service_completed_successfully`).
 - **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:9464`, isolated
   from the app port so `8080` is free for the future public admin API):
   `/healthz` (liveness), `/readyz` (readiness), `/metrics` (Prometheus).
@@ -53,9 +71,24 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   via `MarkReady`, appended **last** by the composition root, so `/readyz`
   returns 200 only after every module's `OnStart` (incl. session connect) ran.
 - **`session`** — opens the single `discordgo.Session` from `BOT_TOKEN`,
-  registers commands at the configured scope, and fans `InteractionCreate`
-  events into the command router. Lifecycle-managed. Uses a `Discord` interface +
-  `Factory` so the manager is testable with a fake (no live connection in tests).
+  registers commands **per joined server** on `GuildCreate`, and fans
+  `InteractionCreate` events into the command router — but only after the
+  `ServerApproval` gate clears the interaction's server. DMs are ignored;
+  commands from an unapproved server get an "approval required" reply (mentioning
+  `APP_OWNER_DISCORD_ID` when set) instead of being dispatched. Per interaction it
+  uses a fresh, bounded context derived from a session-lifetime base context (not
+  the fx `OnStart` ctx, which is done once `Start` returns). Also fans guild
+  lifecycle events to handlers contributed by other modules via the
+  `guild_create` / `guild_delete` fx groups.
+  Lifecycle-managed. Uses a `Discord` interface + `Factory` so the manager is
+  testable with a fake (no live connection in tests).
+- **`servers`** (`internal/discord/servers`) — **core** module that tracks the
+  servers (guilds) the bot belongs to. On `GuildCreate` it upserts the `servers`
+  row (auto-approving IDs in `APPROVED_SERVER_ID`, promote-only — never demoting
+  a manual approval) and logs a `joined` event the first time a server is seen;
+  on real `GuildDelete` (not a gateway outage) it logs `removed`. Provides the
+  `session.ServerApproval` gate (`IsApproved`) and its guild handlers into the
+  session's fx groups.
 - **`commandregistry`** — collects `Command`s from feature modules via an fx
   group, builds the route map, dispatches interactions to handlers.
 - **feature modules** (first: **`ping`**) — each provides `Command`s into the
@@ -83,18 +116,19 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
 
 ## Config (decentralized)
 
-`appconfig` provides only `AppConfig{ Name, Version }`. There is **no global
-config aggregator**. Each module defines and loads its own env struct via
+`appconfig` provides `AppConfig{ Name, Version }` (and pins `time.Local` from
+`APP_TIMEZONE`). There is **no global config aggregator**. Each module defines and loads its own env struct via
 `caarlos0/env` inside its own `fx.Module`, aware only of its own keys:
 
 | Module | Env keys |
 |---|---|
-| `db` | `DATABASE_URL` **or** `DATABASE_URL_FILE` (mounted secret; file wins). Under Docker, compose assembles `DATABASE_URL` from `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` so the app and the `postgres` container share one credential set |
+| `db` | `POSTGRES_HOST` (default `localhost`; compose sets `postgres`), `POSTGRES_PORT` (default `5432`), `POSTGRES_USER`, `POSTGRES_PASSWORD` **or** `POSTGRES_PASSWORD_FILE` (mounted secret; file wins), `POSTGRES_DB`, `POSTGRES_SSLMODE` (default `disable`). `Config.DSN()` assembles the connection string; the app and the `postgres` container share one credential set |
 | `logger` | `LOG_LEVEL` (default `info`) |
-| `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins), `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
+| `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins) |
+| `servers` | `APPROVED_SERVER_ID` (comma-separated allowlist of auto-approved server IDs; may be empty; promote-only) |
 | `health` | `HEALTH_ADDR` (default `:9464`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
-| `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `Version` injected via build-time ldflags |
+| `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `APP_TIMEZONE` (IANA name, default `UTC`, pins `time.Local`); `APP_OWNER_DISCORD_ID` (optional bot-owner Discord ID for the unapproved-server reply); `Version` injected via build-time ldflags |
 
 Feature on/off is the one exception to per-module ownership: it's a composition
 concern, owned by the composition root (`internal/app`) via `FEATURES`, not a
@@ -105,12 +139,41 @@ per-feature env var.
 ## Data model (goose migrations)
 
 - **`ping_log`** — `id`, `server_id`, `user_id`, `created_at`.
+- **`servers`** — `id` (**UUIDv7**, app-supplied), `server_id` (unique
+  Discord snowflake), `name`, `approved`, `created_at`, `updated_at`.
+- **`server_event`** — `id` (**UUIDv7**, app-supplied), `server_id`, `event_type`
+  (`joined`\|`removed`), `created_at`. Append-only membership audit (no FK).
+
+New tables use **UUIDv7** primary keys **generated by the application**
+(`uuid.NewV7()` from `github.com/google/uuid`), not the database — the `id`
+columns have **no `DEFAULT`**, so every INSERT must supply the id. v7 embeds a
+timestamp, so ids sort in creation order (better index locality and pagination
+than random v4). The legacy `ping_log` keeps its `BIGSERIAL`.
+
+Timestamp columns are **`TIMESTAMP`** (without time zone), not `TIMESTAMPTZ`,
+with the default pinned to UTC wall-clock (`DEFAULT (now() AT TIME ZONE 'UTC')`)
+so the stored value is independent of the DB session's `TimeZone` setting.
+
+**Creating migrations:** always scaffold via **goose** (never hand-name the
+file), and use **timestamped** names (goose's default), not sequential numbers:
+`make dev.migration name=create_foo` →
+`internal/migrator/migrations/<YYYYMMDDhhmmss>_create_foo.sql`. Timestamps avoid
+the version-number collisions sequential numbering causes when branches add
+migrations in parallel. **One table per migration file** — each `CREATE TABLE`
+gets its own migration (e.g. `create_servers` and `create_server_event` are
+separate files), so a table's schema has a single, self-contained history and
+can be reviewed/reverted independently. Goose is baked into the dev image
+(`GOOSE_VERSION`, kept in sync with go.mod); migrations still run via the
+`migrator` module on `--migrate`. Don't rename an already-applied migration — its
+filename is its recorded version, so a rename re-runs it as a "new" one.
 
 ## Command flow (`/ping`)
 
-Interaction → `session` receives `InteractionCreate` → router looks up `ping` →
-handler calls `Repository.Record(serverID, userID)` → replies `pong (#N)`.
-Registration scope follows `COMMAND_SCOPE`.
+Interaction → `session` receives `InteractionCreate` → **server must be approved**
+(`servers` gate); if not, the bot replies "approval required" (mentioning the
+owner) instead of dispatching → router looks up `ping` → handler calls
+`Repository.Record(serverID, userID)` → replies `pong (#N)`. Commands are
+registered per joined server on `GuildCreate`.
 
 ## Build & run (Docker)
 
@@ -119,8 +182,8 @@ A single multi-stage `Dockerfile` with named targets:
 
 - **`build`** stage (`golang` image): compiles a static binary with the version
   baked in via ldflags,
-  `go build -ldflags "-X <module>/internal/appconfig.version=${VERSION}" -o /bot ./cmd/bot`.
-  `VERSION` is a build arg, required for prod, defaulting to `dev` if unset.
+  `go build -ldflags "-X <module>/internal/appconfig.version=${APP_VERSION}" -o /bot ./cmd/bot`.
+  `APP_VERSION` is a build arg, required for prod, defaulting to `dev` if unset.
 - **`prod`** stage (minimal, e.g. `gcr.io/distroless/static` or `alpine`):
   copies only the binary; runs as non-root. Used by the prod compose file.
 - **`dev`** stage (`golang` image + `air` + `delve`): used by the dev compose
@@ -130,13 +193,20 @@ A single multi-stage `Dockerfile` with named targets:
 ### Two compose files
 
 - **`docker-compose.yml` (prod)** — builds the image at the `prod` target with
-  `build.args.VERSION` (from a shell/CI variable). Runs `bot` + `postgres`
-  (named volume). No source mount, no debugger. Migrations run on bot startup
-  via the `migrator` module.
+  `build.args.APP_VERSION` (from a shell/CI variable). `migrate` and `bot` share one
+  built image (same `image:` tag, so the binary is compiled once). Runs
+  `postgres` (named volume) → `migrate` (one-shot `--migrate`, runs to
+  completion) → `bot` (waits on `migrate` via
+  `service_completed_successfully`). No source mount, no debugger. A profile-
+  gated `build` service makes `docker compose build` / `make build` a
+  build-only scenario.
 - **`docker-compose.dev.yml` (local dev)** — builds the `dev` target. Mounts the
   source tree into the container and runs **`air`** (`air -c .air.toml`) for hot
-  reload. Postgres port published to the host. Exposes the **delve** debug port
-  `2345` for a step debugger.
+  reload. A one-shot `migrate` service (`go run ./cmd/bot --migrate` over the
+  mounted source) applies migrations to completion before the `bot` service
+  starts — the air-run bot no longer migrates, so re-run `migrate` after adding a
+  migration. Postgres port published to the host. Exposes the **delve** debug
+  port `2345` for a step debugger.
 
 Prod is `docker compose up`; dev is
 `docker compose -f docker-compose.dev.yml up`.
@@ -146,8 +216,8 @@ Prod is `docker compose up`; dev is
 `.air.toml` at repo root drives local hot reload: watches `**/*.go`, rebuilds on
 change, and (for debugging) launches the binary under delve rather than running
 it directly — see below. The build bakes a version tag via ldflags the same way
-prod does, read from the `VERSION` env var (default `dev`); run a custom tag with
-`VERSION=mytag docker compose -f docker-compose.dev.yml up`. `send_interrupt` is
+prod does, read from the `APP_VERSION` env var (default `dev`); run a custom tag with
+`APP_VERSION=mytag docker compose -f docker-compose.dev.yml up`. `send_interrupt` is
 on so a rebuild sends SIGINT (not SIGKILL), letting fx `OnStop` hooks run. The
 dev image pins `GOCACHE` to `/home/dev/.cache/go-build` — outside the
 bind-mounted `/src` and air's `tmp_dir` — so air's cleanup never wipes the build
@@ -225,6 +295,7 @@ internal/migrator/           # + migrations/*.sql (embedded)
 internal/health/             # liveness/readiness probes + /metrics
 internal/discord/session/    # single-session manager + discordgo wrapper
 internal/discord/registry/   # command registry + router + Command type
+internal/discord/servers/    # server tracking + approval gate + event log
 internal/features/ping/
 .mockery.yaml         # mock generation config
 .air.toml            # hot-reload config (local dev)
@@ -242,8 +313,9 @@ docker-compose.dev.yml   # local dev (air + delve, port 2345)
 opens the bot from `BOT_TOKEN`; `/ping` records to Postgres and replies
 `pong (#N)`.
 
-**Not** in the first slice: sharding, a server allowlist / approval flow, and
-any game-data feature modules beyond `ping`. (Dev/prod compose, air hot reload,
+**Not** in the first slice: sharding and any game-data feature modules beyond
+`ping`. (The server allowlist / approval flow — the `servers` module — has since
+been added. Dev/prod compose, air hot reload,
 delve debugging, golangci-lint, the GitHub Actions CI workflow, and the health
 probes/metrics *are* part of the first slice — project infrastructure, not
 features.)
@@ -257,6 +329,8 @@ features.)
   hand-roll when no suitable package exists, the dependency is disproportionate
   to the need, or it would compromise a core constraint — and say why.
 - TDD: write tests first. Regenerate mocks with `mockery` when interfaces change.
+- Create DB migrations with **goose**, timestamped (never hand-named or
+  sequentially numbered): `make dev.migration name=<snake_case>` — see Data model.
 - Every module exposes `func Module() fx.Option` (not a `var`), in its own
   `module.go`, that returns its `fx.Module(...)`. Each module adds
   `logger.Decorate("<name>")` as the first option, so its log lines carry a
