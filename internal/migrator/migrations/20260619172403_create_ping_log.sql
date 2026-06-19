@@ -1,13 +1,16 @@
 -- +goose Up
 CREATE TABLE ping_log (
     id         BIGSERIAL PRIMARY KEY,
-    server_id  TEXT        NOT NULL,
+    -- References the servers row (UUID PK), not the raw Discord snowflake. The
+    -- app resolves snowflake -> servers.id in SQL on insert. RESTRICT: a server
+    -- can't be hard-deleted while it still has rows here.
+    servers_id UUID        NOT NULL REFERENCES servers (id) ON DELETE RESTRICT,
     user_id    TEXT        NOT NULL,
-    -- Timezone-less; default pinned to UTC wall-clock so the stored value does
-    -- not depend on the session's TimeZone setting.
-    created_at TIMESTAMP   NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
+    -- Timezone-less; supplied by the application (configured timezone), no DB
+    -- default — a forgotten insert fails loudly instead of storing a wrong zone.
+    created_at TIMESTAMP   NOT NULL
 );
-CREATE INDEX idx_ping_log_server_id ON ping_log (server_id);
+CREATE INDEX idx_ping_log_servers_id ON ping_log (servers_id);
 
 -- +goose Down
 DROP TABLE ping_log;

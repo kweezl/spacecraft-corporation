@@ -1,0 +1,21 @@
+{
+  "ping.pong": "📡 Телеметрический пинг принят (#{{.Count}}).",
+
+  "session.unapproved": "Эта станция ещё не допущена к операциям. Запросите авторизацию у командующего флотом {{if .Owner}}<@{{.Owner}}> {{end}}перед продолжением.",
+  "session.denied": "Доступ запрещён: ваш уровень допуска не разрешает /{{.Command}}. Обратитесь к офицеру станции за допуском для вашего ранга.",
+
+  "permissions.granted": "Допуск выдан — <@&{{.RoleID}}> теперь может выполнять /{{.Command}}.",
+  "permissions.revoked": "Допуск отозван — <@&{{.RoleID}}> больше не может выполнять /{{.Command}}.",
+  "permissions.cleared": "Все допуски к /{{.Command}} аннулированы.",
+  "permissions.list_command": "/{{.Command}}: {{.Roles}}",
+  "permissions.list_command_empty": "Для /{{.Command}} нет реестра допусков — действует протокол по умолчанию.",
+  "permissions.list_all_header": "Реестр допусков команд:",
+  "permissions.list_all_line": "• /{{.Command}}: {{.Roles}}",
+  "permissions.list_all_empty": "Для этой станции не зарегистрировано допусков команд.",
+  "permissions.no_subcommand": "Укажите приказ: grant, revoke, list или clear.",
+  "permissions.unknown_subcommand": "Неизвестный приказ.",
+
+  "settings.theme_set": "Протокол станции установлен: **{{.Theme}}**.",
+  "settings.language_set": "Язык связи установлен: **{{.Language}}**.",
+  "settings.current": "Эта станция работает по протоколу **{{.Theme}}** на языке связи **{{.Language}}**."
+}

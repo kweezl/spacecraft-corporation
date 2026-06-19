@@ -16,6 +16,7 @@ import (
 
 	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
 
 // interactionTimeout bounds the work done per interaction (approval lookup +
@@ -53,6 +54,25 @@ type ServerApproval interface {
 	IsApproved(ctx context.Context, serverID string) (bool, error)
 }
 
+// CommandAccess decides whether an interaction may run a command, based on the
+// server's per-command role mapping. It is provided optionally by the
+// permissions feature; when that feature is disabled the gate is nil and every
+// command is allowed (role control off entirely). Owners and administrators
+// bypass it before it is consulted (see Manager.allowed).
+type CommandAccess interface {
+	IsAllowed(ctx context.Context, req AccessRequest) (bool, error)
+}
+
+// AccessRequest is what the access gate needs to decide. UserRoles are the
+// invoking member's Discord role IDs in this server; DefaultDeny is the
+// command's policy when the server has no role mapping for it.
+type AccessRequest struct {
+	ServerID    string
+	Command     string
+	UserRoles   []string
+	DefaultDeny bool
+}
+
 // Guild lifecycle reactions contributed by other modules (via fx groups) and
 // attached to the session on start.
 type (
@@ -88,6 +108,8 @@ type Manager struct {
 	registry      *registry.Registry
 	factory       Factory
 	gate          ServerApproval
+	access        CommandAccess
+	loc           *i18n.Localizer
 	onGuildCreate []GuildCreateFunc
 	onGuildDelete []GuildDeleteFunc
 	log           *zap.Logger
@@ -108,6 +130,8 @@ func newManager(
 	reg *registry.Registry,
 	factory Factory,
 	gate ServerApproval,
+	access CommandAccess,
+	loc *i18n.Localizer,
 	onGuildCreate []GuildCreateFunc,
 	onGuildDelete []GuildDeleteFunc,
 	log *zap.Logger,
@@ -118,21 +142,13 @@ func newManager(
 		registry:      reg,
 		factory:       factory,
 		gate:          gate,
+		access:        access,
+		loc:           loc,
 		onGuildCreate: onGuildCreate,
 		onGuildDelete: onGuildDelete,
 		log:           log,
 		ownerID:       appCfg.OwnerDiscordID,
 	}
-}
-
-// unapprovedMessage tells the requester the server must be approved by the bot
-// owner, mentioning the owner when APP_OWNER_DISCORD_ID is configured.
-func (m *Manager) unapprovedMessage() string {
-	if m.ownerID != "" {
-		return fmt.Sprintf("This server isn't approved to use this bot yet. "+
-			"Ask the bot owner <@%s> to approve it.", m.ownerID)
-	}
-	return "This server isn't approved to use this bot yet. Ask the bot owner to approve it."
 }
 
 // approved reports whether a server may be served. A nil gate (e.g. in tests)
@@ -147,6 +163,50 @@ func (m *Manager) approved(ctx context.Context, serverID string) bool {
 		return false
 	}
 	return ok
+}
+
+// allowed reports whether the interaction may run its command. A nil access gate
+// (permissions feature disabled) allows everything. The server owner and any
+// administrator bypass the gate — Discord folds the owner's implicit
+// all-permissions into the member's computed permissions, so the Administrator
+// bit covers both. Otherwise the gate decides from the server's role mapping;
+// a gate error fails closed (denied) and is logged.
+func (m *Manager) allowed(ctx context.Context, i *discordgo.InteractionCreate) bool {
+	if m.access == nil {
+		return true
+	}
+	if isAdministrator(i.Member) {
+		return true
+	}
+	name := i.ApplicationCommandData().Name
+	defaultDeny, known := m.registry.Policy(name)
+	if !known {
+		// Dispatch will reject an unknown command; don't gate it here.
+		return true
+	}
+	var roles []string
+	if i.Member != nil {
+		roles = i.Member.Roles
+	}
+	ok, err := m.access.IsAllowed(ctx, AccessRequest{
+		ServerID:    i.GuildID,
+		Command:     name,
+		UserRoles:   roles,
+		DefaultDeny: defaultDeny,
+	})
+	if err != nil {
+		m.log.Error("access check",
+			zap.String("server_id", i.GuildID), zap.String("command", name), zap.Error(err))
+		return false
+	}
+	return ok
+}
+
+// isAdministrator reports whether the member has Discord's Administrator
+// permission. The computed Permissions on the interaction already fold in the
+// guild owner's implicit all-permissions, so this is true for the owner too.
+func isAdministrator(member *discordgo.Member) bool {
+	return member != nil && member.Permissions&discordgo.PermissionAdministrator != 0
 }
 
 // registerCommands registers every command with one server (guild). Per-guild
@@ -192,8 +252,20 @@ func (m *Manager) Start(context.Context) error {
 		defer cancel()
 		if !m.approved(ctx, i.GuildID) {
 			m.log.Debug("command from unapproved server", zap.String("server_id", i.GuildID))
-			if rerr := d.Respond(i.Interaction, m.unapprovedMessage()); rerr != nil {
+			msg := m.loc.Render(ctx, i.GuildID, "session.unapproved", map[string]any{"Owner": m.ownerID})
+			if rerr := d.Respond(i.Interaction, msg); rerr != nil {
 				m.log.Error("respond to unapproved server",
+					zap.String("server_id", i.GuildID), zap.Error(rerr))
+			}
+			return
+		}
+		if !m.allowed(ctx, i) {
+			name := i.ApplicationCommandData().Name
+			m.log.Debug("command blocked by role gate",
+				zap.String("server_id", i.GuildID), zap.String("command", name))
+			msg := m.loc.Render(ctx, i.GuildID, "session.denied", map[string]any{"Command": name})
+			if rerr := d.Respond(i.Interaction, msg); rerr != nil {
+				m.log.Error("respond to blocked command",
 					zap.String("server_id", i.GuildID), zap.Error(rerr))
 			}
 			return

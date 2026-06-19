@@ -18,6 +18,9 @@ func TestPgRepository_RecordAndCount(t *testing.T) {
 	}
 	ctx := context.Background()
 	pool := testdb.Reset(t, dsn)
+	// ping_log.servers_id references servers.id, so the servers rows must exist.
+	testdb.SeedServer(t, pool, "s1")
+	testdb.SeedServer(t, pool, "s2")
 
 	repo := newRepository(pool)
 	require.NoError(t, repo.Record(ctx, "s1", "u1"))
