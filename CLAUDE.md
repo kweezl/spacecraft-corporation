@@ -40,7 +40,9 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   level from `LOG_LEVEL` (parsed straight into `zapcore.Level`), `Sync()` on
   shutdown. `New` takes `appconfig.AppConfig`, so **every** log line carries
   `app_name` + `app_version`. fx wiring logs via `fx.WithLogger(fxevent.ZapLogger)`.
-- **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL`.
+- **`db`** — `*pgxpool.Pool` with lifecycle hooks. Owns `DATABASE_URL` (or the
+  file-mounted `DATABASE_URL_FILE`, which wins — same secret pattern as
+  `BOT_TOKEN_FILE`).
 - **`migrator`** — runs goose migrations on startup before the session serves.
 - **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:9464`, isolated
   from the app port so `8080` is free for the future public admin API):
@@ -87,7 +89,7 @@ config aggregator**. Each module defines and loads its own env struct via
 
 | Module | Env keys |
 |---|---|
-| `db` | `DATABASE_URL` (under Docker, compose assembles it from `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` so the app and the `postgres` container share one credential set) |
+| `db` | `DATABASE_URL` **or** `DATABASE_URL_FILE` (mounted secret; file wins). Under Docker, compose assembles `DATABASE_URL` from `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` so the app and the `postgres` container share one credential set |
 | `logger` | `LOG_LEVEL` (default `info`) |
 | `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins), `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
 | `health` | `HEALTH_ADDR` (default `:9464`) |
