@@ -60,3 +60,10 @@ func (d *discordSession) RespondEphemeral(i *discordgo.Interaction, content stri
 		Data: &discordgo.InteractionResponseData{Content: content, Flags: discordgo.MessageFlagsEphemeral},
 	})
 }
+
+func (d *discordSession) RespondEmbed(i *discordgo.Interaction, embed *discordgo.MessageEmbed) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Embeds: []*discordgo.MessageEmbed{embed}},
+	})
+}
