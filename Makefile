@@ -5,34 +5,92 @@
 # fmt/mock targets exec into that already-running container and pull the pinned
 # tools via `go run`, so no host Go toolchain (or extra image layers) is needed.
 
-COMPOSE_DEV := docker compose -f docker-compose.dev.yml
-DEV_SERVICE := bot
+COMPOSE       := docker compose
+COMPOSE_DEV   := docker compose -f docker-compose.dev.yml
+DEV_SERVICE   := bot
+# Full-stack profile for `dev.up`/`dev.stop`. `app` alone is an invalid project
+# (bot's deps aren't in it); `all` is the complete one-shot stack.
+DEV_PROFILE   := all
+DEV_UP_DETACH := "-d"
 
-# Pinned tool versions. Keep golangci-lint in sync with .github/workflows/ci.yml
-# and mockery in sync with the header of the generated mocks / .mockery.yaml.
+# Load .env (if present) and export its vars to recipe shells, so values like
+# POSTGRES_HOST_PORT / DEV_CMD reach docker compose. The leading '-' makes a
+# missing .env non-fatal. Compose also reads .env on its own; this additionally
+# exposes the same values to make itself.
+-include .env
+export
+
+# Pinned tool versions. Keep golangci-lint in sync with .github/workflows/ci.yml,
+# mockery with the header of the generated mocks / .mockery.yaml, and goose with
+# the github.com/pressly/goose/v3 version in go.mod.
 GOLANGCI_VERSION := v2.12.2
 MOCKERY_VERSION  := v2.53.0
+GOOSE_VERSION    := v3.27.1
 
-.PHONY: dev.up dev.down dev.stop dev.fmt dev.mock
+# Where goose migrations live (embedded into the binary by the migrator module).
+MIGRATIONS_DIR := internal/migrator/migrations
+
+# Image build args. Override via env or .env (e.g. `make build APP_VERSION=1.2.3`).
+# APP_VERSION is baked into the prod binary via ldflags; UID/GID make the dev
+# image's user match the host so bind-mounted files aren't root-owned.
+APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.0.0-unspecified)
+UID     ?= $(shell id -u)
+GID     ?= $(shell id -g)
+
+.PHONY: *
+
+help:
+	@grep -oE "^[a-z\.-]+:" Makefile | uniq
+
+# Both targets build the dedicated `build` service, which carries the shared
+# image tag (reused by migrate + bot). Naming the service enables its `build`
+# profile, so the build runs even though every service is profile-gated.
+
+## build: build (or rebuild) the prod bot image, without starting any container
+build:
+	$(COMPOSE) build --build-arg APP_VERSION=$(APP_VERSION) build
+
+## build-dev: build (or rebuild) the dev bot image, without starting any container
+build-dev:
+	$(COMPOSE_DEV) build \
+		--build-arg UID=$(UID) --build-arg GID=$(GID) \
+		--build-arg GOLANGCI_VERSION=$(GOLANGCI_VERSION) \
+		--build-arg MOCKERY_VERSION=$(MOCKERY_VERSION) \
+		--build-arg GOOSE_VERSION=$(GOOSE_VERSION) \
+		build
 
 ## dev.up: build and start the dev stack (detached)
 dev.up:
-	$(COMPOSE_DEV) up -d --build
+	$(COMPOSE_DEV) --profile $(DEV_PROFILE) \
+       	up $(DEV_UP_DETACH) --no-log-prefix --remove-orphans
+
+## dev.up-app: run only the bot in the foreground (needs `dev.up-infra` first).
+## --no-deps means compose doesn't pull in / attach / stop postgres, so Ctrl+C
+## stops just the bot and the DB keeps running — re-run to restart the bot.
+dev.up-app:
+	$(COMPOSE_DEV) up --no-deps --no-log-prefix bot
+
+## dev.up-infra: start the infrastructure (postgres + one-shot migrate), detached
+dev.up-infra: DEV_PROFILE=infra
+dev.up-infra: dev.up
 
 ## dev.down: stop and remove the dev stack, including volumes (wipes the dev DB)
 dev.down:
-	$(COMPOSE_DEV) down -v
+	$(COMPOSE_DEV) --profile "*" down -v
 
 ## dev.stop: stop the dev stack, keeping containers and volumes
 dev.stop:
-	$(COMPOSE_DEV) stop
+	$(COMPOSE_DEV) --profile $(DEV_PROFILE) stop
 
-## dev.fmt: format Go files (gofmt + gci import order) via golangci-lint in the running container
+## dev.fmt: format Go files (gofmt + gci import order) via the image-installed golangci-lint
 dev.fmt:
-	$(COMPOSE_DEV) exec -T $(DEV_SERVICE) \
-		go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION) fmt ./...
+	$(COMPOSE_DEV) exec -T $(DEV_SERVICE) golangci-lint fmt ./...
 
-## dev.mock: regenerate mocks with mockery (reads .mockery.yaml) in the running container
+## dev.mock: regenerate mocks with the image-installed mockery (reads .mockery.yaml)
 dev.mock:
-	$(COMPOSE_DEV) exec -T $(DEV_SERVICE) \
-		go run github.com/vektra/mockery/v2@$(MOCKERY_VERSION)
+	$(COMPOSE_DEV) exec -T $(DEV_SERVICE) mockery
+
+## dev.migration: scaffold a timestamped goose SQL migration (make dev.migration name=add_foo)
+dev.migration:
+	@test -n "$(name)" || { echo "usage: make dev.migration name=<snake_case_name>"; exit 1; }
+	$(COMPOSE_DEV) exec -T $(DEV_SERVICE) goose -dir $(MIGRATIONS_DIR) create $(name) sql

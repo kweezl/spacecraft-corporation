@@ -7,13 +7,20 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 
+	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 )
+
+// interactionTimeout bounds the work done per interaction (approval lookup +
+// dispatch). Discord separately requires an initial response within ~3s; this is
+// just a safety net so a hung DB or API call can't leak a handler goroutine.
+const interactionTimeout = 10 * time.Second
 
 // Config is this module's env config.
 //
@@ -79,8 +86,13 @@ type Manager struct {
 	onGuildCreate []GuildCreateFunc
 	onGuildDelete []GuildDeleteFunc
 	log           *zap.Logger
+	ownerID       string // bot owner's Discord ID, surfaced in the unapproved reply
 
 	session Discord
+	// baseCtx scopes per-interaction work to the session's lifetime; cancelled on
+	// Stop. NOT the fx OnStart context, which is done once Start returns.
+	baseCtx context.Context
+	cancel  context.CancelFunc
 }
 
 func newManager(
@@ -91,6 +103,7 @@ func newManager(
 	onGuildCreate []GuildCreateFunc,
 	onGuildDelete []GuildDeleteFunc,
 	log *zap.Logger,
+	appCfg appconfig.AppConfig,
 ) *Manager {
 	return &Manager{
 		cfg:           cfg,
@@ -100,7 +113,18 @@ func newManager(
 		onGuildCreate: onGuildCreate,
 		onGuildDelete: onGuildDelete,
 		log:           log,
+		ownerID:       appCfg.OwnerDiscordID,
 	}
+}
+
+// unapprovedMessage tells the requester the server must be approved by the bot
+// owner, mentioning the owner when APP_OWNER_DISCORD_ID is configured.
+func (m *Manager) unapprovedMessage() string {
+	if m.ownerID != "" {
+		return fmt.Sprintf("This server isn't approved to use this bot yet. "+
+			"Ask the bot owner <@%s> to approve it.", m.ownerID)
+	}
+	return "This server isn't approved to use this bot yet. Ask the bot owner to approve it."
 }
 
 // approved reports whether a server may be served. A nil gate (e.g. in tests)
@@ -131,8 +155,10 @@ func (m *Manager) registerCommands(d Discord, serverID string) {
 }
 
 // Start opens the session, wires the interaction handler, registers commands per
-// joined server, and attaches the guild lifecycle handlers.
-func (m *Manager) Start(ctx context.Context) error {
+// joined server, and attaches the guild lifecycle handlers. The fx OnStart ctx
+// is intentionally not retained: it is done once Start returns, whereas
+// interactions arrive for the whole session lifetime (see baseCtx).
+func (m *Manager) Start(context.Context) error {
 	token, err := m.cfg.botToken()
 	if err != nil {
 		return err
@@ -142,6 +168,8 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("create session: %w", err)
 	}
 
+	m.baseCtx, m.cancel = context.WithCancel(context.Background())
+
 	d.AddInteractionHandler(func(i *discordgo.InteractionCreate) {
 		if i.Type != discordgo.InteractionApplicationCommand {
 			return
@@ -150,8 +178,16 @@ func (m *Manager) Start(ctx context.Context) error {
 		if i.GuildID == "" {
 			return
 		}
+		// Per-interaction context: scoped to the session lifetime and bounded so
+		// a slow query can't hang the handler.
+		ctx, cancel := context.WithTimeout(m.baseCtx, interactionTimeout)
+		defer cancel()
 		if !m.approved(ctx, i.GuildID) {
-			m.log.Debug("ignoring command from unapproved server", zap.String("server_id", i.GuildID))
+			m.log.Debug("command from unapproved server", zap.String("server_id", i.GuildID))
+			if rerr := d.Respond(i.Interaction, m.unapprovedMessage()); rerr != nil {
+				m.log.Error("respond to unapproved server",
+					zap.String("server_id", i.GuildID), zap.Error(rerr))
+			}
 			return
 		}
 		if derr := m.registry.Dispatch(ctx, d, i); derr != nil {
@@ -180,8 +216,11 @@ func (m *Manager) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop closes the session.
+// Stop cancels in-flight interaction work and closes the session.
 func (m *Manager) Stop(context.Context) error {
+	if m.cancel != nil {
+		m.cancel()
+	}
 	if m.session != nil {
 		_ = m.session.Close()
 	}
