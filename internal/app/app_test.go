@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/fx"
 
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
 )
@@ -39,4 +40,20 @@ func TestOptions_MigrateBuilds(t *testing.T) {
 	opts, err := Options(true)
 	require.NoError(t, err)
 	assert.NotEmpty(t, opts)
+}
+
+// TestOptions_GraphValidates resolves the full dependency graph (without
+// starting it), so a broken wiring — e.g. the instrumentation readiness group,
+// or a subsystem's ReadinessCheck provider — fails the build, not production.
+func TestOptions_GraphValidates(t *testing.T) {
+	t.Setenv("FEATURES", "ping")
+	opts, err := Options(false)
+	require.NoError(t, err)
+	require.NoError(t, fx.ValidateApp(opts...))
+}
+
+func TestOptions_MigrateGraphValidates(t *testing.T) {
+	opts, err := Options(true)
+	require.NoError(t, err)
+	require.NoError(t, fx.ValidateApp(opts...))
 }
