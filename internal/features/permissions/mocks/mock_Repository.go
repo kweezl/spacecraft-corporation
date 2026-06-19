@@ -5,6 +5,7 @@ package mocks
 import (
 	context "context"
 
+	uuid "github.com/google/uuid"
 	permissions "github.com/kweezl/spacecraft-corporation/internal/features/permissions"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -23,7 +24,7 @@ func (_m *MockRepository) EXPECT() *MockRepository_Expecter {
 }
 
 // Clear provides a mock function with given fields: ctx, serverID, command
-func (_m *MockRepository) Clear(ctx context.Context, serverID string, command string) error {
+func (_m *MockRepository) Clear(ctx context.Context, serverID uuid.UUID, command string) error {
 	ret := _m.Called(ctx, serverID, command)
 
 	if len(ret) == 0 {
@@ -31,7 +32,7 @@ func (_m *MockRepository) Clear(ctx context.Context, serverID string, command st
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
 		r0 = rf(ctx, serverID, command)
 	} else {
 		r0 = ret.Error(0)
@@ -47,15 +48,15 @@ type MockRepository_Clear_Call struct {
 
 // Clear is a helper method to define mock.On call
 //   - ctx context.Context
-//   - serverID string
+//   - serverID uuid.UUID
 //   - command string
 func (_e *MockRepository_Expecter) Clear(ctx interface{}, serverID interface{}, command interface{}) *MockRepository_Clear_Call {
 	return &MockRepository_Clear_Call{Call: _e.mock.On("Clear", ctx, serverID, command)}
 }
 
-func (_c *MockRepository_Clear_Call) Run(run func(ctx context.Context, serverID string, command string)) *MockRepository_Clear_Call {
+func (_c *MockRepository_Clear_Call) Run(run func(ctx context.Context, serverID uuid.UUID, command string)) *MockRepository_Clear_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
 	})
 	return _c
 }
@@ -65,13 +66,13 @@ func (_c *MockRepository_Clear_Call) Return(_a0 error) *MockRepository_Clear_Cal
 	return _c
 }
 
-func (_c *MockRepository_Clear_Call) RunAndReturn(run func(context.Context, string, string) error) *MockRepository_Clear_Call {
+func (_c *MockRepository_Clear_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_Clear_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Grant provides a mock function with given fields: ctx, serverID, command, roleID, createdByUserID
-func (_m *MockRepository) Grant(ctx context.Context, serverID string, command string, roleID string, createdByUserID string) error {
+func (_m *MockRepository) Grant(ctx context.Context, serverID uuid.UUID, command string, roleID string, createdByUserID string) error {
 	ret := _m.Called(ctx, serverID, command, roleID, createdByUserID)
 
 	if len(ret) == 0 {
@@ -79,7 +80,7 @@ func (_m *MockRepository) Grant(ctx context.Context, serverID string, command st
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, string, string) error); ok {
 		r0 = rf(ctx, serverID, command, roleID, createdByUserID)
 	} else {
 		r0 = ret.Error(0)
@@ -95,7 +96,7 @@ type MockRepository_Grant_Call struct {
 
 // Grant is a helper method to define mock.On call
 //   - ctx context.Context
-//   - serverID string
+//   - serverID uuid.UUID
 //   - command string
 //   - roleID string
 //   - createdByUserID string
@@ -103,9 +104,9 @@ func (_e *MockRepository_Expecter) Grant(ctx interface{}, serverID interface{}, 
 	return &MockRepository_Grant_Call{Call: _e.mock.On("Grant", ctx, serverID, command, roleID, createdByUserID)}
 }
 
-func (_c *MockRepository_Grant_Call) Run(run func(ctx context.Context, serverID string, command string, roleID string, createdByUserID string)) *MockRepository_Grant_Call {
+func (_c *MockRepository_Grant_Call) Run(run func(ctx context.Context, serverID uuid.UUID, command string, roleID string, createdByUserID string)) *MockRepository_Grant_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string), args[3].(string), args[4].(string))
 	})
 	return _c
 }
@@ -115,13 +116,13 @@ func (_c *MockRepository_Grant_Call) Return(_a0 error) *MockRepository_Grant_Cal
 	return _c
 }
 
-func (_c *MockRepository_Grant_Call) RunAndReturn(run func(context.Context, string, string, string, string) error) *MockRepository_Grant_Call {
+func (_c *MockRepository_Grant_Call) RunAndReturn(run func(context.Context, uuid.UUID, string, string, string) error) *MockRepository_Grant_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // List provides a mock function with given fields: ctx, serverID
-func (_m *MockRepository) List(ctx context.Context, serverID string) ([]permissions.Mapping, error) {
+func (_m *MockRepository) List(ctx context.Context, serverID uuid.UUID) ([]permissions.Mapping, error) {
 	ret := _m.Called(ctx, serverID)
 
 	if len(ret) == 0 {
@@ -130,10 +131,10 @@ func (_m *MockRepository) List(ctx context.Context, serverID string) ([]permissi
 
 	var r0 []permissions.Mapping
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) ([]permissions.Mapping, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]permissions.Mapping, error)); ok {
 		return rf(ctx, serverID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) []permissions.Mapping); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) []permissions.Mapping); ok {
 		r0 = rf(ctx, serverID)
 	} else {
 		if ret.Get(0) != nil {
@@ -141,7 +142,7 @@ func (_m *MockRepository) List(ctx context.Context, serverID string) ([]permissi
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = rf(ctx, serverID)
 	} else {
 		r1 = ret.Error(1)
@@ -157,14 +158,14 @@ type MockRepository_List_Call struct {
 
 // List is a helper method to define mock.On call
 //   - ctx context.Context
-//   - serverID string
+//   - serverID uuid.UUID
 func (_e *MockRepository_Expecter) List(ctx interface{}, serverID interface{}) *MockRepository_List_Call {
 	return &MockRepository_List_Call{Call: _e.mock.On("List", ctx, serverID)}
 }
 
-func (_c *MockRepository_List_Call) Run(run func(ctx context.Context, serverID string)) *MockRepository_List_Call {
+func (_c *MockRepository_List_Call) Run(run func(ctx context.Context, serverID uuid.UUID)) *MockRepository_List_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID))
 	})
 	return _c
 }
@@ -174,13 +175,13 @@ func (_c *MockRepository_List_Call) Return(_a0 []permissions.Mapping, _a1 error)
 	return _c
 }
 
-func (_c *MockRepository_List_Call) RunAndReturn(run func(context.Context, string) ([]permissions.Mapping, error)) *MockRepository_List_Call {
+func (_c *MockRepository_List_Call) RunAndReturn(run func(context.Context, uuid.UUID) ([]permissions.Mapping, error)) *MockRepository_List_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Revoke provides a mock function with given fields: ctx, serverID, command, roleID
-func (_m *MockRepository) Revoke(ctx context.Context, serverID string, command string, roleID string) error {
+func (_m *MockRepository) Revoke(ctx context.Context, serverID uuid.UUID, command string, roleID string) error {
 	ret := _m.Called(ctx, serverID, command, roleID)
 
 	if len(ret) == 0 {
@@ -188,7 +189,7 @@ func (_m *MockRepository) Revoke(ctx context.Context, serverID string, command s
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, string) error); ok {
 		r0 = rf(ctx, serverID, command, roleID)
 	} else {
 		r0 = ret.Error(0)
@@ -204,16 +205,16 @@ type MockRepository_Revoke_Call struct {
 
 // Revoke is a helper method to define mock.On call
 //   - ctx context.Context
-//   - serverID string
+//   - serverID uuid.UUID
 //   - command string
 //   - roleID string
 func (_e *MockRepository_Expecter) Revoke(ctx interface{}, serverID interface{}, command interface{}, roleID interface{}) *MockRepository_Revoke_Call {
 	return &MockRepository_Revoke_Call{Call: _e.mock.On("Revoke", ctx, serverID, command, roleID)}
 }
 
-func (_c *MockRepository_Revoke_Call) Run(run func(ctx context.Context, serverID string, command string, roleID string)) *MockRepository_Revoke_Call {
+func (_c *MockRepository_Revoke_Call) Run(run func(ctx context.Context, serverID uuid.UUID, command string, roleID string)) *MockRepository_Revoke_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string), args[3].(string))
 	})
 	return _c
 }
@@ -223,13 +224,13 @@ func (_c *MockRepository_Revoke_Call) Return(_a0 error) *MockRepository_Revoke_C
 	return _c
 }
 
-func (_c *MockRepository_Revoke_Call) RunAndReturn(run func(context.Context, string, string, string) error) *MockRepository_Revoke_Call {
+func (_c *MockRepository_Revoke_Call) RunAndReturn(run func(context.Context, uuid.UUID, string, string) error) *MockRepository_Revoke_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // RolesFor provides a mock function with given fields: ctx, serverID, command
-func (_m *MockRepository) RolesFor(ctx context.Context, serverID string, command string) ([]string, error) {
+func (_m *MockRepository) RolesFor(ctx context.Context, serverID uuid.UUID, command string) ([]string, error) {
 	ret := _m.Called(ctx, serverID, command)
 
 	if len(ret) == 0 {
@@ -238,10 +239,10 @@ func (_m *MockRepository) RolesFor(ctx context.Context, serverID string, command
 
 	var r0 []string
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]string, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) ([]string, error)); ok {
 		return rf(ctx, serverID, command)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) []string); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) []string); ok {
 		r0 = rf(ctx, serverID, command)
 	} else {
 		if ret.Get(0) != nil {
@@ -249,7 +250,7 @@ func (_m *MockRepository) RolesFor(ctx context.Context, serverID string, command
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, string) error); ok {
 		r1 = rf(ctx, serverID, command)
 	} else {
 		r1 = ret.Error(1)
@@ -265,15 +266,15 @@ type MockRepository_RolesFor_Call struct {
 
 // RolesFor is a helper method to define mock.On call
 //   - ctx context.Context
-//   - serverID string
+//   - serverID uuid.UUID
 //   - command string
 func (_e *MockRepository_Expecter) RolesFor(ctx interface{}, serverID interface{}, command interface{}) *MockRepository_RolesFor_Call {
 	return &MockRepository_RolesFor_Call{Call: _e.mock.On("RolesFor", ctx, serverID, command)}
 }
 
-func (_c *MockRepository_RolesFor_Call) Run(run func(ctx context.Context, serverID string, command string)) *MockRepository_RolesFor_Call {
+func (_c *MockRepository_RolesFor_Call) Run(run func(ctx context.Context, serverID uuid.UUID, command string)) *MockRepository_RolesFor_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
 	})
 	return _c
 }
@@ -283,7 +284,7 @@ func (_c *MockRepository_RolesFor_Call) Return(_a0 []string, _a1 error) *MockRep
 	return _c
 }
 
-func (_c *MockRepository_RolesFor_Call) RunAndReturn(run func(context.Context, string, string) ([]string, error)) *MockRepository_RolesFor_Call {
+func (_c *MockRepository_RolesFor_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) ([]string, error)) *MockRepository_RolesFor_Call {
 	_c.Call.Return(run)
 	return _c
 }

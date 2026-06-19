@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -47,15 +48,16 @@ func guildInteraction(guildID, userID string) *discordgo.InteractionCreate {
 }
 
 func TestPingHandler_RecordsAndReplies(t *testing.T) {
+	srv := uuid.New() // the resolved servers.id the session would pass in
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Record(mock.Anything, "g1", "u1").Return(nil).Once()
-	repo.EXPECT().Count(mock.Anything, "g1").Return(int64(3), nil).Once()
+	repo.EXPECT().Record(mock.Anything, srv, "u1").Return(nil).Once()
+	repo.EXPECT().Count(mock.Anything, srv).Return(int64(3), nil).Once()
 
 	cmd := ping.NewCommand(repo, testLocalizer(t))
 	require.NotNil(t, cmd)
 
 	resp := &fakeResponder{}
-	err := cmd.Handler(context.Background(), resp, guildInteraction("g1", "u1"))
+	err := cmd.Handler(context.Background(), resp, guildInteraction("g1", "u1"), srv)
 	require.NoError(t, err)
 	assert.Equal(t, "pong (#3)", resp.last)
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
@@ -57,13 +58,12 @@ func NewCommand(store *Store, tr *i18n.Translator, loc *i18n.Localizer) *registr
 }
 
 func handle(store *Store, loc *i18n.Localizer) registry.Handler {
-	return func(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate) error {
+	return func(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
 		data := i.ApplicationCommandData()
 		if len(data.Options) == 0 {
 			return r.RespondEphemeral(i.Interaction, "Specify a subcommand: theme, language, or show.")
 		}
 		sub := data.Options[0]
-		serverID := i.GuildID
 
 		switch sub.Name {
 		case "theme":

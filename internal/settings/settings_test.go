@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -19,6 +20,10 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/settings"
 	"github.com/kweezl/spacecraft-corporation/internal/settings/mocks"
 )
+
+// g1 is a fixed resolved servers.id used across the store/command tests (the
+// session would resolve the snowflake to this before the handler runs).
+var g1 = uuid.New()
 
 func translator(t *testing.T) *i18n.Translator {
 	t.Helper()
@@ -38,56 +43,56 @@ func newStore(t *testing.T, repo settings.Repository) *settings.Store {
 
 func TestStore_Resolve_Defaults(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Get(mock.Anything, "g1").Return(settings.Settings{}, nil).Once()
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{}, nil).Once()
 
-	theme, lang := newStore(t, repo).Resolve(context.Background(), "g1")
+	theme, lang := newStore(t, repo).Resolve(context.Background(), g1)
 	assert.Equal(t, "standard", theme)
 	assert.Equal(t, "en", lang)
 }
 
 func TestStore_Resolve_StoredValues(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Get(mock.Anything, "g1").Return(settings.Settings{Theme: "lore", Language: "ru"}, nil).Once()
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{Theme: "lore", Language: "ru"}, nil).Once()
 
-	theme, lang := newStore(t, repo).Resolve(context.Background(), "g1")
+	theme, lang := newStore(t, repo).Resolve(context.Background(), g1)
 	assert.Equal(t, "lore", theme)
 	assert.Equal(t, "ru", lang)
 }
 
 func TestStore_Resolve_InvalidStoredFallsBack(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Get(mock.Anything, "g1").
+	repo.EXPECT().Get(mock.Anything, g1).
 		Return(settings.Settings{Theme: "ghost", Language: "xx"}, nil).Once()
 
-	theme, lang := newStore(t, repo).Resolve(context.Background(), "g1")
+	theme, lang := newStore(t, repo).Resolve(context.Background(), g1)
 	assert.Equal(t, "standard", theme, "an unknown stored theme falls back to default")
 	assert.Equal(t, "en", lang)
 }
 
 func TestStore_Resolve_Caches(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Get(mock.Anything, "g1").Return(settings.Settings{Theme: "lore"}, nil).Once()
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{Theme: "lore"}, nil).Once()
 
 	store := newStore(t, repo)
 	for range 3 {
-		theme, _ := store.Resolve(context.Background(), "g1")
+		theme, _ := store.Resolve(context.Background(), g1)
 		assert.Equal(t, "lore", theme)
 	}
 }
 
 func TestStore_InvalidatesOnWrite(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Get(mock.Anything, "g1").Return(settings.Settings{}, nil).Once() // before
-	repo.EXPECT().SetTheme(mock.Anything, "g1", "lore").Return(nil).Once()
-	repo.EXPECT().Get(mock.Anything, "g1").Return(settings.Settings{Theme: "lore"}, nil).Once() // after
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{}, nil).Once() // before
+	repo.EXPECT().SetTheme(mock.Anything, g1, "lore").Return(nil).Once()
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{Theme: "lore"}, nil).Once() // after
 
 	store := newStore(t, repo)
-	theme, _ := store.Resolve(context.Background(), "g1")
+	theme, _ := store.Resolve(context.Background(), g1)
 	assert.Equal(t, "standard", theme)
 
-	require.NoError(t, store.SetTheme(context.Background(), "g1", "lore"))
+	require.NoError(t, store.SetTheme(context.Background(), g1, "lore"))
 
-	theme, _ = store.Resolve(context.Background(), "g1")
+	theme, _ = store.Resolve(context.Background(), g1)
 	assert.Equal(t, "lore", theme, "the set invalidated the cache; resolve reloaded")
 }
 
@@ -139,32 +144,32 @@ func TestCommand_IsDefaultDeny(t *testing.T) {
 
 func TestCommand_SetTheme(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().SetTheme(mock.Anything, "g1", "lore").Return(nil).Once()
+	repo.EXPECT().SetTheme(mock.Anything, g1, "lore").Return(nil).Once()
 
 	resp := &fakeResponder{}
 	err := newCommand(t, repo).Handler(context.Background(), resp,
-		settingsInteraction("theme", opt("name", "lore")))
+		settingsInteraction("theme", opt("name", "lore")), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "lore")
 }
 
 func TestCommand_SetLanguage(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().SetLanguage(mock.Anything, "g1", "ru").Return(nil).Once()
+	repo.EXPECT().SetLanguage(mock.Anything, g1, "ru").Return(nil).Once()
 
 	resp := &fakeResponder{}
 	err := newCommand(t, repo).Handler(context.Background(), resp,
-		settingsInteraction("language", opt("code", "ru")))
+		settingsInteraction("language", opt("code", "ru")), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "ru")
 }
 
 func TestCommand_Show(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Get(mock.Anything, "g1").Return(settings.Settings{Theme: "lore", Language: "ru"}, nil).Once()
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{Theme: "lore", Language: "ru"}, nil).Once()
 
 	resp := &fakeResponder{}
-	err := newCommand(t, repo).Handler(context.Background(), resp, settingsInteraction("show"))
+	err := newCommand(t, repo).Handler(context.Background(), resp, settingsInteraction("show"), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "lore")
 	assert.Contains(t, resp.last, "ru")

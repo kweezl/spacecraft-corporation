@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/fx"
 )
@@ -22,8 +23,12 @@ type Responder interface {
 	RespondEphemeral(i *discordgo.Interaction, content string) error
 }
 
-// Handler runs the logic for one slash command.
-type Handler func(ctx context.Context, r Responder, i *discordgo.InteractionCreate) error
+// Handler runs the logic for one slash command. serverID is the resolved
+// servers.id (the UUID primary key), looked up once from the Discord snowflake in
+// the session before dispatch; handlers pass it straight to their repositories
+// (which key on servers_id) and to the Localizer, so the snowflake never has to be
+// re-resolved per query.
+type Handler func(ctx context.Context, r Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error
 
 // Command is what a feature module contributes: a definition + a handler.
 type Command struct {
@@ -100,8 +105,9 @@ func (r *Registry) Policy(name string) (defaultDeny, known bool) {
 // Commands returns the definitions to register with Discord.
 func (r *Registry) Commands() []*discordgo.ApplicationCommand { return r.defs }
 
-// Dispatch routes an interaction to its handler.
-func (r *Registry) Dispatch(ctx context.Context, resp Responder, i *discordgo.InteractionCreate) error {
+// Dispatch routes an interaction to its handler. serverID is the resolved
+// servers.id for the interaction's guild (see Handler).
+func (r *Registry) Dispatch(ctx context.Context, resp Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
 	name := i.ApplicationCommandData().Name
 	h, ok := r.handlers[name]
 	if !ok {
@@ -113,5 +119,5 @@ func (r *Registry) Dispatch(ctx context.Context, resp Responder, i *discordgo.In
 	defer func(start time.Time) {
 		r.duration.WithLabelValues(name).Observe(time.Since(start).Seconds())
 	}(time.Now())
-	return h(ctx, resp, i)
+	return h(ctx, resp, i, serverID)
 }
