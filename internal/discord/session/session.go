@@ -4,7 +4,9 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
@@ -13,10 +15,29 @@ import (
 )
 
 // Config is this module's env config.
+//
+// The bot token is a secret. Provide it directly via BOT_TOKEN (convenient for
+// dev), or point BOT_TOKEN_FILE at a mounted secret file — the ",file" option
+// makes env read that file's contents. Prefer the file in prod (Docker/K8s
+// secret): files can be 0400, live in tmpfs, and don't leak via `docker inspect`
+// or /proc/<pid>/environ the way env vars can. TokenFile wins if both are set.
 type Config struct {
-	Token       string `env:"BOT_TOKEN,required"`
+	Token       string `env:"BOT_TOKEN"`
+	TokenFile   string `env:"BOT_TOKEN_FILE,file"`
 	Scope       string `env:"COMMAND_SCOPE" envDefault:"server"`
 	DevServerID string `env:"DEV_SERVER_ID"`
+}
+
+// botToken resolves the token, preferring the file-mounted secret. Whitespace
+// is trimmed so a trailing newline in a secret file doesn't corrupt the token.
+func (c Config) botToken() (string, error) {
+	if t := strings.TrimSpace(c.TokenFile); t != "" {
+		return t, nil
+	}
+	if t := strings.TrimSpace(c.Token); t != "" {
+		return t, nil
+	}
+	return "", errors.New("session: set BOT_TOKEN or BOT_TOKEN_FILE")
 }
 
 // Discord is the slice of a Discord session the manager uses. The real
@@ -58,7 +79,11 @@ func (m *Manager) commandServerID() string {
 // Start opens the session, wires the interaction handler, and registers
 // commands.
 func (m *Manager) Start(ctx context.Context) error {
-	d, err := m.factory(m.cfg.Token)
+	token, err := m.cfg.botToken()
+	if err != nil {
+		return err
+	}
+	d, err := m.factory(token)
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
