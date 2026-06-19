@@ -25,8 +25,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-bot}:${POSTGRES_PASSWORD:-bot}@postgres:5432/${POSTGRES_DB:-spacecraft}?sslmode=disable
       BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
-      COMMAND_SCOPE: ${COMMAND_SCOPE:-server}
-      DEV_SERVER_ID: ${DEV_SERVER_ID:-}
+      APPROVED_SERVER_ID: ${APPROVED_SERVER_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       APP_NAME: ${APP_NAME:-spacecraft-corporation}
       # Custom build tag baked into the dev binary by air's ldflags.

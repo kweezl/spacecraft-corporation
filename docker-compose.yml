@@ -30,8 +30,7 @@ services:
       # Comment out BOT_TOKEN, uncomment the line + the secrets blocks below, and
       # put the token in ./secrets/bot_token.
       # BOT_TOKEN_FILE: /run/secrets/bot_token
-      COMMAND_SCOPE: ${COMMAND_SCOPE:-server}
-      DEV_SERVER_ID: ${DEV_SERVER_ID:-}
+      APPROVED_SERVER_ID: ${APPROVED_SERVER_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       APP_NAME: ${APP_NAME:-spacecraft-corporation}
       FEATURES: ${FEATURES:-ping}
