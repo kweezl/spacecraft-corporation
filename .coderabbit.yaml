@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit configuration — https://docs.coderabbit.ai/getting-started/configure-coderabbit
+language: en-US
+tone_instructions: >-
+  Be concise and direct. This is a Go project using uber-go/fx modules,
+  pgx/pgxpool, goose migrations, and discordgo. Favor idiomatic Go, TDD, and the
+  decentralized per-module config conventions in CLAUDE.md.
+
+reviews:
+  # "chill" = fewer, higher-signal comments; "assertive" = more thorough/nitpicky.
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    # Only review PRs targeting these branches.
+    base_branches:
+      - main
+  # Pull project conventions into review context.
+  path_instructions:
+    - path: "**/*.go"
+      instructions: >-
+        Follow the conventions in CLAUDE.md. Every feature is an fx.Module with
+        a Module() fx.Option in its own module.go and logger.Decorate("<name>").
+        Handlers must reply via registry.Responder, never touch
+        *discordgo.Session directly. Use "server" for the domain term, mapping
+        discordgo's guild fields at the boundary. Tests are TDD with
+        testify + mockery mocks. Secrets (BOT_TOKEN, DATABASE_URL) must never be
+        logged or committed.
+    - path: "internal/migrator/migrations/*.sql"
+      instructions: >-
+        Goose migrations are embedded via embed.FS and run on startup. Ensure
+        each migration has matching up/down sections.
+  tools:
+    # Reuse the repo's existing golangci-lint config (.golangci.yml).
+    golangci-lint:
+      enabled: true
+
+chat:
+  auto_reply: true

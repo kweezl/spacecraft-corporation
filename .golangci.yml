@@ -1,3 +1,4 @@
+version: "2"
 run:
   timeout: 5m
 linters:
@@ -8,5 +9,13 @@ linters:
     - staticcheck
     - unused
     - revive
+formatters:
+  enable:
     - gofmt
-    - goimports
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/kweezl/spacecraft-corporation)
