@@ -12,6 +12,7 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/kweezl/spacecraft-corporation/internal/db"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/discord/servers"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
@@ -33,6 +34,9 @@ func coreModules() []fx.Option {
 		db.Module(),
 		migrator.Module(),
 		registry.Module(),
+		// servers must load before session: it provides the approval gate the
+		// session injects (fx resolves order, this is just for readability).
+		servers.Module(),
 		session.Module(),
 	}
 }

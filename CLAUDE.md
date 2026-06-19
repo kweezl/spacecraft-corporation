@@ -22,9 +22,11 @@ reference data + per-user planning state."
 One bot identity that you own. It runs **a single `discordgo` session** from
 `BOT_TOKEN` (env) and is added to other Discord **servers** via an OAuth2 invite
 link — no per-server tokens, no token storage. To gate who can add it, turn off
-"Public Bot" in the Developer Portal (only the app owner can invite) and/or keep
-a server allowlist. Slash-command registration scope is **configurable**:
-`server` (instant, to `DEV_SERVER_ID`) or `global` (~1h propagation).
+"Public Bot" in the Developer Portal (only the app owner can invite) and/or rely
+on the **server approval allowlist** (the `servers` module): commands from
+unapproved servers are ignored. Slash commands are registered **per joined
+server** on `GuildCreate` (instant, vs ~1h for global), so there is no dev-server
+env var.
 
 Terminology: **"server"** is our domain term for a Discord guild. discordgo's API
 still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
@@ -53,9 +55,20 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   via `MarkReady`, appended **last** by the composition root, so `/readyz`
   returns 200 only after every module's `OnStart` (incl. session connect) ran.
 - **`session`** — opens the single `discordgo.Session` from `BOT_TOKEN`,
-  registers commands at the configured scope, and fans `InteractionCreate`
-  events into the command router. Lifecycle-managed. Uses a `Discord` interface +
-  `Factory` so the manager is testable with a fake (no live connection in tests).
+  registers commands **per joined server** on `GuildCreate`, and fans
+  `InteractionCreate` events into the command router — but only after the
+  `ServerApproval` gate clears the interaction's server (DMs and unapproved
+  servers are ignored). Also fans guild lifecycle events to handlers contributed
+  by other modules via the `guild_create` / `guild_delete` fx groups.
+  Lifecycle-managed. Uses a `Discord` interface + `Factory` so the manager is
+  testable with a fake (no live connection in tests).
+- **`servers`** (`internal/discord/servers`) — **core** module that tracks the
+  servers (guilds) the bot belongs to. On `GuildCreate` it upserts the `servers`
+  row (auto-approving IDs in `APPROVED_SERVER_ID`, promote-only — never demoting
+  a manual approval) and logs a `joined` event the first time a server is seen;
+  on real `GuildDelete` (not a gateway outage) it logs `removed`. Provides the
+  `session.ServerApproval` gate (`IsApproved`) and its guild handlers into the
+  session's fx groups.
 - **`commandregistry`** — collects `Command`s from feature modules via an fx
   group, builds the route map, dispatches interactions to handlers.
 - **feature modules** (first: **`ping`**) — each provides `Command`s into the
@@ -91,7 +104,8 @@ config aggregator**. Each module defines and loads its own env struct via
 |---|---|
 | `db` | `DATABASE_URL` **or** `DATABASE_URL_FILE` (mounted secret; file wins). Under Docker, compose assembles `DATABASE_URL` from `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` so the app and the `postgres` container share one credential set |
 | `logger` | `LOG_LEVEL` (default `info`) |
-| `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins), `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
+| `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins) |
+| `servers` | `APPROVED_SERVER_ID` (comma-separated allowlist of auto-approved server IDs; may be empty; promote-only) |
 | `health` | `HEALTH_ADDR` (default `:9464`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `Version` injected via build-time ldflags |
@@ -105,12 +119,20 @@ per-feature env var.
 ## Data model (goose migrations)
 
 - **`ping_log`** — `id`, `server_id`, `user_id`, `created_at`.
+- **`servers`** — `id` (**UUID**, `gen_random_uuid()`), `server_id` (unique
+  Discord snowflake), `name`, `approved`, `created_at`, `updated_at`.
+- **`server_event`** — `id` (**UUID**), `server_id`, `event_type`
+  (`joined`\|`removed`), `created_at`. Append-only membership audit (no FK).
+
+New tables use **UUID** primary keys (`gen_random_uuid()`, core in Postgres ≥13);
+the legacy `ping_log` keeps its `BIGSERIAL`.
 
 ## Command flow (`/ping`)
 
-Interaction → `session` receives `InteractionCreate` → router looks up `ping` →
-handler calls `Repository.Record(serverID, userID)` → replies `pong (#N)`.
-Registration scope follows `COMMAND_SCOPE`.
+Interaction → `session` receives `InteractionCreate` → **ignores it unless the
+server is approved** (`servers` gate) → router looks up `ping` → handler calls
+`Repository.Record(serverID, userID)` → replies `pong (#N)`. Commands are
+registered per joined server on `GuildCreate`.
 
 ## Build & run (Docker)
 
@@ -225,6 +247,7 @@ internal/migrator/           # + migrations/*.sql (embedded)
 internal/health/             # liveness/readiness probes + /metrics
 internal/discord/session/    # single-session manager + discordgo wrapper
 internal/discord/registry/   # command registry + router + Command type
+internal/discord/servers/    # server tracking + approval gate + event log
 internal/features/ping/
 .mockery.yaml         # mock generation config
 .air.toml            # hot-reload config (local dev)
@@ -242,8 +265,9 @@ docker-compose.dev.yml   # local dev (air + delve, port 2345)
 opens the bot from `BOT_TOKEN`; `/ping` records to Postgres and replies
 `pong (#N)`.
 
-**Not** in the first slice: sharding, a server allowlist / approval flow, and
-any game-data feature modules beyond `ping`. (Dev/prod compose, air hot reload,
+**Not** in the first slice: sharding and any game-data feature modules beyond
+`ping`. (The server allowlist / approval flow — the `servers` module — has since
+been added. Dev/prod compose, air hot reload,
 delve debugging, golangci-lint, the GitHub Actions CI workflow, and the health
 probes/metrics *are* part of the first slice — project infrastructure, not
 features.)

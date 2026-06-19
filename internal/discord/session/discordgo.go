@@ -22,6 +22,14 @@ func (d *discordSession) AddInteractionHandler(fn func(*discordgo.InteractionCre
 	d.s.AddHandler(func(_ *discordgo.Session, i *discordgo.InteractionCreate) { fn(i) })
 }
 
+func (d *discordSession) AddGuildCreateHandler(fn func(*discordgo.GuildCreate)) {
+	d.s.AddHandler(func(_ *discordgo.Session, e *discordgo.GuildCreate) { fn(e) })
+}
+
+func (d *discordSession) AddGuildDeleteHandler(fn func(*discordgo.GuildDelete)) {
+	d.s.AddHandler(func(_ *discordgo.Session, e *discordgo.GuildDelete) { fn(e) })
+}
+
 func (d *discordSession) Open() error  { return d.s.Open() }
 func (d *discordSession) Close() error { return d.s.Close() }
 
