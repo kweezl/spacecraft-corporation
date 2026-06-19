@@ -30,12 +30,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       APP_NAME: ${APP_NAME:-spacecraft-corporation}
       FEATURES: ${FEATURES:-ping}
-      HEALTH_ADDR: ${HEALTH_ADDR:-:8080}
+      HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
     volumes:
       - .:/src
     ports:
       - "2345:2345"   # delve
-      - "8080:8080"   # ops: /healthz /readyz /metrics
+      - "9464:9464"   # ops: /healthz /readyz /metrics
     depends_on:
       postgres:
         condition: service_healthy
