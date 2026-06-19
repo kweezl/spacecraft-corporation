@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/caarlos0/env/v11"
-	"github.com/kweezl/spacecraft-cadet/internal/appconfig"
+	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-var testApp = appconfig.AppConfig{Name: "spacecraft-cadet", Version: "1.2.3"}
+var testApp = appconfig.AppConfig{Name: "spacecraft-corporation", Version: "1.2.3"}
 
 func TestNew_DefaultLevel(t *testing.T) {
 	log, err := New(Config{Level: zapcore.InfoLevel}, testApp)
@@ -37,7 +37,7 @@ func TestWithAppFields(t *testing.T) {
 	entries := logs.All()
 	require.Len(t, entries, 1)
 	m := entries[0].ContextMap()
-	assert.Equal(t, "spacecraft-cadet", m["app_name"])
+	assert.Equal(t, "spacecraft-corporation", m["app_name"])
 	assert.Equal(t, "1.2.3", m["app_version"])
 }
 

@@ -6,9 +6,9 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
-	"github.com/kweezl/spacecraft-cadet/internal/features/ping"
-	"github.com/kweezl/spacecraft-cadet/internal/features/ping/mocks"
+	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
+	"github.com/kweezl/spacecraft-corporation/internal/features/ping/mocks"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

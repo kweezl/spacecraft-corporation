@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/kweezl/spacecraft-cadet/internal/feature"
+	"github.com/kweezl/spacecraft-corporation/internal/feature"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

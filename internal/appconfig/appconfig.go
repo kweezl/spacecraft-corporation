@@ -9,7 +9,7 @@ import (
 
 // version is injected at build time via:
 //
-//	-ldflags "-X github.com/kweezl/spacecraft-cadet/internal/appconfig.version=<ver>"
+//	-ldflags "-X github.com/kweezl/spacecraft-corporation/internal/appconfig.version=<ver>"
 //
 // It is intentionally a package var, not an env var.
 var version = "0.0.0-unspecified"
@@ -18,7 +18,7 @@ var version = "0.0.0-unspecified"
 // Version is not env-sourced (env:"-") and is filled from the build-time
 // `version` var, since ldflags -X can only target a package var, not a field.
 type AppConfig struct {
-	Name    string `env:"APP_NAME" envDefault:"spacecraft-cadet"`
+	Name    string `env:"APP_NAME" envDefault:"spacecraft-corporation"`
 	Version string `env:"-"`
 }
 

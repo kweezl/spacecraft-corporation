@@ -5,7 +5,7 @@ package logger
 import (
 	"context"
 
-	"github.com/kweezl/spacecraft-cadet/internal/appconfig"
+	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

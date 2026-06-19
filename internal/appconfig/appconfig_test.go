@@ -10,7 +10,7 @@ import (
 func TestLoad_DefaultName(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, "spacecraft-cadet", cfg.Name)
+	assert.Equal(t, "spacecraft-corporation", cfg.Name)
 }
 
 func TestLoad_OverrideName(t *testing.T) {
