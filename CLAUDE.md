@@ -62,14 +62,22 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   `cmd/bot/main.go`. Under Docker a dedicated `migrate` compose service runs
   `--migrate` to completion before the `bot` service starts
   (`depends_on: service_completed_successfully`).
-- **`health`** — ops HTTP server on `HEALTH_ADDR` (default `:9464`, isolated
-  from the app port so `8080` is free for the future public admin API):
-  `/healthz` (liveness), `/readyz` (readiness), `/metrics` (Prometheus).
-  `9464` is the OpenTelemetry Prometheus-exporter convention. Provides a
-  `Readiness` flag and an injectable `*prometheus.Registry` (no global default
-  registry). Started early so probes answer during startup. Readiness goes green
-  via `MarkReady`, appended **last** by the composition root, so `/readyz`
-  returns 200 only after every module's `OnStart` (incl. session connect) ran.
+- **`instrumentation`** — ops HTTP server on `INSTRUMENTATION_ADDR` (default
+  `:9464`, isolated from the app port so `8080` is free for the future public
+  admin API): `/healthz` (liveness), `/readyz` (readiness), `/metrics`
+  (Prometheus). `9464` is the OpenTelemetry Prometheus-exporter convention.
+  Provides an injectable `*prometheus.Registry` (no global default registry).
+  Started early so probes answer during startup. **Readiness is check-based,**
+  not a startup flag: subsystems contribute named `ReadinessCheck` probes into
+  the `readiness_checks` fx group (`db` pings the pool → `postgres`; `session`
+  verifies the gateway is connected — discordgo's `DataReady`, which `Open()`
+  returns *before* — → `discord`). `/readyz` runs every probe per request and
+  returns 200 only when all pass, so it reflects **live** dependency health
+  (goes red again if the DB or gateway later drops), not just "startup finished".
+  The package is split one-concern-per-file: `server.go` (HTTP server +
+  lifecycle, composes the handlers), `healthz.go` / `readyz.go` / `metrics.go`
+  (the three endpoint handlers), `readiness.go` (the `Readiness` aggregator +
+  `ReadinessCheck` type), `registry.go` (the Prometheus registry).
 - **`session`** — opens the single `discordgo.Session` from `BOT_TOKEN`,
   registers commands **per joined server** on `GuildCreate`, and fans
   `InteractionCreate` events into the command router — but only after the
@@ -126,7 +134,7 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
 | `logger` | `LOG_LEVEL` (default `info`) |
 | `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins) |
 | `servers` | `APPROVED_SERVER_ID` (comma-separated allowlist of auto-approved server IDs; may be empty; promote-only) |
-| `health` | `HEALTH_ADDR` (default `:9464`) |
+| `instrumentation` | `INSTRUMENTATION_ADDR` (default `:9464`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `APP_TIMEZONE` (IANA name, default `UTC`, pins `time.Local`); `APP_OWNER_DISCORD_ID` (optional bot-owner Discord ID for the unapproved-server reply); `Version` injected via build-time ldflags |
 
@@ -240,15 +248,21 @@ process.
 
 ## Observability (probes & metrics)
 
-The `health` module exposes, on `HEALTH_ADDR` (default `:9464`):
+The `instrumentation` module exposes, on `INSTRUMENTATION_ADDR` (default `:9464`):
 - `GET /healthz` — liveness; always `200 ok` once the server is listening.
-- `GET /readyz` — readiness; `503 starting` until the app fully starts, then
-  `200 ready`. Green only after **all** modules' `OnStart` ran.
+- `GET /readyz` — readiness; runs every contributed `ReadinessCheck` per request
+  and returns `503 starting` unless **all** pass, then `200 ready`. Reflects live
+  dependency health (DB pool ping + Discord gateway connected), so it can flip
+  back to `503` if a dependency later drops — it is not a one-shot startup flag.
 - `GET /metrics` — Prometheus exposition (Go runtime collectors + app metrics).
 
 App metrics register into the injected `*prometheus.Registry`. Command calls are
-counted centrally by the registry as `discord_command_total{command="..."}` (so
-features don't each need a counter).
+instrumented centrally by the registry in `Dispatch` (so features don't each need
+their own metrics): `discord_command_total{command="..."}` counts calls and
+`discord_command_duration_seconds{command="..."}` is a latency histogram (default
+buckets) over the handler run. The 2.5s/5s buckets straddle Discord's ~3s
+interaction deadline, so a rising p99 there foreshadows "Unknown interaction"
+(10062) errors.
 
 **Metrics naming convention** (`prometheus.CounterOpts` etc.):
 - `Namespace` = module name / area (e.g. `discord`)
@@ -292,7 +306,7 @@ internal/appconfig/
 internal/logger/
 internal/db/
 internal/migrator/           # + migrations/*.sql (embedded)
-internal/health/             # liveness/readiness probes + /metrics
+internal/instrumentation/    # liveness/readiness probes + /metrics
 internal/discord/session/    # single-session manager + discordgo wrapper
 internal/discord/registry/   # command registry + router + Command type
 internal/discord/servers/    # server tracking + approval gate + event log
