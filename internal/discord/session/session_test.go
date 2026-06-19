@@ -87,3 +87,21 @@ func TestManager_GlobalScope_UsesEmptyServer(t *testing.T) {
 	require.Len(t, fake.created, 1)
 	assert.Equal(t, "", fake.created[0].serverID)
 }
+
+func TestConfig_BotToken_PrefersFile(t *testing.T) {
+	// TokenFile holds the file's contents (env resolves the ,file option).
+	got, err := Config{Token: "from-env", TokenFile: "from-file\n"}.botToken()
+	require.NoError(t, err)
+	assert.Equal(t, "from-file", got) // trimmed
+}
+
+func TestConfig_BotToken_FallsBackToEnv(t *testing.T) {
+	got, err := Config{Token: "from-env"}.botToken()
+	require.NoError(t, err)
+	assert.Equal(t, "from-env", got)
+}
+
+func TestConfig_BotToken_Missing(t *testing.T) {
+	_, err := Config{}.botToken()
+	require.Error(t, err)
+}
