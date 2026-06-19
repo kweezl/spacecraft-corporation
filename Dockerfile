@@ -2,7 +2,7 @@
 ARG GO_VERSION=1.26
 
 # --- build -------------------------------------------------------------------
-FROM golang:${GO_VERSION} AS build
+FROM golang:${GO_VERSION}-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -20,7 +20,7 @@ EXPOSE 8080
 ENTRYPOINT ["/bot"]
 
 # --- dev (hot reload + debugger) --------------------------------------------
-FROM golang:${GO_VERSION} AS dev
+FROM golang:${GO_VERSION}-alpine AS dev
 WORKDIR /src
 RUN go install github.com/air-verse/air@latest \
  && go install github.com/go-delve/delve/cmd/dlv@latest
