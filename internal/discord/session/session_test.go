@@ -61,6 +61,12 @@ func (f *fakeDiscord) RespondEphemeral(_ *discordgo.Interaction, content string)
 	f.lastReply = content
 	return nil
 }
+func (f *fakeDiscord) RespondEmbed(_ *discordgo.Interaction, embed *discordgo.MessageEmbed) error {
+	if embed != nil {
+		f.lastReply = embed.Title
+	}
+	return nil
+}
 
 // fireGuildCreate invokes every registered GuildCreate handler, mimicking
 // discordgo delivering the event.

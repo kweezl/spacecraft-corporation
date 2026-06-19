@@ -26,12 +26,12 @@ func TestNew_RejectsMissingDefaultTheme(t *testing.T) {
 func TestRender_ThemeAndLanguage(t *testing.T) {
 	tr := newTranslator(t)
 
-	assert.Equal(t, "pong (#3)",
-		tr.Render("standard", "en", "ping.pong", map[string]any{"Count": 3}))
-	assert.Equal(t, "понг (#3)",
-		tr.Render("standard", "ru", "ping.pong", map[string]any{"Count": 3}))
+	assert.Equal(t, "3 ms",
+		tr.Render("standard", "en", "ping.latency_ms", map[string]any{"Value": 3}))
+	assert.Equal(t, "3 мс",
+		tr.Render("standard", "ru", "ping.latency_ms", map[string]any{"Value": 3}))
 	assert.Contains(t,
-		tr.Render("lore", "en", "ping.pong", map[string]any{"Count": 3}), "Telemetry")
+		tr.Render("lore", "en", "ping.title", nil), "Telemetry")
 }
 
 func TestRender_ConditionalTemplate(t *testing.T) {
@@ -49,8 +49,8 @@ func TestRender_FallsBackToDefaultThemeAndLang(t *testing.T) {
 	tr := newTranslator(t)
 
 	// Unknown theme/language fall back to the default (standard/en).
-	got := tr.Render("ghost", "xx", "ping.pong", map[string]any{"Count": 1})
-	assert.Equal(t, "pong (#1)", got)
+	got := tr.Render("ghost", "xx", "ping.latency_ms", map[string]any{"Value": 1})
+	assert.Equal(t, "1 ms", got)
 }
 
 func TestRender_UnknownKeyReturnsKey(t *testing.T) {
@@ -75,6 +75,6 @@ func TestLocalizer_RendersForResolvedServer(t *testing.T) {
 	tr := newTranslator(t)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "ru"})
 
-	got := loc.Render(context.Background(), uuid.New(), "ping.pong", map[string]any{"Count": 7})
-	assert.Equal(t, "понг (#7)", got)
+	got := loc.Render(context.Background(), uuid.New(), "ping.latency_ms", map[string]any{"Value": 7})
+	assert.Equal(t, "7 мс", got)
 }

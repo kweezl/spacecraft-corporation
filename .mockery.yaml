@@ -3,9 +3,6 @@ dir: "{{.InterfaceDir}}/mocks"
 mockname: "Mock{{.InterfaceName}}"
 outpkg: "mocks"
 packages:
-  github.com/kweezl/spacecraft-corporation/internal/features/ping:
-    interfaces:
-      Repository:
   github.com/kweezl/spacecraft-corporation/internal/discord/servers:
     interfaces:
       Repository:

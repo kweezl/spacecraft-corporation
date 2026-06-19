@@ -1,5 +1,9 @@
 {
-  "ping.pong": "pong (#{{.Count}})",
+  "ping.title": "Pong",
+  "ping.handle_field": "Handle latency",
+  "ping.roundtrip_field": "Round-trip latency",
+  "ping.latency_us": "{{.Value}} µs",
+  "ping.latency_ms": "{{.Value}} ms",
 
   "session.unapproved": "This server isn't approved to use this bot yet. Ask the bot owner {{if .Owner}}<@{{.Owner}}> {{end}}to approve it.",
   "session.denied": "You don't have permission to use /{{.Command}} on this server. Ask a server admin to grant your role access to it.",
