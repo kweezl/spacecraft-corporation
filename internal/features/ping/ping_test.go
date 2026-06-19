@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -16,11 +17,23 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping/mocks"
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
+
+func testLocalizer(t *testing.T) *i18n.Localizer {
+	t.Helper()
+	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
+	require.NoError(t, err)
+	return i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
+}
 
 type fakeResponder struct{ last string }
 
 func (f *fakeResponder) Respond(_ *discordgo.Interaction, content string) error {
+	f.last = content
+	return nil
+}
+func (f *fakeResponder) RespondEphemeral(_ *discordgo.Interaction, content string) error {
 	f.last = content
 	return nil
 }
@@ -35,15 +48,16 @@ func guildInteraction(guildID, userID string) *discordgo.InteractionCreate {
 }
 
 func TestPingHandler_RecordsAndReplies(t *testing.T) {
+	srv := uuid.New() // the resolved servers.id the session would pass in
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Record(mock.Anything, "g1", "u1").Return(nil).Once()
-	repo.EXPECT().Count(mock.Anything, "g1").Return(int64(3), nil).Once()
+	repo.EXPECT().Record(mock.Anything, srv, "u1").Return(nil).Once()
+	repo.EXPECT().Count(mock.Anything, srv).Return(int64(3), nil).Once()
 
-	cmd := ping.NewCommand(repo)
+	cmd := ping.NewCommand(repo, testLocalizer(t))
 	require.NotNil(t, cmd)
 
 	resp := &fakeResponder{}
-	err := cmd.Handler(context.Background(), resp, guildInteraction("g1", "u1"))
+	err := cmd.Handler(context.Background(), resp, guildInteraction("g1", "u1"), srv)
 	require.NoError(t, err)
 	assert.Equal(t, "pong (#3)", resp.last)
 }
@@ -60,6 +74,7 @@ func TestModule_RegistersPing(t *testing.T) {
 	app := fxtest.New(t,
 		fx.Provide(func() *pgxpool.Pool { return pool }),
 		fx.Provide(prometheus.NewRegistry),
+		fx.Supply(testLocalizer(t)),
 		ping.Module(),
 		registry.Module(),
 		fx.Populate(&reg),

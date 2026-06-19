@@ -12,6 +12,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -25,7 +26,7 @@ const lockKey = 4242
 
 // appTables are dropped to reset to a clean slate. goose_db_version is included
 // so migrations re-run from scratch.
-const appTables = `ping_log, server_event, servers, goose_db_version`
+const appTables = `permissions, server_settings, ping_log, server_event, servers, goose_db_version`
 
 // Clean acquires the cross-process lock and drops all application tables,
 // returning a pool against an empty (un-migrated) database. Use it when the test
@@ -70,4 +71,24 @@ func Reset(t *testing.T, dsn string) *pgxpool.Pool {
 		t.Fatalf("testdb: run migrations: %v", err)
 	}
 	return pool
+}
+
+// SeedServer inserts an approved servers row for a Discord snowflake so child
+// tables (which reference servers.id) have a parent to point at, and returns that
+// servers.id — the UUID child repositories now key on. Idempotent: a repeated
+// call returns the existing row's id.
+func SeedServer(t *testing.T, pool *pgxpool.Pool, serverID string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	// DO UPDATE (a no-op touch of server_id) so RETURNING yields the id on both
+	// insert and conflict; DO NOTHING would return no row on conflict.
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO servers (id, server_id, name, approved, created_at, updated_at)
+		 VALUES (gen_random_uuid(), $1, '', true, now(), now())
+		 ON CONFLICT (server_id) DO UPDATE SET server_id = EXCLUDED.server_id
+		 RETURNING id`, serverID).Scan(&id)
+	if err != nil {
+		t.Fatalf("testdb: seed server %q: %v", serverID, err)
+	}
+	return id
 }

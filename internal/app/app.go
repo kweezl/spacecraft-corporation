@@ -15,10 +15,13 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/discord/servers"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
+	"github.com/kweezl/spacecraft-corporation/internal/features/permissions"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/instrumentation"
 	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"github.com/kweezl/spacecraft-corporation/internal/migrator"
+	"github.com/kweezl/spacecraft-corporation/internal/settings"
 )
 
 // fxLogger routes fx's own wiring logs through zap.
@@ -41,6 +44,10 @@ func coreModules() []fx.Option {
 		instrumentation.Module(),
 		db.Module(),
 		registry.Module(),
+		// i18n + settings render all user-facing messages: settings provides the
+		// per-server theme/language resolver that i18n's Localizer reads.
+		i18n.Module(),
+		settings.Module(),
 		// servers must load before session: it provides the approval gate the
 		// session injects (fx resolves order, this is just for readability).
 		servers.Module(),
@@ -69,6 +76,8 @@ func selectFeatures(names []feature.Name) ([]fx.Option, error) {
 		switch name {
 		case feature.Ping:
 			opts = append(opts, ping.Module())
+		case feature.Permissions:
+			opts = append(opts, permissions.Module())
 		default:
 			return nil, fmt.Errorf("no module registered for feature %q", name)
 		}

@@ -6,9 +6,10 @@ CREATE TABLE servers (
     server_id  TEXT        NOT NULL UNIQUE,   -- Discord guild (server) snowflake
     name       TEXT        NOT NULL DEFAULT '',
     approved   BOOLEAN     NOT NULL DEFAULT false,
-    -- Timezone-less; defaults pinned to UTC wall-clock (session-TZ independent).
-    created_at TIMESTAMP   NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'),
-    updated_at TIMESTAMP   NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
+    -- Timezone-less; supplied by the application (configured timezone), no DB
+    -- default — a forgotten insert fails loudly instead of storing a wrong zone.
+    created_at TIMESTAMP   NOT NULL,
+    updated_at TIMESTAMP   NOT NULL
 );
 
 -- +goose Down
