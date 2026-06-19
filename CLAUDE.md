@@ -33,7 +33,7 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
 
 - **`appconfig`** — provides shared `AppConfig{ Name, Version }` only. Knows
   nothing about other modules' settings. `Name` comes from the `APP_NAME` env
-  var (default `spacecraft-cadet`). `Version` is injected at **build time via
+  var (default `spacecraft-corporation`). `Version` is injected at **build time via
   ldflags** (`-X .../appconfig.version=...`), not read from env, and supplied as
   a Docker build arg.
 - **`logger`** — `*zap.Logger`, JSON to stderr, `AddStacktrace(ErrorLevel)`,
@@ -90,7 +90,7 @@ config aggregator**. Each module defines and loads its own env struct via
 | `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins), `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
 | `health` | `HEALTH_ADDR` (default `:8080`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
-| `appconfig` | `APP_NAME` (default `spacecraft-cadet`); `Version` injected via build-time ldflags |
+| `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `Version` injected via build-time ldflags |
 
 Feature on/off is the one exception to per-module ownership: it's a composition
 concern, owned by the composition root (`internal/app`) via `FEATURES`, not a

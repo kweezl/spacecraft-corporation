@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/kweezl/spacecraft-cadet/internal/db"
+	"github.com/kweezl/spacecraft-corporation/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"

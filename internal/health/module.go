@@ -2,7 +2,7 @@ package health
 
 import (
 	"github.com/caarlos0/env/v11"
-	"github.com/kweezl/spacecraft-cadet/internal/logger"
+	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"go.uber.org/fx"
 )
 

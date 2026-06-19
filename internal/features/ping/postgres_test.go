@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kweezl/spacecraft-cadet/internal/migrator"
+	"github.com/kweezl/spacecraft-corporation/internal/migrator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

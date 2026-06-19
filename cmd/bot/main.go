@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kweezl/spacecraft-cadet/internal/app"
+	"github.com/kweezl/spacecraft-corporation/internal/app"
 	"go.uber.org/fx"
 )
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
