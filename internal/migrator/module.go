@@ -1,8 +1,9 @@
 package migrator
 
 import (
-	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"go.uber.org/fx"
+
+	"github.com/kweezl/spacecraft-corporation/internal/logger"
 )
 
 // Module runs migrations as an fx invoke. Invokes execute during fx

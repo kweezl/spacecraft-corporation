@@ -1,8 +1,9 @@
 package ping
 
 import (
-	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"go.uber.org/fx"
+
+	"github.com/kweezl/spacecraft-corporation/internal/logger"
 )
 
 // Module provides the /ping repository and contributes the command into the

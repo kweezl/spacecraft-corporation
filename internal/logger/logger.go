@@ -5,10 +5,11 @@ package logger
 import (
 	"context"
 
-	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 )
 
 // Config is this module's env config. zapcore.Level implements TextUnmarshaler,

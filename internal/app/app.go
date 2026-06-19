@@ -5,6 +5,10 @@ package app
 import (
 	"fmt"
 
+	"go.uber.org/fx"
+	"go.uber.org/fx/fxevent"
+	"go.uber.org/zap"
+
 	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/kweezl/spacecraft-corporation/internal/db"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
@@ -14,9 +18,6 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/health"
 	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"github.com/kweezl/spacecraft-corporation/internal/migrator"
-	"go.uber.org/fx"
-	"go.uber.org/fx/fxevent"
-	"go.uber.org/zap"
 )
 
 // coreModules are always loaded.

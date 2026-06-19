@@ -1,8 +1,9 @@
 package registry
 
 import (
-	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"go.uber.org/fx"
+
+	"github.com/kweezl/spacecraft-corporation/internal/logger"
 )
 
 // Module provides the Registry built from the fx command group. Core module.
