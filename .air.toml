@@ -3,13 +3,18 @@ tmp_dir = "tmp"
 
 [build]
   # Disable optimizations/inlining so the debugger maps lines correctly.
-  cmd = "go build -gcflags='all=-N -l' -o ./tmp/bot ./cmd/bot"
+  # Bake a version tag the same way prod does; air runs cmd via `sh -c`, so
+  # ${VERSION} is shell-expanded (default "dev"). Override: VERSION=mytag ...
+  cmd = "go build -gcflags='all=-N -l' -ldflags=\"-X github.com/kweezl/spacecraft-corporation/internal/appconfig.version=${VERSION:-dev}\" -o ./tmp/bot ./cmd/bot"
   # full_bin overrides the run command: launch under delve, headless, on :2345.
   full_bin = "dlv exec ./tmp/bot --headless --listen=:2345 --api-version=2 --accept-multiclient --continue"
   include_ext = ["go"]
   exclude_dir = ["tmp", "docs", ".git", ".github"]
   delay = 1000
   stop_on_error = true
+  # Send SIGINT (not SIGKILL) on rebuild so fx lifecycle OnStop hooks run and
+  # delve/the bot shut down gracefully.
+  send_interrupt = true
 
 [misc]
   clean_on_exit = true

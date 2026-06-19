@@ -29,6 +29,8 @@ services:
       DEV_SERVER_ID: ${DEV_SERVER_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       APP_NAME: ${APP_NAME:-spacecraft-corporation}
+      # Custom build tag baked into the dev binary by air's ldflags.
+      VERSION: ${VERSION:-dev}
       FEATURES: ${FEATURES:-ping}
       HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
     volumes:
