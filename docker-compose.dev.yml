@@ -19,6 +19,9 @@ services:
     build:
       context: .
       target: dev
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     environment:
       DATABASE_URL: postgres://bot:bot@postgres:5432/spacecraft?sslmode=disable
       BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
