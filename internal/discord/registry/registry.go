@@ -17,10 +17,12 @@ import (
 // touching *discordgo.Session directly, so they stay testable. RespondEphemeral
 // replies privately to the invoking user only (Discord ephemeral message) —
 // used for admin/config replies that shouldn't clutter the channel or notify
-// mentioned roles.
+// mentioned roles. RespondEmbed replies with a rich embed (e.g. /ping's latency
+// breakdown).
 type Responder interface {
 	Respond(i *discordgo.Interaction, content string) error
 	RespondEphemeral(i *discordgo.Interaction, content string) error
+	RespondEmbed(i *discordgo.Interaction, embed *discordgo.MessageEmbed) error
 }
 
 // Handler runs the logic for one slash command. serverID is the resolved
@@ -116,8 +118,30 @@ func (r *Registry) Dispatch(ctx context.Context, resp Responder, i *discordgo.In
 	r.counter.WithLabelValues(name).Inc()
 	// Observe in a defer so the latency is recorded even if the handler panics;
 	// time.Since covers the full handler run (including the reply round-trip).
-	defer func(start time.Time) {
+	// The same start instant is stashed in the context so a handler can report
+	// its own handle latency (see Elapsed) from the metric's reference point.
+	start := time.Now()
+	ctx = context.WithValue(ctx, startKey, start)
+	defer func() {
 		r.duration.WithLabelValues(name).Observe(time.Since(start).Seconds())
-	}(time.Now())
+	}()
 	return h(ctx, resp, i, serverID)
+}
+
+// ctxKey is the private type for context keys owned by this package.
+type ctxKey int
+
+const startKey ctxKey = iota
+
+// Elapsed reports how long the current command has been running, measured from
+// the dispatcher's start instant — the same reference point as the
+// discord_command_duration_seconds histogram. It returns (0, false) when called
+// outside Dispatch (e.g. a unit test invoking a handler directly), so callers
+// can fall back gracefully.
+func Elapsed(ctx context.Context) (time.Duration, bool) {
+	start, ok := ctx.Value(startKey).(time.Time)
+	if !ok {
+		return 0, false
+	}
+	return time.Since(start), true
 }

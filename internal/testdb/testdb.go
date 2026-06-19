@@ -26,7 +26,7 @@ const lockKey = 4242
 
 // appTables are dropped to reset to a clean slate. goose_db_version is included
 // so migrations re-run from scratch.
-const appTables = `permissions, server_settings, ping_log, server_event, servers, goose_db_version`
+const appTables = `permissions, server_settings, server_event, servers, goose_db_version`
 
 // Clean acquires the cross-process lock and drops all application tables,
 // returning a pool against an empty (un-migrated) database. Use it when the test
