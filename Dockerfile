@@ -32,11 +32,16 @@ ARG GID=1000
 RUN addgroup -g ${GID} dev \
  && adduser -D -u ${UID} -G dev dev
 WORKDIR /src
+# Keep the Go build cache in a stable dev-owned dir, deliberately OUTSIDE the
+# bind-mounted /src (and air's tmp_dir under it) so air's cleanup never wipes it
+# and incremental rebuilds stay fast.
+ENV GOCACHE=/home/dev/.cache/go-build
 RUN go install github.com/air-verse/air@latest \
  && go install github.com/go-delve/delve/cmd/dlv@latest
 COPY go.mod go.sum ./
 RUN go mod download \
- && chown -R dev:dev /go /src
+ && mkdir -p ${GOCACHE} \
+ && chown -R dev:dev /go /src /home/dev
 USER dev
 EXPOSE 2345 9464
 ENTRYPOINT ["air", "-c", ".air.toml"]

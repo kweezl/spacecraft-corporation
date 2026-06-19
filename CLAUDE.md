@@ -143,7 +143,13 @@ Prod is `docker compose up`; dev is
 
 `.air.toml` at repo root drives local hot reload: watches `**/*.go`, rebuilds on
 change, and (for debugging) launches the binary under delve rather than running
-it directly — see below.
+it directly — see below. The build bakes a version tag via ldflags the same way
+prod does, read from the `VERSION` env var (default `dev`); run a custom tag with
+`VERSION=mytag docker compose -f docker-compose.dev.yml up`. `send_interrupt` is
+on so a rebuild sends SIGINT (not SIGKILL), letting fx `OnStop` hooks run. The
+dev image pins `GOCACHE` to `/home/dev/.cache/go-build` — outside the
+bind-mounted `/src` and air's `tmp_dir` — so air's cleanup never wipes the build
+cache and rebuilds stay incremental.
 
 ### Step debugging (delve)
 
