@@ -5,12 +5,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/kweezl/spacecraft-corporation/internal/db"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
 	"go.uber.org/zap"
+
+	"github.com/kweezl/spacecraft-corporation/internal/db"
 )
 
 func TestPool_ConnectsAndPings(t *testing.T) {
@@ -23,7 +25,7 @@ func TestPool_ConnectsAndPings(t *testing.T) {
 	app := fxtest.New(t,
 		fx.Provide(func() *zap.Logger { return zap.NewNop() }),
 		db.Module(),
-		fx.Invoke(func(p interface{ Ping(context.Context) error }) {
+		fx.Invoke(func(p *pgxpool.Pool) {
 			assert.NoError(t, p.Ping(context.Background()))
 		}),
 	)

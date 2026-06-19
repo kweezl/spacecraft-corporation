@@ -3,9 +3,10 @@ package app
 import (
 	"testing"
 
-	"github.com/kweezl/spacecraft-corporation/internal/feature"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kweezl/spacecraft-corporation/internal/feature"
 )
 
 func TestSelectFeatures_Known(t *testing.T) {

@@ -2,8 +2,9 @@ package session
 
 import (
 	"github.com/caarlos0/env/v11"
-	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"go.uber.org/fx"
+
+	"github.com/kweezl/spacecraft-corporation/internal/logger"
 )
 
 // Module provides the Manager and runs it via the fx lifecycle. Its OnStart
