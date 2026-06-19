@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/kweezl/spacecraft-cadet/internal/appconfig"
-	"github.com/kweezl/spacecraft-cadet/internal/crypto"
 	"github.com/kweezl/spacecraft-cadet/internal/db"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/session"
@@ -15,7 +14,6 @@ import (
 	"github.com/kweezl/spacecraft-cadet/internal/health"
 	"github.com/kweezl/spacecraft-cadet/internal/logger"
 	"github.com/kweezl/spacecraft-cadet/internal/migrator"
-	"github.com/kweezl/spacecraft-cadet/internal/token"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxevent"
 	"go.uber.org/zap"
@@ -33,8 +31,6 @@ func coreModules() []fx.Option {
 		health.Module(),
 		db.Module(),
 		migrator.Module(),
-		crypto.Module(),
-		token.Module(),
 		registry.Module(),
 		session.Module(),
 	}

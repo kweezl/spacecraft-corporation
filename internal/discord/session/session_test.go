@@ -6,7 +6,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
-	"github.com/kweezl/spacecraft-cadet/internal/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -21,25 +20,21 @@ type fakeDiscord struct {
 }
 
 type created struct {
-	guildID string
-	name    string
+	serverID string
+	name     string
 }
 
 func (f *fakeDiscord) AddInteractionHandler(fn func(*discordgo.InteractionCreate)) { f.handler = fn }
 func (f *fakeDiscord) Open() error                                                 { f.opened = true; return nil }
 func (f *fakeDiscord) Close() error                                                { f.closed = true; return nil }
-func (f *fakeDiscord) CreateCommand(guildID string, cmd *discordgo.ApplicationCommand) error {
-	f.created = append(f.created, created{guildID: guildID, name: cmd.Name})
+func (f *fakeDiscord) CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error {
+	f.created = append(f.created, created{serverID: serverID, name: cmd.Name})
 	return nil
 }
 func (f *fakeDiscord) Respond(_ *discordgo.Interaction, content string) error {
 	f.lastReply = content
 	return nil
 }
-
-type fakeTokens struct{ toks []token.Token }
-
-func (f fakeTokens) ListEnabled(context.Context) ([]token.Token, error) { return f.toks, nil }
 
 func newTestRegistry() *registry.Registry {
 	cmd := &registry.Command{
@@ -51,15 +46,14 @@ func newTestRegistry() *registry.Registry {
 	return registry.New(registry.Params{Commands: []*registry.Command{cmd}})
 }
 
-func TestManager_GuildScope_OpensAndRegisters(t *testing.T) {
+func TestManager_ServerScope_OpensAndRegisters(t *testing.T) {
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) {
 		fake = &fakeDiscord{token: tok}
 		return fake, nil
 	}
 	m := newManager(
-		Config{Scope: "guild", DevGuildID: "dev-guild"},
-		fakeTokens{toks: []token.Token{{GuildID: "g1", Token: "tok-1"}}},
+		Config{Token: "tok-1", Scope: "server", DevServerID: "dev-server"},
 		newTestRegistry(), factory, zap.NewNop(),
 	)
 
@@ -68,7 +62,7 @@ func TestManager_GuildScope_OpensAndRegisters(t *testing.T) {
 	assert.Equal(t, "tok-1", fake.token)
 	assert.True(t, fake.opened)
 	require.Len(t, fake.created, 1)
-	assert.Equal(t, "dev-guild", fake.created[0].guildID)
+	assert.Equal(t, "dev-server", fake.created[0].serverID)
 	assert.Equal(t, "ping", fake.created[0].name)
 
 	// Interaction handler routes through the registry.
@@ -82,15 +76,14 @@ func TestManager_GuildScope_OpensAndRegisters(t *testing.T) {
 	assert.True(t, fake.closed)
 }
 
-func TestManager_GlobalScope_UsesEmptyGuild(t *testing.T) {
+func TestManager_GlobalScope_UsesEmptyServer(t *testing.T) {
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
 	m := newManager(
-		Config{Scope: "global"},
-		fakeTokens{toks: []token.Token{{GuildID: "g1", Token: "tok-1"}}},
+		Config{Token: "tok-1", Scope: "global"},
 		newTestRegistry(), factory, zap.NewNop(),
 	)
 	require.NoError(t, m.Start(context.Background()))
 	require.Len(t, fake.created, 1)
-	assert.Equal(t, "", fake.created[0].guildID)
+	assert.Equal(t, "", fake.created[0].serverID)
 }

@@ -22,15 +22,15 @@ func TestPgRepository_RecordAndCount(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS ping_log, bot_tokens, goose_db_version`)
+	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS ping_log, goose_db_version`)
 	require.NoError(t, migrator.Run(pool, zap.NewNop()))
 
 	repo := newRepository(pool)
-	require.NoError(t, repo.Record(ctx, "g1", "u1"))
-	require.NoError(t, repo.Record(ctx, "g1", "u2"))
-	require.NoError(t, repo.Record(ctx, "g2", "u1"))
+	require.NoError(t, repo.Record(ctx, "s1", "u1"))
+	require.NoError(t, repo.Record(ctx, "s1", "u2"))
+	require.NoError(t, repo.Record(ctx, "s2", "u1"))
 
-	n, err := repo.Count(ctx, "g1")
+	n, err := repo.Count(ctx, "s1")
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), n)
 }
