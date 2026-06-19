@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 )
 
 type fakeDiscord struct {

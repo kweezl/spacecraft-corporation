@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoad_UnsetEnablesAll(t *testing.T) {
-	os.Unsetenv("FEATURES")
+	require.NoError(t, os.Unsetenv("FEATURES"))
 	got, err := Load()
 	require.NoError(t, err)
 	assert.Equal(t, All(), got)
