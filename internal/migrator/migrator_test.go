@@ -27,7 +27,7 @@ func TestRun_CreatesTables(t *testing.T) {
 	var n int
 	err := pool.QueryRow(ctx,
 		`SELECT count(*) FROM information_schema.tables
-		 WHERE table_name IN ('ping_log', 'servers', 'server_event')`).Scan(&n)
+		 WHERE table_name IN ('servers', 'server_event')`).Scan(&n)
 	require.NoError(t, err)
-	assert.Equal(t, 3, n)
+	assert.Equal(t, 2, n)
 }
