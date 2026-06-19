@@ -16,7 +16,10 @@ func Module() fx.Option {
 		fx.Provide(NewFactory),
 		fx.Provide(fx.Annotate(
 			newManager,
-			fx.ParamTags(``, ``, ``, ``, `group:"guild_create"`, `group:"guild_delete"`, ``, ``),
+			// access is optional: the permissions feature provides it when enabled;
+			// otherwise it is nil and the gate allows every command. loc renders the
+			// approval/denied replies (required, from the i18n module).
+			fx.ParamTags(``, ``, ``, ``, `optional:"true"`, ``, `group:"guild_create"`, `group:"guild_delete"`, ``, ``),
 		)),
 		// Contribute a "discord" readiness probe (gateway connected) to the
 		// instrumentation group.
