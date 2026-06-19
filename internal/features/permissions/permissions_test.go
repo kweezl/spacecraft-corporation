@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -19,6 +20,10 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/features/permissions/mocks"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
+
+// g1 is a fixed resolved servers.id used across the gate/command tests (the
+// session would resolve the snowflake to this before the handler runs).
+var g1 = uuid.New()
 
 func testLoc(t *testing.T) *i18n.Localizer {
 	t.Helper()
@@ -49,10 +54,10 @@ func newStore(t *testing.T, repo permissions.Repository) *permissions.Store {
 
 func TestGate_NoMapping_RequiredDenies(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, "g1").Return(nil, nil).Once()
+	repo.EXPECT().List(mock.Anything, g1).Return(nil, nil).Once()
 
 	ok, err := permissions.NewGate(newStore(t, repo)).IsAllowed(context.Background(), session.AccessRequest{
-		ServerID: "g1", Command: "locked", DefaultDeny: true,
+		ServerID: g1, Command: "locked", DefaultDeny: true,
 	})
 	require.NoError(t, err)
 	assert.False(t, ok, "a required command with no mapping is denied")
@@ -60,10 +65,10 @@ func TestGate_NoMapping_RequiredDenies(t *testing.T) {
 
 func TestGate_NoMapping_OptionalAllows(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, "g1").Return(nil, nil).Once()
+	repo.EXPECT().List(mock.Anything, g1).Return(nil, nil).Once()
 
 	ok, err := permissions.NewGate(newStore(t, repo)).IsAllowed(context.Background(), session.AccessRequest{
-		ServerID: "g1", Command: "ping", DefaultDeny: false,
+		ServerID: g1, Command: "ping", DefaultDeny: false,
 	})
 	require.NoError(t, err)
 	assert.True(t, ok, "an optional command with no mapping is open")
@@ -71,13 +76,13 @@ func TestGate_NoMapping_OptionalAllows(t *testing.T) {
 
 func TestGate_Mapping_AnyOfRoleMatches(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, "g1").Return([]permissions.Mapping{
+	repo.EXPECT().List(mock.Anything, g1).Return([]permissions.Mapping{
 		{Command: "ping", RoleID: "admin"},
 		{Command: "ping", RoleID: "mod"},
 	}, nil).Once()
 
 	ok, err := permissions.NewGate(newStore(t, repo)).IsAllowed(context.Background(), session.AccessRequest{
-		ServerID: "g1", Command: "ping", UserRoles: []string{"member", "mod"}, DefaultDeny: false,
+		ServerID: g1, Command: "ping", UserRoles: []string{"member", "mod"}, DefaultDeny: false,
 	})
 	require.NoError(t, err)
 	assert.True(t, ok, "holding any one mapped role grants access")
@@ -85,12 +90,12 @@ func TestGate_Mapping_AnyOfRoleMatches(t *testing.T) {
 
 func TestGate_Mapping_NoMatchingRoleDenies(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, "g1").Return([]permissions.Mapping{
+	repo.EXPECT().List(mock.Anything, g1).Return([]permissions.Mapping{
 		{Command: "ping", RoleID: "admin"},
 	}, nil).Once()
 
 	ok, err := permissions.NewGate(newStore(t, repo)).IsAllowed(context.Background(), session.AccessRequest{
-		ServerID: "g1", Command: "ping", UserRoles: []string{"member"}, DefaultDeny: false,
+		ServerID: g1, Command: "ping", UserRoles: []string{"member"}, DefaultDeny: false,
 	})
 	require.NoError(t, err)
 	assert.False(t, ok, "a mapped command denies a member without any mapped role")
@@ -98,10 +103,10 @@ func TestGate_Mapping_NoMatchingRoleDenies(t *testing.T) {
 
 func TestGate_RepoError(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, "g1").Return(nil, assert.AnError).Once()
+	repo.EXPECT().List(mock.Anything, g1).Return(nil, assert.AnError).Once()
 
 	_, err := permissions.NewGate(newStore(t, repo)).IsAllowed(context.Background(), session.AccessRequest{
-		ServerID: "g1", Command: "ping",
+		ServerID: g1, Command: "ping",
 	})
 	require.Error(t, err)
 }
@@ -110,14 +115,14 @@ func TestGate_RepoError(t *testing.T) {
 // served from cache: List is mocked .Once(), so a second DB load would fail.
 func TestGate_CachesPerServer(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, "g1").Return([]permissions.Mapping{
+	repo.EXPECT().List(mock.Anything, g1).Return([]permissions.Mapping{
 		{Command: "ping", RoleID: "r1"},
 	}, nil).Once()
 	gate := permissions.NewGate(newStore(t, repo))
 
 	for range 3 {
 		ok, err := gate.IsAllowed(context.Background(), session.AccessRequest{
-			ServerID: "g1", Command: "ping", UserRoles: []string{"r1"},
+			ServerID: g1, Command: "ping", UserRoles: []string{"r1"},
 		})
 		require.NoError(t, err)
 		assert.True(t, ok)
@@ -128,21 +133,21 @@ func TestGate_CachesPerServer(t *testing.T) {
 // the new mapping on its next check (the second List returns the updated set).
 func TestStore_InvalidatesOnWrite(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, "g1").Return(nil, nil).Once() // before: unmapped
-	repo.EXPECT().Grant(mock.Anything, "g1", "ping", "r1", "u1").Return(nil).Once()
-	repo.EXPECT().List(mock.Anything, "g1").Return([]permissions.Mapping{
+	repo.EXPECT().List(mock.Anything, g1).Return(nil, nil).Once() // before: unmapped
+	repo.EXPECT().Grant(mock.Anything, g1, "ping", "r1", "u1").Return(nil).Once()
+	repo.EXPECT().List(mock.Anything, g1).Return([]permissions.Mapping{
 		{Command: "ping", RoleID: "r1"},
 	}, nil).Once() // after: mapped to r1
 
 	store := newStore(t, repo)
 	gate := permissions.NewGate(store)
-	req := session.AccessRequest{ServerID: "g1", Command: "ping", UserRoles: []string{"member"}, DefaultDeny: false}
+	req := session.AccessRequest{ServerID: g1, Command: "ping", UserRoles: []string{"member"}, DefaultDeny: false}
 
 	ok, err := gate.IsAllowed(context.Background(), req)
 	require.NoError(t, err)
 	assert.True(t, ok, "no mapping yet → optional command open")
 
-	require.NoError(t, store.Grant(context.Background(), "g1", "ping", "r1", "u1"))
+	require.NoError(t, store.Grant(context.Background(), g1, "ping", "r1", "u1"))
 
 	ok, err = gate.IsAllowed(context.Background(), req)
 	require.NoError(t, err)
@@ -179,11 +184,11 @@ func TestCommand_IsDefaultDeny(t *testing.T) {
 
 func TestCommand_Grant(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Grant(mock.Anything, "g1", "ping", "r1", "u1").Return(nil).Once()
+	repo.EXPECT().Grant(mock.Anything, g1, "ping", "r1", "u1").Return(nil).Once()
 
 	resp := &fakeResponder{}
 	err := permissions.NewCommand(newStore(t, repo), testLoc(t)).Handler(context.Background(), resp,
-		permInteraction("grant", opt("command", "ping"), opt("role", "r1")))
+		permInteraction("grant", opt("command", "ping"), opt("role", "r1")), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "<@&r1>")
 	assert.Contains(t, resp.last, "/ping")
@@ -191,33 +196,33 @@ func TestCommand_Grant(t *testing.T) {
 
 func TestCommand_Revoke(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Revoke(mock.Anything, "g1", "ping", "r1").Return(nil).Once()
+	repo.EXPECT().Revoke(mock.Anything, g1, "ping", "r1").Return(nil).Once()
 
 	resp := &fakeResponder{}
 	err := permissions.NewCommand(newStore(t, repo), testLoc(t)).Handler(context.Background(), resp,
-		permInteraction("revoke", opt("command", "ping"), opt("role", "r1")))
+		permInteraction("revoke", opt("command", "ping"), opt("role", "r1")), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "Revoked")
 }
 
 func TestCommand_Clear(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Clear(mock.Anything, "g1", "ping").Return(nil).Once()
+	repo.EXPECT().Clear(mock.Anything, g1, "ping").Return(nil).Once()
 
 	resp := &fakeResponder{}
 	err := permissions.NewCommand(newStore(t, repo), testLoc(t)).Handler(context.Background(), resp,
-		permInteraction("clear", opt("command", "ping")))
+		permInteraction("clear", opt("command", "ping")), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "Cleared")
 }
 
 func TestCommand_ListForCommand(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().RolesFor(mock.Anything, "g1", "ping").Return([]string{"r1", "r2"}, nil).Once()
+	repo.EXPECT().RolesFor(mock.Anything, g1, "ping").Return([]string{"r1", "r2"}, nil).Once()
 
 	resp := &fakeResponder{}
 	err := permissions.NewCommand(newStore(t, repo), testLoc(t)).Handler(context.Background(), resp,
-		permInteraction("list", opt("command", "ping")))
+		permInteraction("list", opt("command", "ping")), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "<@&r1>")
 	assert.Contains(t, resp.last, "<@&r2>")
@@ -225,25 +230,25 @@ func TestCommand_ListForCommand(t *testing.T) {
 
 func TestCommand_ListForCommand_Empty(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().RolesFor(mock.Anything, "g1", "ping").Return(nil, nil).Once()
+	repo.EXPECT().RolesFor(mock.Anything, g1, "ping").Return(nil, nil).Once()
 
 	resp := &fakeResponder{}
 	err := permissions.NewCommand(newStore(t, repo), testLoc(t)).Handler(context.Background(), resp,
-		permInteraction("list", opt("command", "ping")))
+		permInteraction("list", opt("command", "ping")), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "default access")
 }
 
 func TestCommand_ListAll(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, "g1").Return([]permissions.Mapping{
+	repo.EXPECT().List(mock.Anything, g1).Return([]permissions.Mapping{
 		{Command: "ping", RoleID: "r1"},
 		{Command: "permissions", RoleID: "r9"},
 	}, nil).Once()
 
 	resp := &fakeResponder{}
 	err := permissions.NewCommand(newStore(t, repo), testLoc(t)).Handler(context.Background(), resp,
-		permInteraction("list"))
+		permInteraction("list"), g1)
 	require.NoError(t, err)
 	assert.Contains(t, resp.last, "/ping")
 	assert.Contains(t, resp.last, "/permissions")

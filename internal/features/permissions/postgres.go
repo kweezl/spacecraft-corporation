@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kweezl/spacecraft-corporation/internal/uuidv7"
@@ -17,10 +18,9 @@ func newRepository(pool *pgxpool.Pool) Repository {
 	return &pgRepository{pool: pool}
 }
 
-func (r *pgRepository) RolesFor(ctx context.Context, serverID, command string) ([]string, error) {
+func (r *pgRepository) RolesFor(ctx context.Context, serverID uuid.UUID, command string) ([]string, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT role_id FROM permissions
-		 WHERE servers_id = (SELECT id FROM servers WHERE server_id = $1) AND command = $2`,
+		`SELECT role_id FROM permissions WHERE servers_id = $1 AND command = $2`,
 		serverID, command)
 	if err != nil {
 		return nil, err
@@ -38,7 +38,7 @@ func (r *pgRepository) RolesFor(ctx context.Context, serverID, command string) (
 	return roles, rows.Err()
 }
 
-func (r *pgRepository) Grant(ctx context.Context, serverID, command, roleID, createdByUserID string) error {
+func (r *pgRepository) Grant(ctx context.Context, serverID uuid.UUID, command, roleID, createdByUserID string) error {
 	id, err := uuidv7.New()
 	if err != nil {
 		return err
@@ -48,32 +48,30 @@ func (r *pgRepository) Grant(ctx context.Context, serverID, command, roleID, cre
 	// (server_id, command, role_id) unique constraint and is a no-op.
 	_, err = r.pool.Exec(ctx, `
 		INSERT INTO permissions (id, servers_id, command, role_id, created_by_user_id, created_at)
-		VALUES ($1, (SELECT id FROM servers WHERE server_id = $2), $3, $4, $5, $6)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (servers_id, command, role_id) DO NOTHING`,
 		id, serverID, command, roleID, createdByUserID, time.Now())
 	return err
 }
 
-func (r *pgRepository) Revoke(ctx context.Context, serverID, command, roleID string) error {
+func (r *pgRepository) Revoke(ctx context.Context, serverID uuid.UUID, command, roleID string) error {
 	_, err := r.pool.Exec(ctx,
-		`DELETE FROM permissions
-		 WHERE servers_id = (SELECT id FROM servers WHERE server_id = $1) AND command = $2 AND role_id = $3`,
+		`DELETE FROM permissions WHERE servers_id = $1 AND command = $2 AND role_id = $3`,
 		serverID, command, roleID)
 	return err
 }
 
-func (r *pgRepository) Clear(ctx context.Context, serverID, command string) error {
+func (r *pgRepository) Clear(ctx context.Context, serverID uuid.UUID, command string) error {
 	_, err := r.pool.Exec(ctx,
-		`DELETE FROM permissions
-		 WHERE servers_id = (SELECT id FROM servers WHERE server_id = $1) AND command = $2`,
+		`DELETE FROM permissions WHERE servers_id = $1 AND command = $2`,
 		serverID, command)
 	return err
 }
 
-func (r *pgRepository) List(ctx context.Context, serverID string) ([]Mapping, error) {
+func (r *pgRepository) List(ctx context.Context, serverID uuid.UUID) ([]Mapping, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT command, role_id FROM permissions
-		 WHERE servers_id = (SELECT id FROM servers WHERE server_id = $1) ORDER BY command, role_id`,
+		 WHERE servers_id = $1 ORDER BY command, role_id`,
 		serverID)
 	if err != nil {
 		return nil, err

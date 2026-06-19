@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"go.uber.org/zap"
 
@@ -29,13 +30,13 @@ type Store struct {
 	repo  Repository
 	tr    *i18n.Translator
 	log   *zap.Logger
-	cache *lru.Cache[string, resolved]
+	cache *lru.Cache[uuid.UUID, resolved]
 }
 
 // NewStore wraps a Repository with the resolution cache. The Translator supplies
 // the app defaults and validates stored values still exist.
 func NewStore(repo Repository, tr *i18n.Translator, log *zap.Logger) (*Store, error) {
-	c, err := lru.New[string, resolved](defaultCacheSize)
+	c, err := lru.New[uuid.UUID, resolved](defaultCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("settings: new cache: %w", err)
 	}
@@ -45,14 +46,14 @@ func NewStore(repo Repository, tr *i18n.Translator, log *zap.Logger) (*Store, er
 // Resolve returns the server's effective theme and language, applying app
 // defaults for unset or no-longer-valid values. It never fails; a lookup error
 // falls back to defaults (and is logged) without caching.
-func (s *Store) Resolve(ctx context.Context, serverID string) (string, string) {
+func (s *Store) Resolve(ctx context.Context, serverID uuid.UUID) (string, string) {
 	if r, ok := s.cache.Get(serverID); ok {
 		return r.theme, r.lang
 	}
 	defTheme, defLang := s.tr.Defaults()
 	st, err := s.repo.Get(ctx, serverID)
 	if err != nil {
-		s.log.Error("resolve settings", zap.String("server_id", serverID), zap.Error(err))
+		s.log.Error("resolve settings", zap.String("server_id", serverID.String()), zap.Error(err))
 		return defTheme, defLang
 	}
 	theme := st.Theme
@@ -68,12 +69,12 @@ func (s *Store) Resolve(ctx context.Context, serverID string) (string, string) {
 }
 
 // Get returns the raw stored settings (uncached, for display).
-func (s *Store) Get(ctx context.Context, serverID string) (Settings, error) {
+func (s *Store) Get(ctx context.Context, serverID uuid.UUID) (Settings, error) {
 	return s.repo.Get(ctx, serverID)
 }
 
 // SetTheme persists the theme and invalidates the server's cached resolution.
-func (s *Store) SetTheme(ctx context.Context, serverID, theme string) error {
+func (s *Store) SetTheme(ctx context.Context, serverID uuid.UUID, theme string) error {
 	if err := s.repo.SetTheme(ctx, serverID, theme); err != nil {
 		return err
 	}
@@ -82,7 +83,7 @@ func (s *Store) SetTheme(ctx context.Context, serverID, theme string) error {
 }
 
 // SetLanguage persists the language and invalidates the server's cached resolution.
-func (s *Store) SetLanguage(ctx context.Context, serverID, language string) error {
+func (s *Store) SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error {
 	if err := s.repo.SetLanguage(ctx, serverID, language); err != nil {
 		return err
 	}

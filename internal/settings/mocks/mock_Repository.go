@@ -5,6 +5,7 @@ package mocks
 import (
 	context "context"
 
+	uuid "github.com/google/uuid"
 	settings "github.com/kweezl/spacecraft-corporation/internal/settings"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -23,7 +24,7 @@ func (_m *MockRepository) EXPECT() *MockRepository_Expecter {
 }
 
 // Get provides a mock function with given fields: ctx, serverID
-func (_m *MockRepository) Get(ctx context.Context, serverID string) (settings.Settings, error) {
+func (_m *MockRepository) Get(ctx context.Context, serverID uuid.UUID) (settings.Settings, error) {
 	ret := _m.Called(ctx, serverID)
 
 	if len(ret) == 0 {
@@ -32,16 +33,16 @@ func (_m *MockRepository) Get(ctx context.Context, serverID string) (settings.Se
 
 	var r0 settings.Settings
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (settings.Settings, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (settings.Settings, error)); ok {
 		return rf(ctx, serverID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) settings.Settings); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) settings.Settings); ok {
 		r0 = rf(ctx, serverID)
 	} else {
 		r0 = ret.Get(0).(settings.Settings)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = rf(ctx, serverID)
 	} else {
 		r1 = ret.Error(1)
@@ -57,14 +58,14 @@ type MockRepository_Get_Call struct {
 
 // Get is a helper method to define mock.On call
 //   - ctx context.Context
-//   - serverID string
+//   - serverID uuid.UUID
 func (_e *MockRepository_Expecter) Get(ctx interface{}, serverID interface{}) *MockRepository_Get_Call {
 	return &MockRepository_Get_Call{Call: _e.mock.On("Get", ctx, serverID)}
 }
 
-func (_c *MockRepository_Get_Call) Run(run func(ctx context.Context, serverID string)) *MockRepository_Get_Call {
+func (_c *MockRepository_Get_Call) Run(run func(ctx context.Context, serverID uuid.UUID)) *MockRepository_Get_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID))
 	})
 	return _c
 }
@@ -74,13 +75,13 @@ func (_c *MockRepository_Get_Call) Return(_a0 settings.Settings, _a1 error) *Moc
 	return _c
 }
 
-func (_c *MockRepository_Get_Call) RunAndReturn(run func(context.Context, string) (settings.Settings, error)) *MockRepository_Get_Call {
+func (_c *MockRepository_Get_Call) RunAndReturn(run func(context.Context, uuid.UUID) (settings.Settings, error)) *MockRepository_Get_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SetLanguage provides a mock function with given fields: ctx, serverID, language
-func (_m *MockRepository) SetLanguage(ctx context.Context, serverID string, language string) error {
+func (_m *MockRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error {
 	ret := _m.Called(ctx, serverID, language)
 
 	if len(ret) == 0 {
@@ -88,7 +89,7 @@ func (_m *MockRepository) SetLanguage(ctx context.Context, serverID string, lang
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
 		r0 = rf(ctx, serverID, language)
 	} else {
 		r0 = ret.Error(0)
@@ -104,15 +105,15 @@ type MockRepository_SetLanguage_Call struct {
 
 // SetLanguage is a helper method to define mock.On call
 //   - ctx context.Context
-//   - serverID string
+//   - serverID uuid.UUID
 //   - language string
 func (_e *MockRepository_Expecter) SetLanguage(ctx interface{}, serverID interface{}, language interface{}) *MockRepository_SetLanguage_Call {
 	return &MockRepository_SetLanguage_Call{Call: _e.mock.On("SetLanguage", ctx, serverID, language)}
 }
 
-func (_c *MockRepository_SetLanguage_Call) Run(run func(ctx context.Context, serverID string, language string)) *MockRepository_SetLanguage_Call {
+func (_c *MockRepository_SetLanguage_Call) Run(run func(ctx context.Context, serverID uuid.UUID, language string)) *MockRepository_SetLanguage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
 	})
 	return _c
 }
@@ -122,13 +123,13 @@ func (_c *MockRepository_SetLanguage_Call) Return(_a0 error) *MockRepository_Set
 	return _c
 }
 
-func (_c *MockRepository_SetLanguage_Call) RunAndReturn(run func(context.Context, string, string) error) *MockRepository_SetLanguage_Call {
+func (_c *MockRepository_SetLanguage_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_SetLanguage_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SetTheme provides a mock function with given fields: ctx, serverID, theme
-func (_m *MockRepository) SetTheme(ctx context.Context, serverID string, theme string) error {
+func (_m *MockRepository) SetTheme(ctx context.Context, serverID uuid.UUID, theme string) error {
 	ret := _m.Called(ctx, serverID, theme)
 
 	if len(ret) == 0 {
@@ -136,7 +137,7 @@ func (_m *MockRepository) SetTheme(ctx context.Context, serverID string, theme s
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
 		r0 = rf(ctx, serverID, theme)
 	} else {
 		r0 = ret.Error(0)
@@ -152,15 +153,15 @@ type MockRepository_SetTheme_Call struct {
 
 // SetTheme is a helper method to define mock.On call
 //   - ctx context.Context
-//   - serverID string
+//   - serverID uuid.UUID
 //   - theme string
 func (_e *MockRepository_Expecter) SetTheme(ctx interface{}, serverID interface{}, theme interface{}) *MockRepository_SetTheme_Call {
 	return &MockRepository_SetTheme_Call{Call: _e.mock.On("SetTheme", ctx, serverID, theme)}
 }
 
-func (_c *MockRepository_SetTheme_Call) Run(run func(ctx context.Context, serverID string, theme string)) *MockRepository_SetTheme_Call {
+func (_c *MockRepository_SetTheme_Call) Run(run func(ctx context.Context, serverID uuid.UUID, theme string)) *MockRepository_SetTheme_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
 	})
 	return _c
 }
@@ -170,7 +171,7 @@ func (_c *MockRepository_SetTheme_Call) Return(_a0 error) *MockRepository_SetThe
 	return _c
 }
 
-func (_c *MockRepository_SetTheme_Call) RunAndReturn(run func(context.Context, string, string) error) *MockRepository_SetTheme_Call {
+func (_c *MockRepository_SetTheme_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_SetTheme_Call {
 	_c.Call.Return(run)
 	return _c
 }

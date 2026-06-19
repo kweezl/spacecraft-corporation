@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 
@@ -48,10 +49,13 @@ func (c Config) botToken() (string, error) {
 	return "", errors.New("session: set BOT_TOKEN or BOT_TOKEN_FILE")
 }
 
-// ServerApproval gates which servers (guilds) the bot serves. Commands from a
-// server that is not approved are ignored. Provided by the servers module.
-type ServerApproval interface {
-	IsApproved(ctx context.Context, serverID string) (bool, error)
+// ServerResolver resolves a Discord snowflake to its servers.id (the UUID primary
+// key) and approval status, in one cached lookup. The session resolves every
+// interaction's guild through it once: commands from a server that is not approved
+// (or cannot be resolved) are not dispatched, and the resolved id is threaded
+// downstream to handlers. Provided by the servers module.
+type ServerResolver interface {
+	Resolve(ctx context.Context, serverID string) (id uuid.UUID, approved bool, err error)
 }
 
 // CommandAccess decides whether an interaction may run a command, based on the
@@ -63,11 +67,11 @@ type CommandAccess interface {
 	IsAllowed(ctx context.Context, req AccessRequest) (bool, error)
 }
 
-// AccessRequest is what the access gate needs to decide. UserRoles are the
-// invoking member's Discord role IDs in this server; DefaultDeny is the
-// command's policy when the server has no role mapping for it.
+// AccessRequest is what the access gate needs to decide. ServerID is the resolved
+// servers.id; UserRoles are the invoking member's Discord role IDs in this server;
+// DefaultDeny is the command's policy when the server has no role mapping for it.
 type AccessRequest struct {
-	ServerID    string
+	ServerID    uuid.UUID
 	Command     string
 	UserRoles   []string
 	DefaultDeny bool
@@ -107,7 +111,7 @@ type Manager struct {
 	cfg           Config
 	registry      *registry.Registry
 	factory       Factory
-	gate          ServerApproval
+	resolver      ServerResolver
 	access        CommandAccess
 	loc           *i18n.Localizer
 	onGuildCreate []GuildCreateFunc
@@ -129,7 +133,7 @@ func newManager(
 	cfg Config,
 	reg *registry.Registry,
 	factory Factory,
-	gate ServerApproval,
+	resolver ServerResolver,
 	access CommandAccess,
 	loc *i18n.Localizer,
 	onGuildCreate []GuildCreateFunc,
@@ -141,7 +145,7 @@ func newManager(
 		cfg:           cfg,
 		registry:      reg,
 		factory:       factory,
-		gate:          gate,
+		resolver:      resolver,
 		access:        access,
 		loc:           loc,
 		onGuildCreate: onGuildCreate,
@@ -151,18 +155,20 @@ func newManager(
 	}
 }
 
-// approved reports whether a server may be served. A nil gate (e.g. in tests)
-// approves everything; a gate error is treated as not-approved and logged.
-func (m *Manager) approved(ctx context.Context, serverID string) bool {
-	if m.gate == nil {
-		return true
+// resolve looks up a server's id and approval status. A nil resolver (e.g. in
+// tests) approves everything with a nil id; a resolver error is treated as
+// not-approved and logged. The returned id is uuid.Nil when the server is
+// unapproved or unresolvable, which renders the reply with app defaults.
+func (m *Manager) resolve(ctx context.Context, serverID string) (uuid.UUID, bool) {
+	if m.resolver == nil {
+		return uuid.Nil, true
 	}
-	ok, err := m.gate.IsApproved(ctx, serverID)
+	id, approved, err := m.resolver.Resolve(ctx, serverID)
 	if err != nil {
-		m.log.Error("approval check", zap.String("server_id", serverID), zap.Error(err))
-		return false
+		m.log.Error("server resolution", zap.String("server_id", serverID), zap.Error(err))
+		return uuid.Nil, false
 	}
-	return ok
+	return id, approved
 }
 
 // allowed reports whether the interaction may run its command. A nil access gate
@@ -171,7 +177,7 @@ func (m *Manager) approved(ctx context.Context, serverID string) bool {
 // all-permissions into the member's computed permissions, so the Administrator
 // bit covers both. Otherwise the gate decides from the server's role mapping;
 // a gate error fails closed (denied) and is logged.
-func (m *Manager) allowed(ctx context.Context, i *discordgo.InteractionCreate) bool {
+func (m *Manager) allowed(ctx context.Context, i *discordgo.InteractionCreate, serverID uuid.UUID) bool {
 	if m.access == nil {
 		return true
 	}
@@ -189,7 +195,7 @@ func (m *Manager) allowed(ctx context.Context, i *discordgo.InteractionCreate) b
 		roles = i.Member.Roles
 	}
 	ok, err := m.access.IsAllowed(ctx, AccessRequest{
-		ServerID:    i.GuildID,
+		ServerID:    serverID,
 		Command:     name,
 		UserRoles:   roles,
 		DefaultDeny: defaultDeny,
@@ -250,27 +256,31 @@ func (m *Manager) Start(context.Context) error {
 		// a slow query can't hang the handler.
 		ctx, cancel := context.WithTimeout(m.baseCtx, interactionTimeout)
 		defer cancel()
-		if !m.approved(ctx, i.GuildID) {
+		// Resolve the snowflake to the servers.id once; thread it downstream so
+		// nothing re-resolves it per query. uuid.Nil (unapproved/unresolvable)
+		// renders replies with app defaults.
+		serverID, approved := m.resolve(ctx, i.GuildID)
+		if !approved {
 			m.log.Debug("command from unapproved server", zap.String("server_id", i.GuildID))
-			msg := m.loc.Render(ctx, i.GuildID, "session.unapproved", map[string]any{"Owner": m.ownerID})
+			msg := m.loc.Render(ctx, serverID, "session.unapproved", map[string]any{"Owner": m.ownerID})
 			if rerr := d.Respond(i.Interaction, msg); rerr != nil {
 				m.log.Error("respond to unapproved server",
 					zap.String("server_id", i.GuildID), zap.Error(rerr))
 			}
 			return
 		}
-		if !m.allowed(ctx, i) {
+		if !m.allowed(ctx, i, serverID) {
 			name := i.ApplicationCommandData().Name
 			m.log.Debug("command blocked by role gate",
 				zap.String("server_id", i.GuildID), zap.String("command", name))
-			msg := m.loc.Render(ctx, i.GuildID, "session.denied", map[string]any{"Command": name})
+			msg := m.loc.Render(ctx, serverID, "session.denied", map[string]any{"Command": name})
 			if rerr := d.Respond(i.Interaction, msg); rerr != nil {
 				m.log.Error("respond to blocked command",
 					zap.String("server_id", i.GuildID), zap.Error(rerr))
 			}
 			return
 		}
-		if derr := m.registry.Dispatch(ctx, d, i); derr != nil {
+		if derr := m.registry.Dispatch(ctx, d, i, serverID); derr != nil {
 			m.log.Error("dispatch interaction", zap.Error(derr))
 		}
 	})

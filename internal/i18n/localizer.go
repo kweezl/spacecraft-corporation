@@ -1,12 +1,18 @@
 package i18n
 
-import "context"
+import (
+	"context"
 
-// Resolver returns the theme and language a server should use. Implemented by
-// the settings module (per-server choice with env defaults); the returned values
-// are always concrete (defaults already applied).
+	"github.com/google/uuid"
+)
+
+// Resolver returns the theme and language a server should use, keyed by the
+// resolved servers.id. Implemented by the settings module (per-server choice with
+// env defaults); the returned values are always concrete (defaults already
+// applied). The zero UUID (uuid.Nil, used when a server could not be resolved)
+// has no settings row and so resolves to the app defaults.
 type Resolver interface {
-	Resolve(ctx context.Context, serverID string) (theme, lang string)
+	Resolve(ctx context.Context, serverID uuid.UUID) (theme, lang string)
 }
 
 // Localizer is the handler-facing facade: it resolves a server's theme/language
@@ -22,8 +28,9 @@ func NewLocalizer(tr *Translator, res Resolver) *Localizer {
 	return &Localizer{tr: tr, res: res}
 }
 
-// Render resolves the server's theme/language and renders the message.
-func (l *Localizer) Render(ctx context.Context, serverID, key string, data any) string {
+// Render resolves the server's theme/language and renders the message. serverID
+// is the resolved servers.id (uuid.Nil falls back to app defaults).
+func (l *Localizer) Render(ctx context.Context, serverID uuid.UUID, key string, data any) string {
 	theme, lang := l.res.Resolve(ctx, serverID)
 	return l.tr.Render(theme, lang, key, data)
 }
@@ -36,6 +43,6 @@ type StaticResolver struct {
 }
 
 // Resolve returns the fixed theme and language.
-func (s StaticResolver) Resolve(context.Context, string) (string, string) {
+func (s StaticResolver) Resolve(context.Context, uuid.UUID) (string, string) {
 	return s.Theme, s.Lang
 }

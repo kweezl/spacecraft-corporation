@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -24,16 +25,21 @@ func newRepository(pool *pgxpool.Pool) Repository {
 // UPDATE, so `(xmax = 0)` is true exactly when a new row was inserted. The
 // approval clause `servers.approved OR EXCLUDED.approved` only ever promotes to
 // true, so a manual approval is never overwritten by a server falling out of
-// the allowlist.
-func (r *pgRepository) Upsert(ctx context.Context, serverID, name string, inList bool) (bool, error) {
-	id, err := uuidv7.New()
+// the allowlist. It also RETURNs the resulting id and approval so the Manager can
+// prime its cache without a follow-up read.
+func (r *pgRepository) Upsert(ctx context.Context, serverID, name string, inList bool) (uuid.UUID, bool, bool, error) {
+	newID, err := uuidv7.New()
 	if err != nil {
-		return false, err
+		return uuid.Nil, false, false, err
 	}
 	// created_at/updated_at are app-supplied in the configured timezone (no DB
 	// default); on update only updated_at advances, created_at is preserved.
 	now := time.Now()
-	var inserted bool
+	var (
+		id       uuid.UUID
+		approved bool
+		inserted bool
+	)
 	err = r.pool.QueryRow(ctx, `
 		INSERT INTO servers (id, server_id, name, approved, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $5)
@@ -41,8 +47,27 @@ func (r *pgRepository) Upsert(ctx context.Context, serverID, name string, inList
 		SET name       = EXCLUDED.name,
 		    approved   = servers.approved OR EXCLUDED.approved,
 		    updated_at = EXCLUDED.updated_at
-		RETURNING (xmax = 0)`, id, serverID, name, inList, now).Scan(&inserted)
-	return inserted, err
+		RETURNING id, approved, (xmax = 0)`,
+		newID, serverID, name, inList, now).Scan(&id, &approved, &inserted)
+	return id, approved, inserted, err
+}
+
+// Get resolves a Discord snowflake to its servers row id and approval. A missing
+// row is reported as found=false (not an error).
+func (r *pgRepository) Get(ctx context.Context, serverID string) (uuid.UUID, bool, bool, error) {
+	var (
+		id       uuid.UUID
+		approved bool
+	)
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, approved FROM servers WHERE server_id = $1`, serverID).Scan(&id, &approved)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, false, false, err
+	}
+	return id, approved, true, nil
 }
 
 func (r *pgRepository) LogEvent(ctx context.Context, serverID, eventType string) error {
@@ -54,14 +79,4 @@ func (r *pgRepository) LogEvent(ctx context.Context, serverID, eventType string)
 		`INSERT INTO server_event (id, server_id, event_type, created_at) VALUES ($1, $2, $3, $4)`,
 		id, serverID, eventType, time.Now())
 	return err
-}
-
-func (r *pgRepository) IsApproved(ctx context.Context, serverID string) (bool, error) {
-	var approved bool
-	err := r.pool.QueryRow(ctx,
-		`SELECT approved FROM servers WHERE server_id = $1`, serverID).Scan(&approved)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	return approved, err
 }

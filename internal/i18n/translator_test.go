@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -74,6 +75,6 @@ func TestLocalizer_RendersForResolvedServer(t *testing.T) {
 	tr := newTranslator(t)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "ru"})
 
-	got := loc.Render(context.Background(), "g1", "ping.pong", map[string]any{"Count": 7})
+	got := loc.Render(context.Background(), uuid.New(), "ping.pong", map[string]any{"Count": 7})
 	assert.Equal(t, "понг (#7)", got)
 }

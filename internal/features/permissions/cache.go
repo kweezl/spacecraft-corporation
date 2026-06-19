@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
@@ -29,12 +30,12 @@ type serverRoles map[string]map[string]struct{}
 // database directly, so management output is always fresh.
 type Store struct {
 	repo  Repository
-	cache *lru.Cache[string, serverRoles]
+	cache *lru.Cache[uuid.UUID, serverRoles]
 }
 
 // NewStore wraps a Repository with the role cache.
 func NewStore(repo Repository) (*Store, error) {
-	c, err := lru.New[string, serverRoles](defaultCacheSize)
+	c, err := lru.New[uuid.UUID, serverRoles](defaultCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("permissions: new cache: %w", err)
 	}
@@ -44,7 +45,7 @@ func NewStore(repo Repository) (*Store, error) {
 // roleSet returns the set of role IDs mapped to a command on a server, loading
 // (and caching) the server's full mapping on a miss. The returned map is shared
 // and must not be mutated by the caller.
-func (s *Store) roleSet(ctx context.Context, serverID, command string) (map[string]struct{}, error) {
+func (s *Store) roleSet(ctx context.Context, serverID uuid.UUID, command string) (map[string]struct{}, error) {
 	if sr, ok := s.cache.Get(serverID); ok {
 		return sr[command], nil
 	}
@@ -59,7 +60,7 @@ func (s *Store) roleSet(ctx context.Context, serverID, command string) (map[stri
 // whole server (not just one command) means subsequent commands for an active
 // server are served from memory. An unmapped server caches an empty map, so it
 // is not re-queried on every interaction (negative caching).
-func (s *Store) load(ctx context.Context, serverID string) (serverRoles, error) {
+func (s *Store) load(ctx context.Context, serverID uuid.UUID) (serverRoles, error) {
 	all, err := s.repo.List(ctx, serverID)
 	if err != nil {
 		return nil, err
@@ -78,23 +79,23 @@ func (s *Store) load(ctx context.Context, serverID string) (serverRoles, error) 
 }
 
 // invalidate drops a server's cached mapping so the next read reloads it.
-func (s *Store) invalidate(serverID string) { s.cache.Remove(serverID) }
+func (s *Store) invalidate(serverID uuid.UUID) { s.cache.Remove(serverID) }
 
 // Store implements Repository: writes pass through to the DB and invalidate the
 // server's cache; admin reads (RolesFor/List) bypass the cache for freshness.
 
 // RolesFor returns a command's mapped roles straight from the database.
-func (s *Store) RolesFor(ctx context.Context, serverID, command string) ([]string, error) {
+func (s *Store) RolesFor(ctx context.Context, serverID uuid.UUID, command string) ([]string, error) {
 	return s.repo.RolesFor(ctx, serverID, command)
 }
 
 // List returns every mapping on a server straight from the database.
-func (s *Store) List(ctx context.Context, serverID string) ([]Mapping, error) {
+func (s *Store) List(ctx context.Context, serverID uuid.UUID) ([]Mapping, error) {
 	return s.repo.List(ctx, serverID)
 }
 
 // Grant persists a role grant and invalidates the server's cached mapping.
-func (s *Store) Grant(ctx context.Context, serverID, command, roleID, createdByUserID string) error {
+func (s *Store) Grant(ctx context.Context, serverID uuid.UUID, command, roleID, createdByUserID string) error {
 	if err := s.repo.Grant(ctx, serverID, command, roleID, createdByUserID); err != nil {
 		return err
 	}
@@ -103,7 +104,7 @@ func (s *Store) Grant(ctx context.Context, serverID, command, roleID, createdByU
 }
 
 // Revoke removes a role grant and invalidates the server's cached mapping.
-func (s *Store) Revoke(ctx context.Context, serverID, command, roleID string) error {
+func (s *Store) Revoke(ctx context.Context, serverID uuid.UUID, command, roleID string) error {
 	if err := s.repo.Revoke(ctx, serverID, command, roleID); err != nil {
 		return err
 	}
@@ -112,7 +113,7 @@ func (s *Store) Revoke(ctx context.Context, serverID, command, roleID string) er
 }
 
 // Clear removes all role grants for a command and invalidates the server's cache.
-func (s *Store) Clear(ctx context.Context, serverID, command string) error {
+func (s *Store) Clear(ctx context.Context, serverID uuid.UUID, command string) error {
 	if err := s.repo.Clear(ctx, serverID, command); err != nil {
 		return err
 	}
