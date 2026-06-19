@@ -87,7 +87,7 @@ config aggregator**. Each module defines and loads its own env struct via
 
 | Module | Env keys |
 |---|---|
-| `db` | `DATABASE_URL` |
+| `db` | `DATABASE_URL` (under Docker, compose assembles it from `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` so the app and the `postgres` container share one credential set) |
 | `logger` | `LOG_LEVEL` (default `info`) |
 | `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins), `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
 | `health` | `HEALTH_ADDR` (default `:9464`) |

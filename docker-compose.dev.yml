@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: bot
-      POSTGRES_PASSWORD: bot
-      POSTGRES_DB: spacecraft
+      POSTGRES_USER: ${POSTGRES_USER:-bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
+      POSTGRES_DB: ${POSTGRES_DB:-spacecraft}
     ports:
       - "5432:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bot"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bot}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -23,7 +23,7 @@ services:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
     environment:
-      DATABASE_URL: postgres://bot:bot@postgres:5432/spacecraft?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-bot}:${POSTGRES_PASSWORD:-bot}@postgres:5432/${POSTGRES_DB:-spacecraft}?sslmode=disable
       BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
       COMMAND_SCOPE: ${COMMAND_SCOPE:-server}
       DEV_SERVER_ID: ${DEV_SERVER_ID:-}

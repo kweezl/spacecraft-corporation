@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: bot
-      POSTGRES_PASSWORD: bot
-      POSTGRES_DB: spacecraft
+      POSTGRES_USER: ${POSTGRES_USER:-bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
+      POSTGRES_DB: ${POSTGRES_DB:-spacecraft}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bot"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bot}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,7 +20,7 @@ services:
       args:
         VERSION: ${VERSION:-0.0.0-unspecified}
     environment:
-      DATABASE_URL: postgres://bot:bot@postgres:5432/spacecraft?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-bot}:${POSTGRES_PASSWORD:-bot}@postgres:5432/${POSTGRES_DB:-spacecraft}?sslmode=disable
       BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
       # Safer for prod: mount the token as a file instead of the env var above.
       # Comment out BOT_TOKEN, uncomment the line + the secrets blocks below, and
