@@ -1,4 +1,4 @@
-module github.com/kweezl/spacecraft-cadet
+module github.com/kweezl/spacecraft-corporation
 
 go 1.26.4
 

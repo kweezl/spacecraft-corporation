@@ -9,7 +9,7 @@ RUN go mod download
 COPY . .
 ARG VERSION=0.0.0-unspecified
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-X github.com/kweezl/spacecraft-cadet/internal/appconfig.version=${VERSION}" \
+    -ldflags "-X github.com/kweezl/spacecraft-corporation/internal/appconfig.version=${VERSION}" \
     -o /bot ./cmd/bot
 
 # --- prod (minimal runtime) --------------------------------------------------

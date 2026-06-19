@@ -46,4 +46,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build --target prod --build-arg VERSION=${GITHUB_SHA::7} -t spacecraft-cadet:ci .
+      - run: docker build --target prod --build-arg VERSION=${GITHUB_SHA::7} -t spacecraft-corporation:ci .

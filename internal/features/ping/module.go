@@ -1,7 +1,7 @@
 package ping
 
 import (
-	"github.com/kweezl/spacecraft-cadet/internal/logger"
+	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"go.uber.org/fx"
 )
 

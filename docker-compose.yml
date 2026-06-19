@@ -29,7 +29,7 @@ services:
       COMMAND_SCOPE: ${COMMAND_SCOPE:-server}
       DEV_SERVER_ID: ${DEV_SERVER_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      APP_NAME: ${APP_NAME:-spacecraft-cadet}
+      APP_NAME: ${APP_NAME:-spacecraft-corporation}
       FEATURES: ${FEATURES:-ping}
       HEALTH_ADDR: ${HEALTH_ADDR:-:8080}
     # secrets:
