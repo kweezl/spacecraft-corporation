@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -72,6 +73,10 @@ type Discord interface {
 	CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error
 	Open() error
 	Close() error
+	// Connected reports whether the gateway connection is live and the initial
+	// READY handshake has completed (discordgo's DataReady). Open() returns
+	// before READY arrives, so this is what readiness actually waits on.
+	Connected() bool
 }
 
 // Factory builds a Discord session for a bot token.
@@ -88,6 +93,9 @@ type Manager struct {
 	log           *zap.Logger
 	ownerID       string // bot owner's Discord ID, surfaced in the unapproved reply
 
+	// mu guards session, which Start writes and the readiness probe reads
+	// concurrently (the instrumentation server starts before this module).
+	mu      sync.RWMutex
 	session Discord
 	// baseCtx scopes per-interaction work to the session's lifetime; cancelled on
 	// Stop. NOT the fx OnStart context, which is done once Start returns.
@@ -211,7 +219,9 @@ func (m *Manager) Start(context.Context) error {
 		return fmt.Errorf("open session: %w", err)
 	}
 
+	m.mu.Lock()
 	m.session = d
+	m.mu.Unlock()
 	m.log.Info("session started")
 	return nil
 }
@@ -221,10 +231,25 @@ func (m *Manager) Stop(context.Context) error {
 	if m.cancel != nil {
 		m.cancel()
 	}
-	if m.session != nil {
-		_ = m.session.Close()
+	if s := m.current(); s != nil {
+		_ = s.Close()
 	}
 	return nil
+}
+
+// current returns the live session (nil before Start), guarded against the
+// concurrent readiness probe.
+func (m *Manager) current() Discord {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.session
+}
+
+// Connected reports whether the session exists and its gateway is ready. It
+// backs the "discord" readiness probe.
+func (m *Manager) Connected() bool {
+	s := m.current()
+	return s != nil && s.Connected()
 }
 
 func register(lc fx.Lifecycle, m *Manager) {

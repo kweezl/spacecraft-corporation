@@ -39,7 +39,7 @@ x-bot-env: &bot-env
   # Custom build tag baked into the dev binary by air's ldflags.
   APP_VERSION: ${APP_VERSION:-dev}
   FEATURES: ${FEATURES:-ping}
-  HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
+  INSTRUMENTATION_ADDR: ${INSTRUMENTATION_ADDR:-:9464}
 
 services:
   postgres:
