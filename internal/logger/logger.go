@@ -28,6 +28,12 @@ func New(cfg Config, app appconfig.AppConfig) (*zap.Logger, error) {
 	zcfg.Level = zap.NewAtomicLevelAt(cfg.Level)
 	// Disable zap's built-in stacktrace policy; we set our own threshold below.
 	zcfg.DisableStacktrace = true
+	// Log timestamps as a readable datetime with microsecond precision under the
+	// "timestamp" key, instead of zap's default epoch-seconds float. No timezone
+	// suffix: times render in the process zone (APP_TIMEZONE, default UTC), which
+	// appconfig pins via time.Local before this logger is built.
+	zcfg.EncoderConfig.TimeKey = "timestamp"
+	zcfg.EncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02T15:04:05.000000")
 
 	log, err := zcfg.Build(zap.AddStacktrace(zapcore.ErrorLevel))
 	if err != nil {
