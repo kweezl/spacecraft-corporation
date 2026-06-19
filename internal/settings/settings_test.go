@@ -109,6 +109,13 @@ func (f *fakeResponder) RespondEphemeral(_ *discordgo.Interaction, content strin
 	return nil
 }
 
+func (f *fakeResponder) RespondEmbed(_ *discordgo.Interaction, embed *discordgo.MessageEmbed) error {
+	if embed != nil {
+		f.last = embed.Title
+	}
+	return nil
+}
+
 func settingsInteraction(sub string, opts ...*discordgo.ApplicationCommandInteractionDataOption) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
 		Type:    discordgo.InteractionApplicationCommand,

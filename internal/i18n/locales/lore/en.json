@@ -1,5 +1,9 @@
 {
-  "ping.pong": "📡 Telemetry ping acknowledged (#{{.Count}}).",
+  "ping.title": "📡 Telemetry Response",
+  "ping.handle_field": "Onboard processing",
+  "ping.roundtrip_field": "Signal round-trip",
+  "ping.latency_us": "{{.Value}} µs",
+  "ping.latency_ms": "{{.Value}} ms",
 
   "session.unapproved": "This outpost is not yet cleared for operations. Request authorization from the fleet commander {{if .Owner}}<@{{.Owner}}> {{end}}before proceeding.",
   "session.denied": "Access denied: your clearance does not authorize /{{.Command}}. Petition a station officer to grant your rank access.",
