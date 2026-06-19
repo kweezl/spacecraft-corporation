@@ -5,13 +5,24 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
+
+// testLoc builds a Localizer over the real bundles, fixed to standard/en.
+func testLoc() *i18n.Localizer {
+	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
+	if err != nil {
+		panic(err)
+	}
+	return i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
+}
 
 type fakeDiscord struct {
 	token          string
@@ -46,6 +57,10 @@ func (f *fakeDiscord) Respond(_ *discordgo.Interaction, content string) error {
 	f.lastReply = content
 	return nil
 }
+func (f *fakeDiscord) RespondEphemeral(_ *discordgo.Interaction, content string) error {
+	f.lastReply = content
+	return nil
+}
 
 // fireGuildCreate invokes every registered GuildCreate handler, mimicking
 // discordgo delivering the event.
@@ -63,33 +78,34 @@ func (f *fakeDiscord) fireCommand(serverID string) {
 	}})
 }
 
-// gateFunc adapts a func to the ServerApproval interface.
+// gateFunc adapts an approval predicate to the ServerResolver interface. The
+// resolved id is uuid.Nil here — the test command handler ignores it.
 type gateFunc func(serverID string) bool
 
-func (g gateFunc) IsApproved(_ context.Context, serverID string) (bool, error) {
-	return g(serverID), nil
+func (g gateFunc) Resolve(_ context.Context, serverID string) (uuid.UUID, bool, error) {
+	return uuid.Nil, g(serverID), nil
 }
 
 func newTestRegistry() *registry.Registry {
 	cmd := &registry.Command{
 		Def: &discordgo.ApplicationCommand{Name: "ping"},
-		Handler: func(_ context.Context, r registry.Responder, i *discordgo.InteractionCreate) error {
+		Handler: func(_ context.Context, r registry.Responder, i *discordgo.InteractionCreate, _ uuid.UUID) error {
 			return r.Respond(i.Interaction, "pong")
 		},
 	}
 	return registry.New(registry.Params{Commands: []*registry.Command{cmd}})
 }
 
-func startManager(t *testing.T, gate ServerApproval) *fakeDiscord {
+func startManager(t *testing.T, resolver ServerResolver) *fakeDiscord {
 	t.Helper()
-	return startManagerWithApp(t, gate, appconfig.AppConfig{})
+	return startManagerWithApp(t, resolver, appconfig.AppConfig{})
 }
 
-func startManagerWithApp(t *testing.T, gate ServerApproval, app appconfig.AppConfig) *fakeDiscord {
+func startManagerWithApp(t *testing.T, resolver ServerResolver, app appconfig.AppConfig) *fakeDiscord {
 	t.Helper()
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, gate, nil, nil, zap.NewNop(), app)
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, resolver, nil, testLoc(), nil, nil, zap.NewNop(), app)
 	require.NoError(t, m.Start(context.Background()))
 	require.NotNil(t, fake)
 	assert.True(t, fake.opened)
@@ -141,10 +157,104 @@ func TestManager_NilGate_ApprovesEverything(t *testing.T) {
 	assert.Equal(t, "pong", fake.lastReply)
 }
 
+// accessFunc adapts a func to the CommandAccess interface.
+type accessFunc func(req AccessRequest) (bool, error)
+
+func (f accessFunc) IsAllowed(_ context.Context, req AccessRequest) (bool, error) {
+	return f(req)
+}
+
+// gateRegistry has an open command ("ping") and a locked one ("locked").
+func gateRegistry() *registry.Registry {
+	return registry.New(registry.Params{Commands: []*registry.Command{
+		{Def: &discordgo.ApplicationCommand{Name: "ping"}},
+		{Def: &discordgo.ApplicationCommand{Name: "locked"}, DefaultDeny: true},
+	}})
+}
+
+// managerWithAccess builds a Manager wired with the given access gate, bypassing
+// Start (allowed needs only registry/access/log).
+func managerWithAccess(access CommandAccess) *Manager {
+	return newManager(Config{}, gateRegistry(), nil, nil, access, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
+}
+
+func interactionAs(command string, member *discordgo.Member) *discordgo.InteractionCreate {
+	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type:    discordgo.InteractionApplicationCommand,
+		GuildID: "g1",
+		Member:  member,
+		Data:    discordgo.ApplicationCommandInteractionData{Name: command},
+	}}
+}
+
+func TestManager_Allowed_NilGate_AllowsEverything(t *testing.T) {
+	m := managerWithAccess(nil)
+	member := &discordgo.Member{Roles: []string{"r1"}}
+	assert.True(t, m.allowed(context.Background(), interactionAs("locked", member), uuid.Nil))
+}
+
+func TestManager_Allowed_AdminBypassesGate(t *testing.T) {
+	denyAll := accessFunc(func(AccessRequest) (bool, error) { return false, nil })
+	m := managerWithAccess(denyAll)
+	admin := &discordgo.Member{Permissions: discordgo.PermissionAdministrator}
+	assert.True(t, m.allowed(context.Background(), interactionAs("locked", admin), uuid.Nil),
+		"owner/admin bypasses the gate even when it would deny")
+}
+
+func TestManager_Allowed_ConsultsGateForNonAdmin(t *testing.T) {
+	var got AccessRequest
+	gate := accessFunc(func(req AccessRequest) (bool, error) { got = req; return true, nil })
+	m := managerWithAccess(gate)
+	member := &discordgo.Member{Roles: []string{"r1", "r2"}}
+	srv := uuid.New()
+
+	assert.True(t, m.allowed(context.Background(), interactionAs("locked", member), srv))
+	assert.Equal(t, srv, got.ServerID, "the resolved server id is passed through to the gate")
+	assert.Equal(t, "locked", got.Command)
+	assert.Equal(t, []string{"r1", "r2"}, got.UserRoles)
+	assert.True(t, got.DefaultDeny, "locked command carries its deny-by-default policy")
+}
+
+func TestManager_Allowed_GateDenies(t *testing.T) {
+	gate := accessFunc(func(AccessRequest) (bool, error) { return false, nil })
+	m := managerWithAccess(gate)
+	member := &discordgo.Member{Roles: []string{"r1"}}
+	assert.False(t, m.allowed(context.Background(), interactionAs("locked", member), uuid.Nil))
+}
+
+func TestManager_Allowed_GateErrorFailsClosed(t *testing.T) {
+	gate := accessFunc(func(AccessRequest) (bool, error) { return true, assert.AnError })
+	m := managerWithAccess(gate)
+	member := &discordgo.Member{Roles: []string{"r1"}}
+	assert.False(t, m.allowed(context.Background(), interactionAs("locked", member), uuid.Nil),
+		"a gate error denies access")
+}
+
+func TestManager_Allowed_UnknownCommandNotGated(t *testing.T) {
+	gate := accessFunc(func(AccessRequest) (bool, error) { return false, nil })
+	m := managerWithAccess(gate)
+	member := &discordgo.Member{Roles: []string{"r1"}}
+	assert.True(t, m.allowed(context.Background(), interactionAs("ghost", member), uuid.Nil),
+		"an unknown command isn't gated here; dispatch surfaces the error")
+}
+
+func TestManager_BlockedCommand_RepliesDenied(t *testing.T) {
+	var fake *fakeDiscord
+	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
+	denyAll := accessFunc(func(AccessRequest) (bool, error) { return false, nil })
+	gate := gateFunc(func(string) bool { return true })
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, gate, denyAll, testLoc(), nil, nil,
+		zap.NewNop(), appconfig.AppConfig{})
+	require.NoError(t, m.Start(context.Background()))
+
+	fake.fireCommand("g1") // non-admin (no Member), approved server, gate denies
+	assert.Contains(t, fake.lastReply, "don't have permission")
+}
+
 func TestManager_Stop_ClosesSession(t *testing.T) {
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
 	require.NoError(t, m.Start(context.Background()))
 	require.NoError(t, m.Stop(context.Background()))
 	assert.True(t, fake.closed)
@@ -153,7 +263,7 @@ func TestManager_Stop_ClosesSession(t *testing.T) {
 func TestReadinessCheck_ReflectsGatewayLifecycle(t *testing.T) {
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
 	probe := newReadinessCheck(m).Probe
 
 	// Not ready before the session is opened.

@@ -9,3 +9,9 @@ packages:
   github.com/kweezl/spacecraft-corporation/internal/discord/servers:
     interfaces:
       Repository:
+  github.com/kweezl/spacecraft-corporation/internal/features/permissions:
+    interfaces:
+      Repository:
+  github.com/kweezl/spacecraft-corporation/internal/settings:
+    interfaces:
+      Repository:
