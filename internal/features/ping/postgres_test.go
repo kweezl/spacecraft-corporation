@@ -5,12 +5,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
-	"github.com/kweezl/spacecraft-corporation/internal/migrator"
+	"github.com/kweezl/spacecraft-corporation/internal/testdb"
 )
 
 func TestPgRepository_RecordAndCount(t *testing.T) {
@@ -19,12 +17,7 @@ func TestPgRepository_RecordAndCount(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS ping_log, goose_db_version`)
-	require.NoError(t, migrator.Run(pool, zap.NewNop()))
+	pool := testdb.Reset(t, dsn)
 
 	repo := newRepository(pool)
 	require.NoError(t, repo.Record(ctx, "s1", "u1"))

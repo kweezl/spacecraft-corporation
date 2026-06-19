@@ -4,8 +4,8 @@ tmp_dir = "tmp"
 [build]
   # Disable optimizations/inlining so the debugger maps lines correctly.
   # Bake a version tag the same way prod does; air runs cmd via `sh -c`, so
-  # ${VERSION} is shell-expanded (default "dev"). Override: VERSION=mytag ...
-  cmd = "go build -gcflags='all=-N -l' -ldflags=\"-X github.com/kweezl/spacecraft-corporation/internal/appconfig.version=${VERSION:-dev}\" -o ./tmp/bot ./cmd/bot"
+  # ${APP_VERSION} is shell-expanded (default "dev"). Override: APP_VERSION=mytag ...
+  cmd = "go build -gcflags='all=-N -l' -ldflags=\"-X github.com/kweezl/spacecraft-corporation/internal/appconfig.version=${APP_VERSION:-dev}\" -o ./tmp/bot ./cmd/bot"
   # full_bin overrides the run command: launch under delve, headless, on :2345.
   full_bin = "dlv exec ./tmp/bot --headless --listen=:2345 --api-version=2 --accept-multiclient --continue"
   include_ext = ["go"]

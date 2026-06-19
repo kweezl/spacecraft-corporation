@@ -5,12 +5,12 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/kweezl/spacecraft-corporation/internal/migrator"
+	"github.com/kweezl/spacecraft-corporation/internal/testdb"
 )
 
 func TestRun_CreatesTables(t *testing.T) {
@@ -19,19 +19,15 @@ func TestRun_CreatesTables(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	// Clean slate so the test is repeatable.
-	_, _ = pool.Exec(ctx, `DROP TABLE IF EXISTS ping_log, goose_db_version`)
+	// Clean (not Reset): this test exercises migrator.Run itself.
+	pool := testdb.Clean(t, dsn)
 
 	require.NoError(t, migrator.Run(pool, zap.NewNop()))
 
 	var n int
-	err = pool.QueryRow(ctx,
+	err := pool.QueryRow(ctx,
 		`SELECT count(*) FROM information_schema.tables
-		 WHERE table_name = 'ping_log'`).Scan(&n)
+		 WHERE table_name IN ('ping_log', 'servers', 'server_event')`).Scan(&n)
 	require.NoError(t, err)
-	assert.Equal(t, 1, n)
+	assert.Equal(t, 3, n)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/appconfig"
 	"github.com/kweezl/spacecraft-corporation/internal/db"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/discord/servers"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
@@ -20,20 +21,42 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/migrator"
 )
 
-// coreModules are always loaded.
+// fxLogger routes fx's own wiring logs through zap.
+func fxLogger() fx.Option {
+	return fx.WithLogger(func(log *zap.Logger) fxevent.Logger {
+		return &fxevent.ZapLogger{Logger: log}
+	})
+}
+
+// coreModules are always loaded in normal (bot) mode. Note migrator is NOT here:
+// the running bot never applies migrations — that is the one-shot --migrate mode
+// (migrateOptions). Schema changes are an explicit, separate step.
 func coreModules() []fx.Option {
 	return []fx.Option{
-		fx.WithLogger(func(log *zap.Logger) fxevent.Logger {
-			return &fxevent.ZapLogger{Logger: log}
-		}),
+		fxLogger(),
 		appconfig.Module(),
 		logger.Module(),
 		// health starts early so probes answer (503) while later modules start.
 		health.Module(),
 		db.Module(),
-		migrator.Module(),
 		registry.Module(),
+		// servers must load before session: it provides the approval gate the
+		// session injects (fx resolves order, this is just for readability).
+		servers.Module(),
 		session.Module(),
+	}
+}
+
+// migrateOptions is the slim graph for one-shot --migrate mode: connect the
+// pool, apply the embedded migrations, then shut down (see migrator.Module).
+// No Discord session, health server, or features are wired.
+func migrateOptions() []fx.Option {
+	return []fx.Option{
+		fxLogger(),
+		appconfig.Module(),
+		logger.Module(),
+		db.Module(),
+		migrator.Module(),
 	}
 }
 
@@ -52,9 +75,13 @@ func selectFeatures(names []feature.Name) ([]fx.Option, error) {
 	return opts, nil
 }
 
-// Options builds the full fx option list: core modules plus the features
+// Options builds the fx option list. In migrate mode it returns the slim
+// migrate-and-exit graph; otherwise the core bot modules plus the features
 // selected once from FEATURES.
-func Options() ([]fx.Option, error) {
+func Options(migrate bool) ([]fx.Option, error) {
+	if migrate {
+		return migrateOptions(), nil
+	}
 	names, err := feature.Load()
 	if err != nil {
 		return nil, err

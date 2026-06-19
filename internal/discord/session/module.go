@@ -14,7 +14,10 @@ func Module() fx.Option {
 		logger.Decorate("session"),
 		fx.Provide(env.ParseAs[Config]),
 		fx.Provide(NewFactory),
-		fx.Provide(newManager),
+		fx.Provide(fx.Annotate(
+			newManager,
+			fx.ParamTags(``, ``, ``, ``, `group:"guild_create"`, `group:"guild_delete"`, ``, ``),
+		)),
 		fx.Invoke(register),
 	)
 }
