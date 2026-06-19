@@ -31,11 +31,11 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       APP_NAME: ${APP_NAME:-spacecraft-corporation}
       FEATURES: ${FEATURES:-ping}
-      HEALTH_ADDR: ${HEALTH_ADDR:-:8080}
+      HEALTH_ADDR: ${HEALTH_ADDR:-:9464}
     # secrets:
     #   - bot_token
     expose:
-      - "8080"
+      - "9464"   # ops: /healthz /readyz /metrics
     depends_on:
       postgres:
         condition: service_healthy

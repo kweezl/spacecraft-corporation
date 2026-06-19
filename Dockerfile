@@ -19,7 +19,7 @@ RUN apk add --no-cache ca-certificates \
  && adduser -D -H -u 65532 nonroot
 COPY --from=build /bot /bot
 USER nonroot:nonroot
-EXPOSE 8080
+EXPOSE 9464
 ENTRYPOINT ["/bot"]
 
 # --- dev (hot reload + debugger) --------------------------------------------
@@ -38,5 +38,5 @@ COPY go.mod go.sum ./
 RUN go mod download \
  && chown -R dev:dev /go /src
 USER dev
-EXPOSE 2345 8080
+EXPOSE 2345 9464
 ENTRYPOINT ["air", "-c", ".air.toml"]
