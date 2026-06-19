@@ -16,7 +16,7 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
-	"github.com/kweezl/spacecraft-corporation/internal/health"
+	"github.com/kweezl/spacecraft-corporation/internal/instrumentation"
 	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"github.com/kweezl/spacecraft-corporation/internal/migrator"
 )
@@ -36,8 +36,9 @@ func coreModules() []fx.Option {
 		fxLogger(),
 		appconfig.Module(),
 		logger.Module(),
-		// health starts early so probes answer (503) while later modules start.
-		health.Module(),
+		// instrumentation starts early so probes answer (503) while later modules
+		// start; readiness goes green only once every contributed check passes.
+		instrumentation.Module(),
 		db.Module(),
 		registry.Module(),
 		// servers must load before session: it provides the approval gate the
@@ -49,7 +50,7 @@ func coreModules() []fx.Option {
 
 // migrateOptions is the slim graph for one-shot --migrate mode: connect the
 // pool, apply the embedded migrations, then shut down (see migrator.Module).
-// No Discord session, health server, or features are wired.
+// No Discord session, instrumentation server, or features are wired.
 func migrateOptions() []fx.Option {
 	return []fx.Option{
 		fxLogger(),
@@ -90,9 +91,8 @@ func Options(migrate bool) ([]fx.Option, error) {
 	if err != nil {
 		return nil, err
 	}
-	opts := append(coreModules(), features...)
-	// MarkReady is appended LAST so its OnStart hook runs after every other
-	// module's: readiness goes green only once all modules have started.
-	opts = append(opts, fx.Invoke(health.MarkReady))
-	return opts, nil
+	// Readiness is no longer flipped by a final invoke: each subsystem (db,
+	// session) contributes a live ReadinessCheck into the instrumentation group,
+	// so /readyz reflects actual dependency health rather than startup ordering.
+	return append(coreModules(), features...), nil
 }

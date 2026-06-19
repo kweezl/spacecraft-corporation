@@ -33,6 +33,15 @@ func (d *discordSession) AddGuildDeleteHandler(fn func(*discordgo.GuildDelete)) 
 func (d *discordSession) Open() error  { return d.s.Open() }
 func (d *discordSession) Close() error { return d.s.Close() }
 
+// Connected reports discordgo's DataReady, set true once the gateway READY (or
+// Resumed) event is processed and cleared on disconnect. Read under the
+// session's lock, the same one discordgo takes when it mutates the flag.
+func (d *discordSession) Connected() bool {
+	d.s.RLock()
+	defer d.s.RUnlock()
+	return d.s.DataReady
+}
+
 func (d *discordSession) CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error {
 	_, err := d.s.ApplicationCommandCreate(d.s.State.User.ID, serverID, cmd)
 	return err

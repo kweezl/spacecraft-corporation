@@ -13,5 +13,11 @@ func Module() fx.Option {
 		logger.Decorate("db"),
 		fx.Provide(env.ParseAs[Config]),
 		fx.Provide(New),
+		// Contribute a "postgres" readiness probe (a pool ping) to the
+		// instrumentation group; lazy, so the slim --migrate graph never builds it.
+		fx.Provide(fx.Annotate(
+			newReadinessCheck,
+			fx.ResultTags(`group:"readiness_checks"`),
+		)),
 	)
 }

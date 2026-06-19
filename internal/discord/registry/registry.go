@@ -5,6 +5,7 @@ package registry
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,6 +33,7 @@ type Registry struct {
 	handlers map[string]Handler
 	defs     []*discordgo.ApplicationCommand
 	counter  *prometheus.CounterVec
+	duration *prometheus.HistogramVec
 }
 
 // Params collects all *Command values from the "commands" fx group. A nil entry
@@ -40,17 +42,25 @@ type Params struct {
 	fx.In
 	Commands []*Command `group:"commands"`
 	Counter  *prometheus.CounterVec
+	Duration *prometheus.HistogramVec
 }
 
 // New builds a Registry, ignoring nil (disabled) commands.
 func New(p Params) *Registry {
 	counter := p.Counter
-	if counter == nil {
-		// Direct (non-fx) construction in tests: a throwaway registry keeps the
-		// counter usable so Dispatch needs no nil check.
-		counter = newCommandCounter(prometheus.NewRegistry())
+	duration := p.Duration
+	if counter == nil || duration == nil {
+		// Direct (non-fx) construction in tests: a throwaway registry backs any
+		// missing metric so Dispatch needs no nil checks.
+		reg := prometheus.NewRegistry()
+		if counter == nil {
+			counter = newCommandCounter(reg)
+		}
+		if duration == nil {
+			duration = newCommandDuration(reg)
+		}
 	}
-	r := &Registry{handlers: make(map[string]Handler), counter: counter}
+	r := &Registry{handlers: make(map[string]Handler), counter: counter, duration: duration}
 	for _, c := range p.Commands {
 		if c == nil {
 			continue
@@ -72,5 +82,10 @@ func (r *Registry) Dispatch(ctx context.Context, resp Responder, i *discordgo.In
 		return fmt.Errorf("no handler for command %q", name)
 	}
 	r.counter.WithLabelValues(name).Inc()
+	// Observe in a defer so the latency is recorded even if the handler panics;
+	// time.Since covers the full handler run (including the reply round-trip).
+	defer func(start time.Time) {
+		r.duration.WithLabelValues(name).Observe(time.Since(start).Seconds())
+	}(time.Now())
 	return h(ctx, resp, i)
 }
