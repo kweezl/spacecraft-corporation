@@ -21,9 +21,9 @@ services:
       target: dev
     environment:
       DATABASE_URL: postgres://bot:bot@postgres:5432/spacecraft?sslmode=disable
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set ENCRYPTION_KEY}
-      COMMAND_SCOPE: ${COMMAND_SCOPE:-guild}
-      DEV_GUILD_ID: ${DEV_GUILD_ID:-}
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN}
+      COMMAND_SCOPE: ${COMMAND_SCOPE:-server}
+      DEV_SERVER_ID: ${DEV_SERVER_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       APP_NAME: ${APP_NAME:-spacecraft-cadet}
       FEATURES: ${FEATURES:-ping}

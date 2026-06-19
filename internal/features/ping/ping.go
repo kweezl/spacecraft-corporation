@@ -12,8 +12,8 @@ import (
 
 // Repository persists ping invocations.
 type Repository interface {
-	Record(ctx context.Context, guildID, userID string) error
-	Count(ctx context.Context, guildID string) (int64, error)
+	Record(ctx context.Context, serverID, userID string) error
+	Count(ctx context.Context, serverID string) (int64, error)
 }
 
 // NewCommand builds the /ping command. Enable/disable is decided at the module
@@ -26,12 +26,12 @@ func NewCommand(repo Repository) *registry.Command {
 			Description: "Replies with pong and the running ping count",
 		},
 		Handler: func(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate) error {
-			guildID := i.GuildID
+			serverID := i.GuildID // discordgo's GuildID is the Discord server ID
 			userID := interactionUserID(i)
-			if err := repo.Record(ctx, guildID, userID); err != nil {
+			if err := repo.Record(ctx, serverID, userID); err != nil {
 				return fmt.Errorf("record ping: %w", err)
 			}
-			count, err := repo.Count(ctx, guildID)
+			count, err := repo.Count(ctx, serverID)
 			if err != nil {
 				return fmt.Errorf("count pings: %w", err)
 			}

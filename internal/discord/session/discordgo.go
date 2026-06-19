@@ -25,8 +25,8 @@ func (d *discordSession) AddInteractionHandler(fn func(*discordgo.InteractionCre
 func (d *discordSession) Open() error  { return d.s.Open() }
 func (d *discordSession) Close() error { return d.s.Close() }
 
-func (d *discordSession) CreateCommand(guildID string, cmd *discordgo.ApplicationCommand) error {
-	_, err := d.s.ApplicationCommandCreate(d.s.State.User.ID, guildID, cmd)
+func (d *discordSession) CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error {
+	_, err := d.s.ApplicationCommandCreate(d.s.State.User.ID, serverID, cmd)
 	return err
 }
 

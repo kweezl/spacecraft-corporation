@@ -1,5 +1,5 @@
-// Package session opens one discordgo session per encrypted bot token loaded
-// from Postgres and routes interactions through the shared command registry.
+// Package session opens the bot's single discordgo session from BOT_TOKEN and
+// routes interactions through the shared command registry.
 package session
 
 import (
@@ -8,15 +8,15 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/kweezl/spacecraft-cadet/internal/discord/registry"
-	"github.com/kweezl/spacecraft-cadet/internal/token"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
 // Config is this module's env config.
 type Config struct {
-	Scope      string `env:"COMMAND_SCOPE" envDefault:"guild"`
-	DevGuildID string `env:"DEV_GUILD_ID"`
+	Token       string `env:"BOT_TOKEN,required"`
+	Scope       string `env:"COMMAND_SCOPE" envDefault:"server"`
+	DevServerID string `env:"DEV_SERVER_ID"`
 }
 
 // Discord is the slice of a Discord session the manager uses. The real
@@ -24,7 +24,7 @@ type Config struct {
 type Discord interface {
 	registry.Responder
 	AddInteractionHandler(fn func(*discordgo.InteractionCreate))
-	CreateCommand(guildID string, cmd *discordgo.ApplicationCommand) error
+	CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error
 	Open() error
 	Close() error
 }
@@ -32,72 +32,66 @@ type Discord interface {
 // Factory builds a Discord session for a bot token.
 type Factory func(token string) (Discord, error)
 
-// Manager owns all live sessions.
+// Manager owns the bot's session.
 type Manager struct {
 	cfg      Config
-	tokens   token.Repository
 	registry *registry.Registry
 	factory  Factory
 	log      *zap.Logger
 
-	sessions []Discord
+	session Discord
 }
 
-func newManager(cfg Config, tokens token.Repository, reg *registry.Registry, factory Factory, log *zap.Logger) *Manager {
-	return &Manager{cfg: cfg, tokens: tokens, registry: reg, factory: factory, log: log}
+func newManager(cfg Config, reg *registry.Registry, factory Factory, log *zap.Logger) *Manager {
+	return &Manager{cfg: cfg, registry: reg, factory: factory, log: log}
 }
 
-// commandGuildID returns the guild to register commands against: the dev guild
-// for "guild" scope, or "" (global) otherwise.
-func (m *Manager) commandGuildID() string {
-	if m.cfg.Scope == "guild" {
-		return m.cfg.DevGuildID
+// commandServerID returns the server to register commands against: the dev
+// server for "server" scope, or "" (global) otherwise.
+func (m *Manager) commandServerID() string {
+	if m.cfg.Scope == "server" {
+		return m.cfg.DevServerID
 	}
 	return ""
 }
 
-// Start loads tokens, opens a session per token, registers commands, and wires
-// the interaction handler.
+// Start opens the session, wires the interaction handler, and registers
+// commands.
 func (m *Manager) Start(ctx context.Context) error {
-	toks, err := m.tokens.ListEnabled(ctx)
+	d, err := m.factory(m.cfg.Token)
 	if err != nil {
-		return fmt.Errorf("list tokens: %w", err)
+		return fmt.Errorf("create session: %w", err)
 	}
-	guildID := m.commandGuildID()
 
-	for _, tok := range toks {
-		d, err := m.factory(tok.Token)
-		if err != nil {
-			return fmt.Errorf("create session for guild %s: %w", tok.GuildID, err)
+	d.AddInteractionHandler(func(i *discordgo.InteractionCreate) {
+		if i.Type != discordgo.InteractionApplicationCommand {
+			return
 		}
+		if derr := m.registry.Dispatch(ctx, d, i); derr != nil {
+			m.log.Error("dispatch interaction", zap.Error(derr))
+		}
+	})
 
-		d.AddInteractionHandler(func(i *discordgo.InteractionCreate) {
-			if i.Type != discordgo.InteractionApplicationCommand {
-				return
-			}
-			if derr := m.registry.Dispatch(ctx, d, i); derr != nil {
-				m.log.Error("dispatch interaction", zap.Error(derr))
-			}
-		})
-
-		if err := d.Open(); err != nil {
-			return fmt.Errorf("open session for guild %s: %w", tok.GuildID, err)
-		}
-		for _, cmd := range m.registry.Commands() {
-			if err := d.CreateCommand(guildID, cmd); err != nil {
-				return fmt.Errorf("register %q for guild %s: %w", cmd.Name, tok.GuildID, err)
-			}
-		}
-		m.sessions = append(m.sessions, d)
-		m.log.Info("session started", zap.String("guild_id", tok.GuildID))
+	if err := d.Open(); err != nil {
+		return fmt.Errorf("open session: %w", err)
 	}
+
+	serverID := m.commandServerID()
+	for _, cmd := range m.registry.Commands() {
+		if err := d.CreateCommand(serverID, cmd); err != nil {
+			return fmt.Errorf("register %q: %w", cmd.Name, err)
+		}
+	}
+
+	m.session = d
+	m.log.Info("session started", zap.String("scope", m.cfg.Scope))
 	return nil
 }
 
-// Stop closes all sessions.
+// Stop closes the session.
 func (m *Manager) Stop(context.Context) error {
-	for _, s := range m.sessions {
-		_ = s.Close()
+	if m.session != nil {
+		_ = m.session.Close()
 	}
 	return nil
 }
