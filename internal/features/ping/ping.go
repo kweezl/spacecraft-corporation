@@ -9,6 +9,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
 
 // Repository persists ping invocations.
@@ -20,7 +21,7 @@ type Repository interface {
 // NewCommand builds the /ping command. Enable/disable is decided at the module
 // level (see Module), so this always returns a command. (Command-call counts
 // are recorded centrally by the registry as discord_command_total.)
-func NewCommand(repo Repository) *registry.Command {
+func NewCommand(repo Repository, loc *i18n.Localizer) *registry.Command {
 	return &registry.Command{
 		Def: &discordgo.ApplicationCommand{
 			Name:        "ping",
@@ -36,7 +37,8 @@ func NewCommand(repo Repository) *registry.Command {
 			if err != nil {
 				return fmt.Errorf("count pings: %w", err)
 			}
-			return r.Respond(i.Interaction, fmt.Sprintf("pong (#%d)", count))
+			return r.Respond(i.Interaction,
+				loc.Render(ctx, serverID, "ping.pong", map[string]any{"Count": count}))
 		},
 	}
 }

@@ -1,0 +1,21 @@
+{
+  "ping.pong": "понг (#{{.Count}})",
+
+  "session.unapproved": "Этот сервер ещё не одобрен для использования бота. Попросите владельца бота {{if .Owner}}<@{{.Owner}}> {{end}}одобрить его.",
+  "session.denied": "У вас нет прав на использование /{{.Command}} на этом сервере. Попросите администратора сервера выдать доступ вашей роли.",
+
+  "permissions.granted": "Роли <@&{{.RoleID}}> выдан доступ к /{{.Command}}.",
+  "permissions.revoked": "У роли <@&{{.RoleID}}> отозван доступ к /{{.Command}}.",
+  "permissions.cleared": "Весь ролевой доступ к /{{.Command}} очищен.",
+  "permissions.list_command": "/{{.Command}}: {{.Roles}}",
+  "permissions.list_command_empty": "Для /{{.Command}} нет ролевых правил — применяется доступ по умолчанию.",
+  "permissions.list_all_header": "Ролевые правила команд:",
+  "permissions.list_all_line": "• /{{.Command}}: {{.Roles}}",
+  "permissions.list_all_empty": "На этом сервере нет ролевых правил команд.",
+  "permissions.no_subcommand": "Укажите подкоманду: grant, revoke, list или clear.",
+  "permissions.unknown_subcommand": "Неизвестная подкоманда.",
+
+  "settings.theme_set": "Тема сервера установлена: **{{.Theme}}**.",
+  "settings.language_set": "Язык бота установлен: **{{.Language}}**.",
+  "settings.current": "Этот сервер использует тему **{{.Theme}}** и язык **{{.Language}}**."
+}

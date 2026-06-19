@@ -7,7 +7,8 @@ CREATE TABLE server_event (
     id         UUID        PRIMARY KEY,
     server_id  TEXT        NOT NULL,          -- Discord guild (server) snowflake
     event_type TEXT        NOT NULL,          -- 'joined' | 'removed'
-    created_at TIMESTAMP   NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')
+    -- App-supplied (configured timezone), no DB default; see create_ping_log.
+    created_at TIMESTAMP   NOT NULL
 );
 CREATE INDEX idx_server_event_server_id ON server_event (server_id);
 

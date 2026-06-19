@@ -19,6 +19,11 @@ func (f *fakeResponder) Respond(_ *discordgo.Interaction, content string) error 
 	return nil
 }
 
+func (f *fakeResponder) RespondEphemeral(_ *discordgo.Interaction, content string) error {
+	f.last = content
+	return nil
+}
+
 func interaction(name string) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
 		Type: discordgo.InteractionApplicationCommand,
@@ -53,6 +58,24 @@ func TestRegistry_UnknownCommand(t *testing.T) {
 	reg := New(Params{Commands: nil})
 	err := reg.Dispatch(context.Background(), &fakeResponder{}, interaction("nope"))
 	require.Error(t, err)
+}
+
+func TestRegistry_Policy(t *testing.T) {
+	reg := New(Params{Commands: []*Command{
+		{Def: &discordgo.ApplicationCommand{Name: "open"}},
+		{Def: &discordgo.ApplicationCommand{Name: "locked"}, DefaultDeny: true},
+	}})
+
+	deny, known := reg.Policy("open")
+	assert.True(t, known)
+	assert.False(t, deny, "default-deny defaults to false (open)")
+
+	deny, known = reg.Policy("locked")
+	assert.True(t, known)
+	assert.True(t, deny)
+
+	_, known = reg.Policy("missing")
+	assert.False(t, known, "unknown command is reported as not known")
 }
 
 func TestRegistry_CountsDispatchByCommand(t *testing.T) {

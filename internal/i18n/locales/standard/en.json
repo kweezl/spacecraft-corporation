@@ -1,0 +1,21 @@
+{
+  "ping.pong": "pong (#{{.Count}})",
+
+  "session.unapproved": "This server isn't approved to use this bot yet. Ask the bot owner {{if .Owner}}<@{{.Owner}}> {{end}}to approve it.",
+  "session.denied": "You don't have permission to use /{{.Command}} on this server. Ask a server admin to grant your role access to it.",
+
+  "permissions.granted": "Granted <@&{{.RoleID}}> access to /{{.Command}}.",
+  "permissions.revoked": "Revoked <@&{{.RoleID}}> access to /{{.Command}}.",
+  "permissions.cleared": "Cleared all role access for /{{.Command}}.",
+  "permissions.list_command": "/{{.Command}}: {{.Roles}}",
+  "permissions.list_command_empty": "/{{.Command}} has no role mapping — its default access applies.",
+  "permissions.list_all_header": "Command role mappings:",
+  "permissions.list_all_line": "• /{{.Command}}: {{.Roles}}",
+  "permissions.list_all_empty": "No command role mappings on this server.",
+  "permissions.no_subcommand": "Specify a subcommand: grant, revoke, list, or clear.",
+  "permissions.unknown_subcommand": "Unknown subcommand.",
+
+  "settings.theme_set": "Server theme set to **{{.Theme}}**.",
+  "settings.language_set": "Bot language set to **{{.Language}}**.",
+  "settings.current": "This server uses theme **{{.Theme}}** and language **{{.Language}}**."
+}

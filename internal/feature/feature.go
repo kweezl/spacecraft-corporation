@@ -17,6 +17,10 @@ type Name string
 const (
 	// Ping is the /ping feature.
 	Ping Name = "ping"
+	// Permissions is the role-based command access-control feature: it gates
+	// commands behind per-server role mappings and adds /permissions to manage
+	// them. Disabled = no gating (every command open).
+	Permissions Name = "permissions"
 )
 
 // Feature describes an optional feature module and the features it requires.
@@ -31,6 +35,7 @@ type Feature struct {
 func catalog() []Feature {
 	return []Feature{
 		{Name: Ping},
+		{Name: Permissions},
 	}
 }
 
