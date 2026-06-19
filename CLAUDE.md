@@ -87,7 +87,7 @@ config aggregator**. Each module defines and loads its own env struct via
 |---|---|
 | `db` | `DATABASE_URL` |
 | `logger` | `LOG_LEVEL` (default `info`) |
-| `session` | `BOT_TOKEN`, `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
+| `session` | `BOT_TOKEN` **or** `BOT_TOKEN_FILE` (mounted secret; file wins), `COMMAND_SCOPE` (`server`\|`global`, default `server`), `DEV_SERVER_ID` |
 | `health` | `HEALTH_ADDR` (default `:8080`) |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-cadet`); `Version` injected via build-time ldflags |
@@ -267,5 +267,9 @@ features.)
   `registry.Responder`; the session manager uses the `Discord` interface.
 - "server" is the domain term for a Discord guild; map discordgo's `guild`
   fields onto `server`-named values at the boundary.
-- `BOT_TOKEN` is a secret — it lives only in env (never committed; `.env` is
-  gitignored), never in the database or logs.
+- `BOT_TOKEN` is a secret — never committed (`.env` is gitignored), never in the
+  database or logs. For prod prefer **`BOT_TOKEN_FILE`** pointing at a mounted
+  secret file (Docker `secrets:` / K8s secret volume): env reads the file's
+  contents (caarlos0/env `,file` option), trimmed of whitespace. Files avoid the
+  env-var leak paths (`docker inspect`, `/proc/<pid>/environ`, child-process
+  inheritance). The `_FILE` var wins over `BOT_TOKEN` if both are set.

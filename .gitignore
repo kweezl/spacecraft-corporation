@@ -36,3 +36,6 @@ go.work.sum
 
 # air hot-reload build output
 tmp/
+
+# mounted secret files (e.g. docker-compose secrets source)
+secrets/
