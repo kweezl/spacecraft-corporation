@@ -58,6 +58,15 @@ func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, embed *discordgo
 	f.updated = true
 	return nil
 }
+func (f *fakeResponder) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, components []discordgo.MessageComponent) error {
+	f.components = components
+	return nil
+}
+func (f *fakeResponder) UpdateComponentsV2(_ *discordgo.Interaction, components []discordgo.MessageComponent) error {
+	f.components = components
+	f.updated = true
+	return nil
+}
 
 func interaction(name string) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
