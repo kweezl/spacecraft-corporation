@@ -115,6 +115,21 @@ func (f *fakeResponder) RespondEmbed(_ *discordgo.Interaction, embed *discordgo.
 	}
 	return nil
 }
+func (f *fakeResponder) RespondAutocomplete(_ *discordgo.Interaction, _ []*discordgo.ApplicationCommandOptionChoice) error {
+	return nil
+}
+func (f *fakeResponder) RespondEmbedComponents(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
+	if embed != nil {
+		f.last = embed.Title
+	}
+	return nil
+}
+func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
+	if embed != nil {
+		f.last = embed.Title
+	}
+	return nil
+}
 
 func settingsInteraction(sub string, opts ...*discordgo.ApplicationCommandInteractionDataOption) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{

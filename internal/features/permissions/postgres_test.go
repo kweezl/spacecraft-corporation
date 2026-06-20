@@ -2,23 +2,24 @@ package permissions
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/kweezl/spacecraft-corporation/internal/testdb"
 )
 
-func TestPgRepository(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
+type pgSuite struct{ testdb.Suite }
+
+func TestPgRepository(t *testing.T) { suite.Run(t, new(pgSuite)) }
+
+func (s *pgSuite) TestRepository() {
+	t := s.T()
 	ctx := context.Background()
-	pool := testdb.Reset(t, dsn)
+	pool := s.Pool
 	// permissions.servers_id references servers.id; SeedServer returns that id.
 	g1 := testdb.SeedServer(t, pool, "g1")
 	g2 := testdb.SeedServer(t, pool, "g2")

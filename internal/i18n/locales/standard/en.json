@@ -21,5 +21,40 @@
 
   "settings.theme_set": "Server theme set to **{{.Theme}}**.",
   "settings.language_set": "Bot language set to **{{.Language}}**.",
-  "settings.current": "This server uses theme **{{.Theme}}** and language **{{.Language}}**."
+  "settings.current": "This server uses theme **{{.Theme}}** and language **{{.Language}}**.",
+
+  "bases.error.no_member": "Specify which member's base with the `member` option.",
+  "bases.error.unknown": "Unknown subcommand.",
+  "bases.error.bad_base": "Pick a base from the suggestions.",
+  "bases.error.bad_equipment": "Pick an item from the suggestions.",
+  "bases.error.base_not_found": "That base wasn't found, or it isn't yours to manage.",
+  "bases.error.equipment_not_found": "That item wasn't found on the base.",
+
+  "bases.register.ok": "Registered base **{{.Name}}** in {{.Sector}} / {{.System}} {{.Planet}}.",
+  "bases.register.limit": "Base limit reached ({{.Limit}}). Unregister one first.",
+
+  "bases.unregister.ok": "Base unregistered.",
+  "bases.unregister.all": "Unregistered {{.Count}} base(s).",
+
+  "bases.extractor.added": "Installed an extractor for **{{.Resource}}**.",
+  "bases.extractor.removed": "Extractor removed.",
+  "bases.extractor.limit": "This base already has the maximum of {{.Limit}} extractors.",
+
+  "bases.production.added": "Installed a production facility for **{{.Item}}**.",
+  "bases.production.removed": "Production facility removed.",
+  "bases.production.limit": "This base already has the maximum of {{.Limit}} production facilities.",
+
+  "bases.list.title": "🛰️ Bases",
+  "bases.list.empty": "No bases match your filters yet.",
+  "bases.list.expired": "This listing expired — run `/base list` again.",
+  "bases.list.footer": "Page {{.Page}} / {{.Pages}} · {{.Total}} base(s)",
+  "bases.list.owner_member": "Owner: <@{{.User}}>",
+  "bases.list.owner_corp": "Owner: Corporation",
+  "bases.list.none": "—",
+  "bases.list.location": "{{.Sector}} / {{.System}} {{.Planet}}",
+  "bases.list.field_base": "{{.Location}}\n{{.Owner}}",
+  "bases.list.extractors_header": "🔧 Extractors",
+  "bases.list.production_header": "🏭 Production",
+  "bases.list.prev": "◀ Prev",
+  "bases.list.next": "Next ▶"
 }

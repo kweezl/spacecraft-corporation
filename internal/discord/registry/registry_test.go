@@ -13,7 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type fakeResponder struct{ last string }
+type fakeResponder struct {
+	last       string
+	choices    []*discordgo.ApplicationCommandOptionChoice
+	components []discordgo.MessageComponent
+	updated    bool
+}
 
 func (f *fakeResponder) Respond(_ *discordgo.Interaction, content string) error {
 	f.last = content
@@ -32,11 +37,139 @@ func (f *fakeResponder) RespondEmbed(_ *discordgo.Interaction, embed *discordgo.
 	return nil
 }
 
+func (f *fakeResponder) RespondAutocomplete(_ *discordgo.Interaction, choices []*discordgo.ApplicationCommandOptionChoice) error {
+	f.choices = choices
+	return nil
+}
+
+func (f *fakeResponder) RespondEmbedComponents(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+	if embed != nil {
+		f.last = embed.Title
+	}
+	f.components = components
+	return nil
+}
+
+func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+	if embed != nil {
+		f.last = embed.Title
+	}
+	f.components = components
+	f.updated = true
+	return nil
+}
+
 func interaction(name string) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
 		Type: discordgo.InteractionApplicationCommand,
 		Data: discordgo.ApplicationCommandInteractionData{Name: name},
 	}}
+}
+
+// subInteraction builds a command interaction nested as group → subcommand
+// (e.g. "base", "own", "register").
+func subInteraction(name, group, sub string) *discordgo.InteractionCreate {
+	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type: discordgo.InteractionApplicationCommand,
+		Data: discordgo.ApplicationCommandInteractionData{
+			Name: name,
+			Options: []*discordgo.ApplicationCommandInteractionDataOption{{
+				Name: group,
+				Type: discordgo.ApplicationCommandOptionSubCommandGroup,
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{{
+					Name: sub,
+					Type: discordgo.ApplicationCommandOptionSubCommand,
+				}},
+			}},
+		},
+	}}
+}
+
+// gatedDef mirrors the bases shape: a SubcommandGated command with one
+// group ("own") holding "register", plus a top-level "list" subcommand.
+func gatedDef() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name: "base",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Name: "own",
+				Type: discordgo.ApplicationCommandOptionSubCommandGroup,
+				Options: []*discordgo.ApplicationCommandOption{
+					{Name: "register", Type: discordgo.ApplicationCommandOptionSubCommand},
+				},
+			},
+			{Name: "list", Type: discordgo.ApplicationCommandOptionSubCommand},
+		},
+	}
+}
+
+func TestRegistry_AccessKey(t *testing.T) {
+	reg := New(Params{Commands: []*Command{
+		{Def: &discordgo.ApplicationCommand{Name: "ping"}},
+		{Def: gatedDef(), SubcommandGated: true},
+	}})
+
+	// A non-gated command keys on its bare name even with options present.
+	assert.Equal(t, "ping", reg.AccessKey(interaction("ping")))
+	// A gated command keys on the full subcommand path.
+	assert.Equal(t, "base own register", reg.AccessKey(subInteraction("base", "own", "register")))
+}
+
+func TestRegistry_CommandPaths(t *testing.T) {
+	reg := New(Params{Commands: []*Command{
+		{Def: &discordgo.ApplicationCommand{Name: "ping"}},
+		{Def: gatedDef(), SubcommandGated: true},
+	}})
+
+	assert.Equal(t, []string{"base list", "base own register", "ping"}, reg.CommandPaths())
+}
+
+func TestRegistry_DispatchAutocomplete(t *testing.T) {
+	want := []*discordgo.ApplicationCommandOptionChoice{{Name: "Alpha", Value: "a"}}
+	reg := New(Params{Commands: []*Command{{
+		Def: &discordgo.ApplicationCommand{Name: "base"},
+		Autocomplete: func(context.Context, *discordgo.InteractionCreate, uuid.UUID) ([]*discordgo.ApplicationCommandOptionChoice, error) {
+			return want, nil
+		},
+	}}})
+
+	resp := &fakeResponder{}
+	require.NoError(t, reg.DispatchAutocomplete(context.Background(), resp, interaction("base"), uuid.Nil))
+	assert.Equal(t, want, resp.choices)
+}
+
+func TestRegistry_DispatchAutocomplete_NoHandlerAnswersEmpty(t *testing.T) {
+	reg := New(Params{Commands: []*Command{{Def: &discordgo.ApplicationCommand{Name: "base"}}}})
+	resp := &fakeResponder{choices: []*discordgo.ApplicationCommandOptionChoice{{Name: "stale"}}}
+	require.NoError(t, reg.DispatchAutocomplete(context.Background(), resp, interaction("base"), uuid.Nil))
+	assert.Nil(t, resp.choices, "a command without an autocomplete handler answers with no choices")
+}
+
+func componentInteraction(customID string) *discordgo.InteractionCreate {
+	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type: discordgo.InteractionMessageComponent,
+		Data: discordgo.MessageComponentInteractionData{CustomID: customID},
+	}}
+}
+
+func TestRegistry_DispatchComponent(t *testing.T) {
+	var gotID string
+	reg := New(Params{Components: []*Component{{
+		Prefix: "base",
+		Handler: func(_ context.Context, _ Responder, i *discordgo.InteractionCreate, _ uuid.UUID) error {
+			gotID = i.MessageComponentData().CustomID
+			return nil
+		},
+	}}})
+
+	require.NoError(t, reg.DispatchComponent(context.Background(), &fakeResponder{}, componentInteraction("base:list:tok:2"), uuid.Nil))
+	assert.Equal(t, "base:list:tok:2", gotID, "routed to the handler for the 'base' namespace")
+}
+
+func TestRegistry_DispatchComponent_UnknownPrefix(t *testing.T) {
+	reg := New(Params{Components: nil})
+	err := reg.DispatchComponent(context.Background(), &fakeResponder{}, componentInteraction("ghost:1"), uuid.Nil)
+	require.Error(t, err)
 }
 
 func TestRegistry_DispatchesToHandler(t *testing.T) {

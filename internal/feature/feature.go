@@ -21,6 +21,10 @@ const (
 	// commands behind per-server role mappings and adds /permissions to manage
 	// them. Disabled = no gating (every command open).
 	Permissions Name = "permissions"
+	// Bases is the member-bases feature: /base register/unregister, equipment
+	// management, and a paginated listing. Requires Permissions, since its
+	// per-tier (own/corp/member) authorization is enforced by the role gate.
+	Bases Name = "bases"
 )
 
 // Feature describes an optional feature module and the features it requires.
@@ -36,6 +40,7 @@ func catalog() []Feature {
 	return []Feature{
 		{Name: Ping},
 		{Name: Permissions},
+		{Name: Bases, Requires: []Name{Permissions}},
 	}
 }
 
