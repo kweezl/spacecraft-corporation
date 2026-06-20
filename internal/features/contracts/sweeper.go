@@ -20,7 +20,6 @@ const (
 type Sweeper struct {
 	feature      *Feature
 	interval     time.Duration
-	refreshEvery time.Duration
 	notifyWithin time.Duration
 	log          *zap.Logger
 
@@ -32,7 +31,6 @@ func newSweeper(f *Feature, cfg Config, log *zap.Logger) *Sweeper {
 	return &Sweeper{
 		feature:      f,
 		interval:     cfg.SweepInterval,
-		refreshEvery: cfg.RefreshInterval,
 		notifyWithin: cfg.ExpiresNotify,
 		log:          log,
 	}
@@ -49,7 +47,6 @@ func (s *Sweeper) Start() error {
 	go s.loop(ctx)
 	s.log.Info("contract sweeper started",
 		zap.Duration("interval", s.interval),
-		zap.Duration("refresh_interval", s.refreshEvery),
 		zap.Duration("notify_within", s.notifyWithin))
 	return nil
 }
@@ -64,7 +61,7 @@ func (s *Sweeper) loop(ctx context.Context) {
 			return
 		case <-t.C:
 			sctx, cancel := context.WithTimeout(ctx, sweepTimeout)
-			s.feature.sweep(sctx, s.refreshEvery, s.notifyWithin)
+			s.feature.sweep(sctx, s.notifyWithin)
 			cancel()
 		}
 	}
@@ -82,19 +79,21 @@ func (s *Sweeper) Stop() error {
 	return nil
 }
 
-// sweep runs the three time-driven passes for open contracts, each via an
+// sweep runs the two time-driven passes for open contracts, each via an
 // idempotent, collapsing repository transition so a double-run or second instance
 // can't duplicate a side effect:
 //
-//   - expire   — past-deadline contracts flip to expired and enqueue their close.
-//   - keep-warm — contracts whose embed is older than refreshEvery re-render, so
-//     the "time left" never looks abandoned without member activity.
-//   - notice   — contracts within notifyWithin of their deadline (and not yet
+//   - expire — past-deadline contracts flip to expired and enqueue their close.
+//   - notice — contracts within notifyWithin of their deadline (and not yet
 //     notified) post the one-shot "closing soon" participant ping.
+//
+// There is no keep-warm re-render pass: the embed renders the deadline as Discord
+// timestamp markdown (<t:…:f> / <t:…:R>), which the client keeps current on its
+// own, so an open contract never needs a periodic server-side re-render.
 //
 // The passes partition cleanly: the notice scan requires deadline > now, so an
 // already-due contract expires rather than getting a closing-soon ping.
-func (h *Feature) sweep(ctx context.Context, refreshEvery, notifyWithin time.Duration) {
+func (h *Feature) sweep(ctx context.Context, notifyWithin time.Duration) {
 	now := time.Now()
 
 	due, err := h.repo.DueContracts(ctx, now, sweepBatch)
@@ -104,17 +103,6 @@ func (h *Feature) sweep(ctx context.Context, refreshEvery, notifyWithin time.Dur
 	for _, id := range due {
 		if _, err := h.repo.MarkExpired(ctx, id, time.Now()); err != nil {
 			h.log.Error("sweep: mark expired",
-				zap.String("contract_id", id.String()), zap.Error(err))
-		}
-	}
-
-	stale, err := h.repo.StaleContracts(ctx, now.Add(-refreshEvery), sweepBatch)
-	if err != nil {
-		h.log.Error("sweep: list stale contracts", zap.Error(err))
-	}
-	for _, id := range stale {
-		if _, err := h.repo.MarkRefreshed(ctx, id, time.Now()); err != nil {
-			h.log.Error("sweep: mark refreshed",
 				zap.String("contract_id", id.String()), zap.Error(err))
 		}
 	}
