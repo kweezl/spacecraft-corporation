@@ -93,7 +93,9 @@ type Discord interface {
 	AddInteractionHandler(fn func(*discordgo.InteractionCreate))
 	AddGuildCreateHandler(fn func(*discordgo.GuildCreate))
 	AddGuildDeleteHandler(fn func(*discordgo.GuildDelete))
-	CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error
+	// OverwriteCommands replaces a server's entire command set with cmds in one
+	// call, so commands no longer present (e.g. a disabled feature's) are pruned.
+	OverwriteCommands(serverID string, cmds []*discordgo.ApplicationCommand) error
 	Open() error
 	Close() error
 	// Connected reports whether the gateway connection is live and the initial
@@ -261,16 +263,16 @@ func isAdministrator(member *discordgo.Member) bool {
 	return member != nil && member.Permissions&discordgo.PermissionAdministrator != 0
 }
 
-// registerCommands registers every command with one server (guild). Per-guild
-// registration is instant (unlike global, which propagates over ~1h), so a
-// newly joined server has the commands immediately. Re-registering on every
-// GuildCreate is harmless: Discord upserts by command name.
+// registerCommands sets a server's (guild's) command set to exactly the
+// currently enabled commands. Per-guild registration is instant (unlike global,
+// which propagates over ~1h), so a newly joined server has the commands
+// immediately. A single bulk overwrite (rather than per-command create) makes
+// the set authoritative: commands that are no longer enabled — e.g. a feature
+// removed from FEATURES — are pruned, instead of lingering from a prior run.
 func (m *Manager) registerCommands(d Discord, serverID string) {
-	for _, cmd := range m.registry.Commands() {
-		if err := d.CreateCommand(serverID, cmd); err != nil {
-			m.log.Error("register command",
-				zap.String("command", cmd.Name), zap.String("server_id", serverID), zap.Error(err))
-		}
+	if err := d.OverwriteCommands(serverID, m.registry.Commands()); err != nil {
+		m.log.Error("register commands",
+			zap.String("server_id", serverID), zap.Error(err))
 	}
 }
 

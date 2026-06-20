@@ -50,8 +50,10 @@ func (f *fakeDiscord) AddGuildDeleteHandler(func(*discordgo.GuildDelete)) {}
 func (f *fakeDiscord) Open() error                                        { f.opened = true; f.connected = true; return nil }
 func (f *fakeDiscord) Close() error                                       { f.closed = true; f.connected = false; return nil }
 func (f *fakeDiscord) Connected() bool                                    { return f.connected }
-func (f *fakeDiscord) CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error {
-	f.created = append(f.created, created{serverID: serverID, name: cmd.Name})
+func (f *fakeDiscord) OverwriteCommands(serverID string, cmds []*discordgo.ApplicationCommand) error {
+	for _, cmd := range cmds {
+		f.created = append(f.created, created{serverID: serverID, name: cmd.Name})
+	}
 	return nil
 }
 func (f *fakeDiscord) Respond(_ *discordgo.Interaction, content string) error {
