@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -101,6 +100,18 @@ type Discord interface {
 	// READY handshake has completed (discordgo's DataReady). Open() returns
 	// before READY arrives, so this is what readiness actually waits on.
 	Connected() bool
+
+	// Proactive operations used outside the interaction-response path (the
+	// Responder above only replies to interactions). Contracts posts each
+	// contract as a forum thread and edits/locks it as progress and the deadline
+	// change; these wrap the matching *discordgo.Session calls.
+	ForumThreadStartComplex(channelID string, threadData *discordgo.ThreadStart, messageData *discordgo.MessageSend) (*discordgo.Channel, error)
+	ChannelMessageEditComplex(m *discordgo.MessageEdit) (*discordgo.Message, error)
+	ChannelEditComplex(channelID string, data *discordgo.ChannelEdit) (*discordgo.Channel, error)
+	// InteractionResponseEdit edits an interaction's original reply via the
+	// webhook identified by the interaction's app id + token (used to deliver an
+	// async outcome after the initial ack).
+	InteractionResponseEdit(i *discordgo.Interaction, edit *discordgo.WebhookEdit) (*discordgo.Message, error)
 }
 
 // Factory builds a Discord session for a bot token.
@@ -119,10 +130,10 @@ type Manager struct {
 	log           *zap.Logger
 	ownerID       string // bot owner's Discord ID, surfaced in the unapproved reply
 
-	// mu guards session, which Start writes and the readiness probe reads
-	// concurrently (the instrumentation server starts before this module).
-	mu      sync.RWMutex
-	session Discord
+	// live holds the open session (published on Start, cleared on Stop). It is
+	// shared with proactive callers (e.g. contracts) and the readiness probe, and
+	// guards concurrent access itself.
+	live *Live
 	// baseCtx scopes per-interaction work to the session's lifetime; cancelled on
 	// Stop. NOT the fx OnStart context, which is done once Start returns.
 	baseCtx context.Context
@@ -140,6 +151,7 @@ func newManager(
 	onGuildDelete []GuildDeleteFunc,
 	log *zap.Logger,
 	appCfg appconfig.AppConfig,
+	live *Live,
 ) *Manager {
 	return &Manager{
 		cfg:           cfg,
@@ -152,6 +164,7 @@ func newManager(
 		onGuildDelete: onGuildDelete,
 		log:           log,
 		ownerID:       appCfg.OwnerDiscordID,
+		live:          live,
 	}
 }
 
@@ -334,9 +347,7 @@ func (m *Manager) Start(context.Context) error {
 		return fmt.Errorf("open session: %w", err)
 	}
 
-	m.mu.Lock()
-	m.session = d
-	m.mu.Unlock()
+	m.live.set(d)
 	m.log.Info("session started")
 	return nil
 }
@@ -346,25 +357,17 @@ func (m *Manager) Stop(context.Context) error {
 	if m.cancel != nil {
 		m.cancel()
 	}
-	if s := m.current(); s != nil {
+	if s := m.live.get(); s != nil {
 		_ = s.Close()
+		m.live.set(nil)
 	}
 	return nil
-}
-
-// current returns the live session (nil before Start), guarded against the
-// concurrent readiness probe.
-func (m *Manager) current() Discord {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.session
 }
 
 // Connected reports whether the session exists and its gateway is ready. It
 // backs the "discord" readiness probe.
 func (m *Manager) Connected() bool {
-	s := m.current()
-	return s != nil && s.Connected()
+	return m.live.Connected()
 }
 
 func register(lc fx.Lifecycle, m *Manager) {

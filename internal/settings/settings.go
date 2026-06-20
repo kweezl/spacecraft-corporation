@@ -11,18 +11,25 @@ import (
 )
 
 // Settings is a server's stored choice. An empty field means "unset" (use the
-// app default).
+// app default, where one exists).
 type Settings struct {
 	Theme    string
 	Language string
+	// ContractsForumChannelID is the Discord forum channel the contracts feature
+	// posts contract threads to; empty = unset. Owned by the contracts feature
+	// conceptually, stored here per the chosen "extend settings" approach.
+	ContractsForumChannelID string
 }
 
 // Repository persists per-server settings. serverID is the resolved servers.id.
 type Repository interface {
 	// Get returns a server's settings; an unknown server yields the zero value.
 	Get(ctx context.Context, serverID uuid.UUID) (Settings, error)
-	// SetTheme upserts the server's theme, leaving language untouched.
+	// SetTheme upserts the server's theme, leaving other columns untouched.
 	SetTheme(ctx context.Context, serverID uuid.UUID, theme string) error
-	// SetLanguage upserts the server's language, leaving theme untouched.
+	// SetLanguage upserts the server's language, leaving other columns untouched.
 	SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error
+	// SetContractsForumChannelID upserts the server's contracts forum channel,
+	// leaving other columns untouched.
+	SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error
 }

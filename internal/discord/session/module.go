@@ -14,12 +14,16 @@ func Module() fx.Option {
 		logger.Decorate("session"),
 		fx.Provide(env.ParseAs[Config]),
 		fx.Provide(NewFactory),
+		// Live holds the open session for proactive callers (e.g. contracts) and
+		// the readiness probe; it has no registry dependency, so features that send
+		// proactively can depend on it without forming a cycle through the registry.
+		fx.Provide(newLive),
 		fx.Provide(fx.Annotate(
 			newManager,
 			// access is optional: the permissions feature provides it when enabled;
 			// otherwise it is nil and the gate allows every command. loc renders the
 			// approval/denied replies (required, from the i18n module).
-			fx.ParamTags(``, ``, ``, ``, `optional:"true"`, ``, `group:"guild_create"`, `group:"guild_delete"`, ``, ``),
+			fx.ParamTags(``, ``, ``, ``, `optional:"true"`, ``, `group:"guild_create"`, `group:"guild_delete"`, ``, ``, ``),
 		)),
 		// Contribute a "discord" readiness probe (gateway connected) to the
 		// instrumentation group.

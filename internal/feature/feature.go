@@ -25,6 +25,11 @@ const (
 	// management, and a paginated listing. Requires Permissions, since its
 	// per-tier (own/corp/member) authorization is enforced by the role gate.
 	Bases Name = "bases"
+	// Contracts is the corporation-contracts feature: /contract create/participate/
+	// deliver/release and a paginated listing, each contract a forum thread, with a
+	// background sweeper closing expired ones. Requires Permissions, since its
+	// per-leaf authorization is enforced by the role gate.
+	Contracts Name = "contracts"
 )
 
 // Feature describes an optional feature module and the features it requires.
@@ -41,6 +46,7 @@ func catalog() []Feature {
 		{Name: Ping},
 		{Name: Permissions},
 		{Name: Bases, Requires: []Name{Permissions}},
+		{Name: Contracts, Requires: []Name{Permissions}},
 	}
 }
 

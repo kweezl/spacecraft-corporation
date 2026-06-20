@@ -84,6 +84,22 @@ func (f *fakeDiscord) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.M
 	}
 	return nil
 }
+func (f *fakeDiscord) ForumThreadStartComplex(_ string, threadData *discordgo.ThreadStart, _ *discordgo.MessageSend) (*discordgo.Channel, error) {
+	name := ""
+	if threadData != nil {
+		name = threadData.Name
+	}
+	return &discordgo.Channel{ID: "thread-1", Name: name}, nil
+}
+func (f *fakeDiscord) ChannelMessageEditComplex(_ *discordgo.MessageEdit) (*discordgo.Message, error) {
+	return &discordgo.Message{}, nil
+}
+func (f *fakeDiscord) ChannelEditComplex(_ string, _ *discordgo.ChannelEdit) (*discordgo.Channel, error) {
+	return &discordgo.Channel{}, nil
+}
+func (f *fakeDiscord) InteractionResponseEdit(_ *discordgo.Interaction, _ *discordgo.WebhookEdit) (*discordgo.Message, error) {
+	return &discordgo.Message{}, nil
+}
 
 // fireGuildCreate invokes every registered GuildCreate handler, mimicking
 // discordgo delivering the event.
@@ -144,7 +160,7 @@ func startManagerWithApp(t *testing.T, resolver ServerResolver, app appconfig.Ap
 	t.Helper()
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, resolver, nil, testLoc(), nil, nil, zap.NewNop(), app)
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, resolver, nil, testLoc(), nil, nil, zap.NewNop(), app, newLive())
 	require.NoError(t, m.Start(context.Background()))
 	require.NotNil(t, fake)
 	assert.True(t, fake.opened)
@@ -188,7 +204,7 @@ func startWithRegistry(t *testing.T, reg *registry.Registry, resolver ServerReso
 	t.Helper()
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, reg, factory, resolver, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	m := newManager(Config{Token: "tok-1"}, reg, factory, resolver, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{}, newLive())
 	require.NoError(t, m.Start(context.Background()))
 	require.NotNil(t, fake)
 	return fake
@@ -269,7 +285,7 @@ func gateRegistry() *registry.Registry {
 // managerWithAccess builds a Manager wired with the given access gate, bypassing
 // Start (allowed needs only registry/access/log).
 func managerWithAccess(access CommandAccess) *Manager {
-	return newManager(Config{}, gateRegistry(), nil, nil, access, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	return newManager(Config{}, gateRegistry(), nil, nil, access, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{}, newLive())
 }
 
 func interactionAs(command string, member *discordgo.Member) *discordgo.InteractionCreate {
@@ -326,7 +342,7 @@ func TestManager_Allowed_SubcommandGated_KeysOnPath(t *testing.T) {
 		DefaultDeny:     true,
 		SubcommandGated: true,
 	}}})
-	m := newManager(Config{}, reg, nil, nil, gate, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	m := newManager(Config{}, reg, nil, nil, gate, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{}, newLive())
 
 	i := &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
 		Type:    discordgo.InteractionApplicationCommand,
@@ -379,7 +395,7 @@ func TestManager_BlockedCommand_RepliesDenied(t *testing.T) {
 	denyAll := accessFunc(func(AccessRequest) (bool, error) { return false, nil })
 	gate := gateFunc(func(string) bool { return true })
 	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, gate, denyAll, testLoc(), nil, nil,
-		zap.NewNop(), appconfig.AppConfig{})
+		zap.NewNop(), appconfig.AppConfig{}, newLive())
 	require.NoError(t, m.Start(context.Background()))
 
 	fake.fireCommand("g1") // non-admin (no Member), approved server, gate denies
@@ -389,7 +405,7 @@ func TestManager_BlockedCommand_RepliesDenied(t *testing.T) {
 func TestManager_Stop_ClosesSession(t *testing.T) {
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{}, newLive())
 	require.NoError(t, m.Start(context.Background()))
 	require.NoError(t, m.Stop(context.Background()))
 	assert.True(t, fake.closed)
@@ -398,7 +414,7 @@ func TestManager_Stop_ClosesSession(t *testing.T) {
 func TestReadinessCheck_ReflectsGatewayLifecycle(t *testing.T) {
 	var fake *fakeDiscord
 	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
-	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	m := newManager(Config{Token: "tok-1"}, newTestRegistry(), factory, nil, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{}, newLive())
 	probe := newReadinessCheck(m).Probe
 
 	// Not ready before the session is opened.

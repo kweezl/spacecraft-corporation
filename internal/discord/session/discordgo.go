@@ -97,3 +97,19 @@ func (d *discordSession) UpdateMessage(i *discordgo.Interaction, embed *discordg
 		},
 	})
 }
+
+func (d *discordSession) ForumThreadStartComplex(channelID string, threadData *discordgo.ThreadStart, messageData *discordgo.MessageSend) (*discordgo.Channel, error) {
+	return d.s.ForumThreadStartComplex(channelID, threadData, messageData)
+}
+
+func (d *discordSession) ChannelMessageEditComplex(m *discordgo.MessageEdit) (*discordgo.Message, error) {
+	return d.s.ChannelMessageEditComplex(m)
+}
+
+func (d *discordSession) ChannelEditComplex(channelID string, data *discordgo.ChannelEdit) (*discordgo.Channel, error) {
+	return d.s.ChannelEditComplex(channelID, data)
+}
+
+func (d *discordSession) InteractionResponseEdit(i *discordgo.Interaction, edit *discordgo.WebhookEdit) (*discordgo.Message, error) {
+	return d.s.InteractionResponseEdit(i, edit)
+}
