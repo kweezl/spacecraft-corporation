@@ -21,5 +21,40 @@
 
   "settings.theme_set": "Outpost protocol set to **{{.Theme}}**.",
   "settings.language_set": "Comms language set to **{{.Language}}**.",
-  "settings.current": "This outpost runs protocol **{{.Theme}}** on comms language **{{.Language}}**."
+  "settings.current": "This outpost runs protocol **{{.Theme}}** on comms language **{{.Language}}**.",
+
+  "bases.error.no_member": "Name the crew member whose outpost this is via the `member` option.",
+  "bases.error.unknown": "Unrecognized order.",
+  "bases.error.bad_base": "Select an outpost from the manifest suggestions.",
+  "bases.error.bad_equipment": "Select an installation from the manifest suggestions.",
+  "bases.error.base_not_found": "No such outpost on record, or it is outside your command.",
+  "bases.error.equipment_not_found": "No such installation on that outpost.",
+
+  "bases.register.ok": "Outpost **{{.Name}}** charted in {{.Sector}} / {{.System}} {{.Planet}}.",
+  "bases.register.limit": "Outpost quota reached ({{.Limit}}). Decommission one first.",
+
+  "bases.unregister.ok": "Outpost decommissioned.",
+  "bases.unregister.all": "Decommissioned {{.Count}} outpost(s).",
+
+  "bases.extractor.added": "Deployed an extractor for **{{.Resource}}**.",
+  "bases.extractor.removed": "Extractor dismantled.",
+  "bases.extractor.limit": "This outpost already fields the maximum of {{.Limit}} extractors.",
+
+  "bases.production.added": "Commissioned a fabricator for **{{.Item}}**.",
+  "bases.production.removed": "Fabricator dismantled.",
+  "bases.production.limit": "This outpost already fields the maximum of {{.Limit}} fabricators.",
+
+  "bases.list.title": "🛰️ Outpost Registry",
+  "bases.list.empty": "No outposts match your survey parameters.",
+  "bases.list.expired": "This survey has gone stale — run `/base list` to re-scan.",
+  "bases.list.footer": "Sector page {{.Page}} / {{.Pages}} · {{.Total}} outpost(s)",
+  "bases.list.owner_member": "Commander: <@{{.User}}>",
+  "bases.list.owner_corp": "Holding: Corporation",
+  "bases.list.none": "—",
+  "bases.list.location": "{{.Sector}} / {{.System}} {{.Planet}}",
+  "bases.list.field_base": "{{.Location}}\n{{.Owner}}",
+  "bases.list.extractors_header": "🔧 Extractors",
+  "bases.list.production_header": "🏭 Fabricators",
+  "bases.list.prev": "◀ Prev",
+  "bases.list.next": "Next ▶"
 }
