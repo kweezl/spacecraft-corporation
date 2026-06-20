@@ -10,7 +10,7 @@
 # IMAGE_TAG=1.2.3), defaulting to latest. pull_policy: always re-fetches the tag on
 # `up` so a redeploy (especially of latest) picks up the freshest image.
 x-bot-image: &bot-image
-  image: kweezls/spacecraft-corp:${IMAGE_TAG:-latest}
+  image: kweezls/spacecraft-corporation:${IMAGE_TAG:-latest}
   pull_policy: always
 
 # Shared runtime env. migrate only needs the DB settings; bot needs all of them.
