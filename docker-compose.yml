@@ -42,7 +42,9 @@ x-bot-env: &bot-env
   APP_NAME: ${APP_NAME:-spacecraft-corporation}
   APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
   APP_OWNER_DISCORD_ID: ${APP_OWNER_DISCORD_ID:-}
-  FEATURES: ${FEATURES:-ping}
+  # `-` (not `:-`) so an explicit empty FEATURES= passes through as "no features";
+  # only a genuinely unset FEATURES falls back to the `ping` default.
+  FEATURES: ${FEATURES-ping}
   INSTRUMENTATION_ADDR: ${INSTRUMENTATION_ADDR:-:9464}
   # contracts feature tunables (only read when "contracts" is in FEATURES). Mapped
   # explicitly — the anchor is an allowlist, so an unmapped var never reaches the
