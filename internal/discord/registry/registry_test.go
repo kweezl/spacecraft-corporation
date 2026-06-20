@@ -219,6 +219,25 @@ func TestRegistry_Policy(t *testing.T) {
 	assert.False(t, known, "unknown command is reported as not known")
 }
 
+func TestRegistry_DefaultMemberPermissions(t *testing.T) {
+	open := &Command{Def: &discordgo.ApplicationCommand{Name: "open"}}
+	locked := &Command{Def: &discordgo.ApplicationCommand{Name: "locked"}, DefaultDeny: true}
+	custom := &Command{Def: &discordgo.ApplicationCommand{
+		Name:                     "custom",
+		DefaultMemberPermissions: ptr(int64(discordgo.PermissionManageGuild)),
+	}, DefaultDeny: true}
+	New(Params{Commands: []*Command{open, locked, custom}})
+
+	assert.Nil(t, open.Def.DefaultMemberPermissions, "open command stays visible to everyone")
+	require.NotNil(t, locked.Def.DefaultMemberPermissions, "DefaultDeny command is hidden from non-admins")
+	assert.Equal(t, int64(0), *locked.Def.DefaultMemberPermissions, "admin-only is the empty permission bitfield")
+	require.NotNil(t, custom.Def.DefaultMemberPermissions)
+	assert.Equal(t, int64(discordgo.PermissionManageGuild), *custom.Def.DefaultMemberPermissions,
+		"a command's explicit default_member_permissions is preserved")
+}
+
+func ptr[T any](v T) *T { return &v }
+
 func TestRegistry_CountsDispatchByCommand(t *testing.T) {
 	counter := newCommandCounter(prometheus.NewRegistry())
 	cmd := &Command{
