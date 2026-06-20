@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,6 +132,49 @@ func TestTaskClose_LocksThread(t *testing.T) {
 
 	f := newFeature(t, repo, gw, mocks.NewMockForumConfig(t))
 	require.NoError(t, handlerFor(t, f, "contracts.thread.close")(context.Background(), payload(t, cid, "", "")))
+}
+
+func TestTaskNotify_PingsOnlyOutstanding(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(openProgress(cid, "thread-9"), nil).Once()
+	// Only members who still owe delivery are returned (fully-delivered members are
+	// excluded by the repo query); exactly those are pinged.
+	repo.EXPECT().OutstandingParticipantUserIDs(mock.Anything, cid).Return([]string{"u1", "u2"}, nil).Once()
+	gw.EXPECT().CommentPost("thread-9", mock.MatchedBy(func(s string) bool {
+		return strings.Contains(s, "<@u1>") && strings.Contains(s, "<@u2>")
+	}), []string{"u1", "u2"}).Return(nil).Once()
+
+	f := newFeature(t, repo, gw, mocks.NewMockForumConfig(t))
+	require.NoError(t, handlerFor(t, f, "contracts.thread.notify")(context.Background(), payload(t, cid, "", "")))
+}
+
+func TestTaskNotify_AllDeliveredInformsNoPing(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(openProgress(cid, "thread-9"), nil).Once()
+	// Everyone has delivered: no outstanding members -> an informational notice is
+	// still posted, but with no mentions (nobody is pinged).
+	repo.EXPECT().OutstandingParticipantUserIDs(mock.Anything, cid).Return(nil, nil).Once()
+	gw.EXPECT().CommentPost("thread-9", mock.MatchedBy(func(s string) bool {
+		return !strings.Contains(s, "<@")
+	}), []string(nil)).Return(nil).Once()
+
+	f := newFeature(t, repo, gw, mocks.NewMockForumConfig(t))
+	require.NoError(t, handlerFor(t, f, "contracts.thread.notify")(context.Background(), payload(t, cid, "", "")))
+}
+
+func TestTaskNotify_TerminalNoOp(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	prog := openProgress(cid, "thread-9")
+	prog.Status = contracts.StatusCompleted
+	// Completed between the latch and this run: no participant lookup, no ping.
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(prog, nil).Once()
+	f := newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
+	require.NoError(t, handlerFor(t, f, "contracts.thread.notify")(context.Background(), payload(t, cid, "", "")))
 }
 
 func TestTaskCreateThread_TransientErrorRetries(t *testing.T) {

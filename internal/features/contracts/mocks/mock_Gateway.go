@@ -67,6 +67,54 @@ func (_c *MockGateway_ClosePost_Call) RunAndReturn(run func(string, *discordgo.M
 	return _c
 }
 
+// CommentPost provides a mock function with given fields: threadID, content, mentionUserIDs
+func (_m *MockGateway) CommentPost(threadID string, content string, mentionUserIDs []string) error {
+	ret := _m.Called(threadID, content, mentionUserIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CommentPost")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string, []string) error); ok {
+		r0 = rf(threadID, content, mentionUserIDs)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockGateway_CommentPost_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CommentPost'
+type MockGateway_CommentPost_Call struct {
+	*mock.Call
+}
+
+// CommentPost is a helper method to define mock.On call
+//   - threadID string
+//   - content string
+//   - mentionUserIDs []string
+func (_e *MockGateway_Expecter) CommentPost(threadID interface{}, content interface{}, mentionUserIDs interface{}) *MockGateway_CommentPost_Call {
+	return &MockGateway_CommentPost_Call{Call: _e.mock.On("CommentPost", threadID, content, mentionUserIDs)}
+}
+
+func (_c *MockGateway_CommentPost_Call) Run(run func(threadID string, content string, mentionUserIDs []string)) *MockGateway_CommentPost_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(string), args[2].([]string))
+	})
+	return _c
+}
+
+func (_c *MockGateway_CommentPost_Call) Return(_a0 error) *MockGateway_CommentPost_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockGateway_CommentPost_Call) RunAndReturn(run func(string, string, []string) error) *MockGateway_CommentPost_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateForumPost provides a mock function with given fields: channelID, name, embed
 func (_m *MockGateway) CreateForumPost(channelID string, name string, embed *discordgo.MessageEmbed) (string, error) {
 	ret := _m.Called(channelID, name, embed)
