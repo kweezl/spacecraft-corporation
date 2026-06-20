@@ -34,6 +34,12 @@ type Responder interface {
 	// UpdateMessage edits in place the message a component interaction is
 	// attached to (e.g. flipping a pagination page without posting anew).
 	UpdateMessage(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
+	// RespondComponentsV2Ephemeral replies with an ephemeral message built
+	// entirely from Components V2 (no content/embeds), e.g. the permissions panel.
+	RespondComponentsV2Ephemeral(i *discordgo.Interaction, components []discordgo.MessageComponent) error
+	// UpdateComponentsV2 edits a Components V2 message in place (panel paging /
+	// applying a role-picker change).
+	UpdateComponentsV2(i *discordgo.Interaction, components []discordgo.MessageComponent) error
 }
 
 // Handler runs the logic for one slash command. serverID is the resolved

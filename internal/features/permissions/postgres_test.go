@@ -31,11 +31,8 @@ func (s *pgSuite) TestRepository() {
 	require.NoError(t, err)
 	assert.Empty(t, roles)
 
-	// Grant is idempotent: granting the same role twice keeps one row.
-	require.NoError(t, repo.Grant(ctx, g1, "ping", "r1", "u1"))
-	require.NoError(t, repo.Grant(ctx, g1, "ping", "r1", "u1"))
-	require.NoError(t, repo.Grant(ctx, g1, "ping", "r2", "u1"))
-
+	// SetRoles establishes the exact role set for a command.
+	require.NoError(t, repo.SetRoles(ctx, g1, "ping", []string{"r1", "r2"}, "u1"))
 	roles, err = repo.RolesFor(ctx, g1, "ping")
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"r1", "r2"}, roles)
@@ -50,28 +47,37 @@ func (s *pgSuite) TestRepository() {
 	assert.Equal(t, "u1", createdBy)
 	assert.False(t, createdAt.IsZero(), "created_at is supplied by the app, not left null")
 
+	// SetRoles diffs against the current set: it adds new roles and drops absent
+	// ones in one call (here drop r1, keep r2, add r3).
+	require.NoError(t, repo.SetRoles(ctx, g1, "ping", []string{"r2", "r3"}, "u2"))
+	roles, err = repo.RolesFor(ctx, g1, "ping")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"r2", "r3"}, roles)
+
+	// A kept role's original grant metadata is preserved (not re-inserted).
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT created_by_user_id FROM permissions
+		 WHERE servers_id = $1 AND command = $2 AND role_id = $3`, g1, "ping", "r2").
+		Scan(&createdBy))
+	assert.Equal(t, "u1", createdBy, "r2 was kept, so its original creator stands")
+
 	// Isolation: another server sees nothing for the same command.
 	roles, err = repo.RolesFor(ctx, g2, "ping")
 	require.NoError(t, err)
 	assert.Empty(t, roles, "mappings are per server")
 
-	// Revoke removes a single role.
-	require.NoError(t, repo.Revoke(ctx, g1, "ping", "r1"))
-	roles, err = repo.RolesFor(ctx, g1, "ping")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"r2"}, roles)
-
 	// List returns every mapping on the server.
-	require.NoError(t, repo.Grant(ctx, g1, "permissions", "r9", "u1"))
+	require.NoError(t, repo.SetRoles(ctx, g1, "permissions", []string{"r9"}, "u1"))
 	all, err := repo.List(ctx, g1)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []Mapping{
 		{Command: "ping", RoleID: "r2"},
+		{Command: "ping", RoleID: "r3"},
 		{Command: "permissions", RoleID: "r9"},
 	}, all)
 
-	// Clear removes all roles for one command, leaving others intact.
-	require.NoError(t, repo.Clear(ctx, g1, "ping"))
+	// SetRoles with an empty set clears a command, leaving others intact.
+	require.NoError(t, repo.SetRoles(ctx, g1, "ping", nil, "u1"))
 	roles, err = repo.RolesFor(ctx, g1, "ping")
 	require.NoError(t, err)
 	assert.Empty(t, roles)

@@ -130,6 +130,12 @@ func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, embed *discordgo
 	}
 	return nil
 }
+func (f *fakeResponder) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+	return nil
+}
+func (f *fakeResponder) UpdateComponentsV2(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+	return nil
+}
 
 func settingsInteraction(sub string, opts ...*discordgo.ApplicationCommandInteractionDataOption) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
