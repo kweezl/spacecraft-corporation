@@ -33,14 +33,10 @@ import (
 // Config is this module's env config. Only read when the contracts feature is
 // enabled.
 type Config struct {
-	// SweepInterval is how often the background ticker runs (expiry + keep-warm
-	// refresh + pre-expiry notice). It is the scheduling granularity, so keep it
-	// no longer than RefreshInterval / ExpiresNotify.
+	// SweepInterval is how often the background ticker runs (expiry + pre-expiry
+	// notice). It is the scheduling granularity, so keep it no longer than
+	// ExpiresNotify.
 	SweepInterval time.Duration `env:"CONTRACTS_SWEEP_INTERVAL" envDefault:"1m"`
-	// RefreshInterval is how stale an open contract's progress embed may get before
-	// the sweeper re-renders it (keep-warm), so the "time left" never looks
-	// abandoned even with no member activity.
-	RefreshInterval time.Duration `env:"CONTRACTS_REFRESH_INTERVAL" envDefault:"3h"`
 	// ExpiresNotify is how long before the deadline the sweeper posts the one-shot
 	// "closing soon" comment that pings every participant.
 	ExpiresNotify time.Duration `env:"CONTRACTS_EXPIRES_NOTIFY" envDefault:"1h"`
@@ -121,9 +117,9 @@ type Contract struct {
 	Status          Status
 	Deadline        time.Time
 	CreatedByUserID string
-	// LastRefreshedAt is when the progress embed was last (re-)rendered; surfaced
-	// in the embed footer ("last updated") and the live "… ago" relative stamp,
-	// and used by the keep-warm sweep to find stale open contracts.
+	// LastRefreshedAt is when the contract was last mutated (and its embed
+	// re-rendered); surfaced in the embed footer ("last updated"). Advanced by
+	// every mutation in lockstep with the refresh task it enqueues.
 	LastRefreshedAt time.Time
 }
 
@@ -251,15 +247,6 @@ type Repository interface {
 	// and enqueues its close task in the same tx; reports whether it actually
 	// transitioned (so only the winner enqueues the close).
 	MarkExpired(ctx context.Context, id uuid.UUID, now time.Time) (bool, error)
-
-	// StaleContracts returns the ids of open contracts whose embed was last
-	// rendered at or before before — the keep-warm scan (before = now − refresh
-	// interval).
-	StaleContracts(ctx context.Context, before time.Time, limit int) ([]uuid.UUID, error)
-	// MarkRefreshed advances one open contract's last_refreshed_at and enqueues a
-	// refresh task in the same tx; reports whether it transitioned (so collapsed
-	// concurrent sweeps don't double-enqueue).
-	MarkRefreshed(ctx context.Context, id uuid.UUID, now time.Time) (bool, error)
 
 	// NotifyDue returns the ids of open, not-yet-notified contracts whose deadline
 	// falls within [now, now+within] — the pre-expiry notice scan.

@@ -12,7 +12,8 @@ import (
 
 // renderEmbed builds the contract's progress embed — the starter message of its
 // forum thread, re-rendered after every change. Open contracts show their
-// remaining time; closed ones show their end state.
+// deadline as Discord timestamp markdown (absolute date + live relative
+// countdown, kept current client-side); closed ones show their end state.
 func (h *Feature) renderEmbed(ctx context.Context, serverID uuid.UUID, p Progress) *discordgo.MessageEmbed {
 	desc := ""
 	if p.Description != "" {
@@ -40,9 +41,9 @@ func (h *Feature) renderEmbed(ctx context.Context, serverID uuid.UUID, p Progres
 		Description: truncate(desc, embedDescMax),
 		Fields:      fields,
 		// Native "last updated" stamp: Discord renders it in the footer, localized
-		// to each viewer's own timezone. Sourced from the watermark so it equals
-		// what the sweeper reasons about (RFC3339 carries the configured-zone offset
-		// asLocal stamped on the value).
+		// to each viewer's own timezone. Sourced from last_refreshed_at, which every
+		// mutation advances — so it reflects when the contract was last changed
+		// (RFC3339 carries the configured-zone offset asLocal stamped on the value).
 		Timestamp: p.LastRefreshedAt.Format(time.RFC3339),
 		Footer:    &discordgo.MessageEmbedFooter{Text: h.loc.Render(ctx, serverID, "contracts.embed.updated_footer", nil)},
 	}
@@ -90,14 +91,17 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 func (h *Feature) statusLine(ctx context.Context, serverID uuid.UUID, p Progress) string {
 	switch p.Status {
 	case StatusOpen:
-		left := formatTimeLeft(time.Until(p.Deadline))
-		// A live "… ago" via Discord's relative timestamp markdown: it advances
-		// client-side between the (coarse) keep-warm refreshes, so the post never
-		// looks abandoned even when it hasn't been re-rendered.
-		updated := h.loc.Render(ctx, serverID, "contracts.embed.updated_relative",
-			map[string]any{"Updated": fmt.Sprintf("<t:%d:R>", p.LastRefreshedAt.Unix())})
-		return h.loc.Render(ctx, serverID, "contracts.embed.status_open", nil) + " · " +
-			h.loc.Render(ctx, serverID, "contracts.embed.time_left", map[string]any{"Left": left}) + " · " + updated
+		// The deadline as Discord timestamp markdown: <t:…:f> renders the absolute
+		// date/time in each viewer's own timezone, <t:…:R> the live relative
+		// countdown ("in 2 days" → "2 days ago") that advances client-side. Because
+		// the client keeps both current, an open contract's embed never needs the
+		// server to periodically re-render just to stop the deadline looking stale.
+		ts := p.Deadline.Unix()
+		expires := h.loc.Render(ctx, serverID, "contracts.embed.expires", map[string]any{
+			"At":  fmt.Sprintf("<t:%d:f>", ts),
+			"Rel": fmt.Sprintf("<t:%d:R>", ts),
+		})
+		return h.loc.Render(ctx, serverID, "contracts.embed.status_open", nil) + " · " + expires
 	case StatusCompleted:
 		return h.loc.Render(ctx, serverID, "contracts.embed.status_completed", nil)
 	case StatusExpired:
