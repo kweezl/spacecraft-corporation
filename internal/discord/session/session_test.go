@@ -32,6 +32,7 @@ type fakeDiscord struct {
 	interaction    func(*discordgo.InteractionCreate)
 	guildCreate    []func(*discordgo.GuildCreate)
 	lastReply      string
+	lastChoices    []*discordgo.ApplicationCommandOptionChoice
 }
 
 type created struct {
@@ -67,6 +68,22 @@ func (f *fakeDiscord) RespondEmbed(_ *discordgo.Interaction, embed *discordgo.Me
 	}
 	return nil
 }
+func (f *fakeDiscord) RespondAutocomplete(_ *discordgo.Interaction, choices []*discordgo.ApplicationCommandOptionChoice) error {
+	f.lastChoices = choices
+	return nil
+}
+func (f *fakeDiscord) RespondEmbedComponents(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
+	if embed != nil {
+		f.lastReply = embed.Title
+	}
+	return nil
+}
+func (f *fakeDiscord) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
+	if embed != nil {
+		f.lastReply = embed.Title
+	}
+	return nil
+}
 
 // fireGuildCreate invokes every registered GuildCreate handler, mimicking
 // discordgo delivering the event.
@@ -81,6 +98,22 @@ func (f *fakeDiscord) fireCommand(serverID string) {
 		Type:    discordgo.InteractionApplicationCommand,
 		GuildID: serverID,
 		Data:    discordgo.ApplicationCommandInteractionData{Name: "ping"},
+	}})
+}
+
+func (f *fakeDiscord) fireAutocomplete(serverID, name string) {
+	f.interaction(&discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type:    discordgo.InteractionApplicationCommandAutocomplete,
+		GuildID: serverID,
+		Data:    discordgo.ApplicationCommandInteractionData{Name: name},
+	}})
+}
+
+func (f *fakeDiscord) fireComponent(serverID, customID string) {
+	f.interaction(&discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type:    discordgo.InteractionMessageComponent,
+		GuildID: serverID,
+		Data:    discordgo.MessageComponentInteractionData{CustomID: customID},
 	}})
 }
 
@@ -128,6 +161,61 @@ func TestManager_RegistersCommandsPerJoinedServer(t *testing.T) {
 	require.Len(t, fake.created, 1)
 	assert.Equal(t, "g1", fake.created[0].serverID)
 	assert.Equal(t, "ping", fake.created[0].name)
+}
+
+// routingRegistry builds a registry that records whether autocomplete and
+// component dispatch were reached.
+func routingRegistry(autoCalled, compCalled *bool) *registry.Registry {
+	return registry.New(registry.Params{
+		Commands: []*registry.Command{{
+			Def: &discordgo.ApplicationCommand{Name: "base"},
+			Autocomplete: func(context.Context, *discordgo.InteractionCreate, uuid.UUID) ([]*discordgo.ApplicationCommandOptionChoice, error) {
+				*autoCalled = true
+				return nil, nil
+			},
+		}},
+		Components: []*registry.Component{{
+			Prefix: "base",
+			Handler: func(context.Context, registry.Responder, *discordgo.InteractionCreate, uuid.UUID) error {
+				*compCalled = true
+				return nil
+			},
+		}},
+	})
+}
+
+func startWithRegistry(t *testing.T, reg *registry.Registry, resolver ServerResolver) *fakeDiscord {
+	t.Helper()
+	var fake *fakeDiscord
+	factory := func(tok string) (Discord, error) { fake = &fakeDiscord{token: tok}; return fake, nil }
+	m := newManager(Config{Token: "tok-1"}, reg, factory, resolver, nil, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
+	require.NoError(t, m.Start(context.Background()))
+	require.NotNil(t, fake)
+	return fake
+}
+
+func TestManager_RoutesAutocompleteAndComponentsFromApprovedServer(t *testing.T) {
+	var autoCalled, compCalled bool
+	fake := startWithRegistry(t, routingRegistry(&autoCalled, &compCalled),
+		gateFunc(func(id string) bool { return id == "g1" }))
+
+	fake.fireAutocomplete("g1", "base")
+	assert.True(t, autoCalled, "autocomplete from an approved server is dispatched")
+
+	fake.fireComponent("g1", "base:list:tok:1")
+	assert.True(t, compCalled, "component from an approved server is dispatched")
+}
+
+func TestManager_AutocompleteFromUnapprovedServer_NotDispatched(t *testing.T) {
+	var autoCalled, compCalled bool
+	fake := startWithRegistry(t, routingRegistry(&autoCalled, &compCalled),
+		gateFunc(func(string) bool { return false }))
+
+	fake.fireAutocomplete("g2", "base")
+	assert.False(t, autoCalled, "no suggestions are produced for an unapproved server")
+
+	fake.fireComponent("g2", "base:list:tok:1")
+	assert.False(t, compCalled, "components from an unapproved server are ignored")
 }
 
 func TestManager_DispatchesFromApprovedServer(t *testing.T) {
@@ -219,6 +307,47 @@ func TestManager_Allowed_ConsultsGateForNonAdmin(t *testing.T) {
 	assert.Equal(t, "locked", got.Command)
 	assert.Equal(t, []string{"r1", "r2"}, got.UserRoles)
 	assert.True(t, got.DefaultDeny, "locked command carries its deny-by-default policy")
+}
+
+func TestManager_Allowed_SubcommandGated_KeysOnPath(t *testing.T) {
+	var got AccessRequest
+	gate := accessFunc(func(req AccessRequest) (bool, error) { got = req; return true, nil })
+	reg := registry.New(registry.Params{Commands: []*registry.Command{{
+		Def: &discordgo.ApplicationCommand{
+			Name: "base",
+			Options: []*discordgo.ApplicationCommandOption{{
+				Name: "own",
+				Type: discordgo.ApplicationCommandOptionSubCommandGroup,
+				Options: []*discordgo.ApplicationCommandOption{
+					{Name: "register", Type: discordgo.ApplicationCommandOptionSubCommand},
+				},
+			}},
+		},
+		DefaultDeny:     true,
+		SubcommandGated: true,
+	}}})
+	m := newManager(Config{}, reg, nil, nil, gate, testLoc(), nil, nil, zap.NewNop(), appconfig.AppConfig{})
+
+	i := &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type:    discordgo.InteractionApplicationCommand,
+		GuildID: "g1",
+		Member:  &discordgo.Member{Roles: []string{"r1"}},
+		Data: discordgo.ApplicationCommandInteractionData{
+			Name: "base",
+			Options: []*discordgo.ApplicationCommandInteractionDataOption{{
+				Name: "own",
+				Type: discordgo.ApplicationCommandOptionSubCommandGroup,
+				Options: []*discordgo.ApplicationCommandInteractionDataOption{{
+					Name: "register",
+					Type: discordgo.ApplicationCommandOptionSubCommand,
+				}},
+			}},
+		},
+	}}
+
+	assert.True(t, m.allowed(context.Background(), i, uuid.Nil))
+	assert.Equal(t, "base own register", got.Command, "the gate authorizes the full subcommand path")
+	assert.True(t, got.DefaultDeny, "the command's deny-by-default policy applies to its subcommands")
 }
 
 func TestManager_Allowed_GateDenies(t *testing.T) {

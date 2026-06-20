@@ -185,27 +185,59 @@ func (m *Manager) allowed(ctx context.Context, i *discordgo.InteractionCreate, s
 		return true
 	}
 	name := i.ApplicationCommandData().Name
+	// Policy is a property of the whole command (one DefaultDeny per command),
+	// so it keys on the top-level name; the grant key may be finer (the
+	// subcommand path) for SubcommandGated commands.
 	defaultDeny, known := m.registry.Policy(name)
 	if !known {
 		// Dispatch will reject an unknown command; don't gate it here.
 		return true
 	}
+	key := m.registry.AccessKey(i)
 	var roles []string
 	if i.Member != nil {
 		roles = i.Member.Roles
 	}
 	ok, err := m.access.IsAllowed(ctx, AccessRequest{
 		ServerID:    serverID,
-		Command:     name,
+		Command:     key,
 		UserRoles:   roles,
 		DefaultDeny: defaultDeny,
 	})
 	if err != nil {
 		m.log.Error("access check",
-			zap.String("server_id", i.GuildID), zap.String("command", name), zap.Error(err))
+			zap.String("server_id", i.GuildID), zap.String("command", key), zap.Error(err))
 		return false
 	}
 	return ok
+}
+
+// handleCommand runs the application-command path: reply with the approval
+// notice for unapproved servers, enforce the role gate, then dispatch.
+func (m *Manager) handleCommand(ctx context.Context, d Discord, i *discordgo.InteractionCreate, serverID uuid.UUID, approved bool) {
+	if !approved {
+		m.log.Debug("command from unapproved server", zap.String("server_id", i.GuildID))
+		msg := m.loc.Render(ctx, serverID, "session.unapproved", map[string]any{"Owner": m.ownerID})
+		if rerr := d.Respond(i.Interaction, msg); rerr != nil {
+			m.log.Error("respond to unapproved server",
+				zap.String("server_id", i.GuildID), zap.Error(rerr))
+		}
+		return
+	}
+	if !m.allowed(ctx, i, serverID) {
+		key := m.registry.AccessKey(i)
+		m.log.Debug("command blocked by role gate",
+			zap.String("server_id", i.GuildID), zap.String("command", key))
+		msg := m.loc.Render(ctx, serverID, "session.denied", map[string]any{"Command": key})
+		if rerr := d.Respond(i.Interaction, msg); rerr != nil {
+			m.log.Error("respond to blocked command",
+				zap.String("server_id", i.GuildID), zap.Error(rerr))
+		}
+		return
+	}
+	if derr := m.registry.Dispatch(ctx, d, i, serverID); derr != nil {
+		m.log.Error("dispatch interaction", zap.Error(derr))
+	}
 }
 
 // isAdministrator reports whether the member has Discord's Administrator
@@ -245,10 +277,7 @@ func (m *Manager) Start(context.Context) error {
 	m.baseCtx, m.cancel = context.WithCancel(context.Background())
 
 	d.AddInteractionHandler(func(i *discordgo.InteractionCreate) {
-		if i.Type != discordgo.InteractionApplicationCommand {
-			return
-		}
-		// Commands are guild-only; ignore DMs and unapproved servers.
+		// All interactions are guild-only; ignore DMs.
 		if i.GuildID == "" {
 			return
 		}
@@ -260,28 +289,32 @@ func (m *Manager) Start(context.Context) error {
 		// nothing re-resolves it per query. uuid.Nil (unapproved/unresolvable)
 		// renders replies with app defaults.
 		serverID, approved := m.resolve(ctx, i.GuildID)
-		if !approved {
-			m.log.Debug("command from unapproved server", zap.String("server_id", i.GuildID))
-			msg := m.loc.Render(ctx, serverID, "session.unapproved", map[string]any{"Owner": m.ownerID})
-			if rerr := d.Respond(i.Interaction, msg); rerr != nil {
-				m.log.Error("respond to unapproved server",
-					zap.String("server_id", i.GuildID), zap.Error(rerr))
+
+		switch i.Type {
+		case discordgo.InteractionApplicationCommand:
+			m.handleCommand(ctx, d, i, serverID, approved)
+		case discordgo.InteractionApplicationCommandAutocomplete:
+			// Don't suggest anything to an unapproved server; otherwise let the
+			// command's handler scope its own suggestions (autocomplete is not an
+			// authorization boundary — the value is re-validated on submit).
+			if !approved {
+				_ = d.RespondAutocomplete(i.Interaction, nil)
+				return
 			}
-			return
-		}
-		if !m.allowed(ctx, i, serverID) {
-			name := i.ApplicationCommandData().Name
-			m.log.Debug("command blocked by role gate",
-				zap.String("server_id", i.GuildID), zap.String("command", name))
-			msg := m.loc.Render(ctx, serverID, "session.denied", map[string]any{"Command": name})
-			if rerr := d.Respond(i.Interaction, msg); rerr != nil {
-				m.log.Error("respond to blocked command",
-					zap.String("server_id", i.GuildID), zap.Error(rerr))
+			if derr := m.registry.DispatchAutocomplete(ctx, d, i, serverID); derr != nil {
+				m.log.Error("dispatch autocomplete", zap.Error(derr))
 			}
-			return
-		}
-		if derr := m.registry.Dispatch(ctx, d, i, serverID); derr != nil {
-			m.log.Error("dispatch interaction", zap.Error(derr))
+		case discordgo.InteractionMessageComponent:
+			// Component handlers (e.g. pagination) are read-only and re-authorize
+			// any mutation themselves; gate only on server approval here.
+			if !approved {
+				return
+			}
+			if derr := m.registry.DispatchComponent(ctx, d, i, serverID); derr != nil {
+				m.log.Error("dispatch component", zap.Error(derr))
+			}
+		default:
+			// Other interaction types (e.g. modal submit) are not handled.
 		}
 	})
 
