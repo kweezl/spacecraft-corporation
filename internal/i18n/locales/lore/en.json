@@ -15,9 +15,9 @@
   "permissions.panel.prev": "◀ Prev",
   "permissions.panel.next": "Next ▶",
 
-  "settings.theme_set": "Outpost protocol set to **{{.Theme}}**.",
-  "settings.language_set": "Comms language set to **{{.Language}}**.",
-  "settings.current": "This outpost runs protocol **{{.Theme}}** on comms language **{{.Language}}**.",
+  "settings.panel.header": "**Outpost configuration**\nProtocol: **{{.Theme}}** · Comms: **{{.Language}}**\nSelect a value below; changes take effect at once.",
+  "settings.panel.theme_placeholder": "Select a protocol",
+  "settings.panel.language_placeholder": "Select a comms language",
 
   "bases.error.no_member": "Name the crew member whose outpost this is via the `member` option.",
   "bases.error.unknown": "Unrecognized order.",

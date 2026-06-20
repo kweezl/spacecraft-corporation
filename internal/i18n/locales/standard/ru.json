@@ -15,9 +15,9 @@
   "permissions.panel.prev": "◀ Назад",
   "permissions.panel.next": "Вперёд ▶",
 
-  "settings.theme_set": "Тема сервера установлена: **{{.Theme}}**.",
-  "settings.language_set": "Язык бота установлен: **{{.Language}}**.",
-  "settings.current": "Этот сервер использует тему **{{.Theme}}** и язык **{{.Language}}**.",
+  "settings.panel.header": "**Настройки сервера**\nТема: **{{.Theme}}** · Язык: **{{.Language}}**\nВыберите значение ниже; изменения применяются сразу.",
+  "settings.panel.theme_placeholder": "Выберите тему",
+  "settings.panel.language_placeholder": "Выберите язык",
 
   "bases.error.no_member": "Укажите, чья база, с помощью параметра `member`.",
   "bases.error.unknown": "Неизвестная подкоманда.",
