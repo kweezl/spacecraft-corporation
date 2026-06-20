@@ -19,10 +19,11 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -o /bot ./cmd/bot
 
 # --- prod (minimal runtime) --------------------------------------------------
-FROM alpine:3.24 AS prod
-# ca-certificates for outbound TLS (Discord, Postgres); a dedicated non-root user.
-RUN apk add --no-cache ca-certificates \
- && adduser -D -H -u 65532 nonroot
+# Distroless static: no OS package userland (no busybox/apk/openssl/musl), so the
+# image carries no distro-package CVEs. The binary is static + CGO-free, so it
+# needs no libc. ca-certificates for outbound TLS (Discord, Postgres) are baked
+# into the image, and the built-in `nonroot` user (uid 65532) runs it unprivileged.
+FROM gcr.io/distroless/static-debian12:nonroot AS prod
 COPY --from=build /bot /bot
 USER nonroot:nonroot
 EXPOSE 9464
