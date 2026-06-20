@@ -100,8 +100,8 @@ func lockItem(ctx context.Context, tx pgx.Tx, contractID uuid.UUID, itemName str
 
 // touch advances a contract's updated_at/updated_by within a transaction. It also
 // advances last_refreshed_at: every caller enqueues a refresh in the same tx, so
-// the watermark must move with it (keeping the keep-warm sweep and the embed's
-// "last updated" footer in sync with the edit that's about to happen).
+// the watermark must move with it, keeping the embed's "last updated" footer in
+// sync with the edit that's about to happen.
 func touch(ctx context.Context, tx pgx.Tx, contractID uuid.UUID, now time.Time, actor string) error {
 	_, err := tx.Exec(ctx,
 		`UPDATE contracts SET updated_at = $1, updated_by_user_id = $2, last_refreshed_at = $1 WHERE id = $3`,
@@ -717,37 +717,6 @@ func queryIDs(ctx context.Context, pool *pgxpool.Pool, sql string, args ...any) 
 		out = append(out, id)
 	}
 	return out, rows.Err()
-}
-
-func (r *pgRepository) StaleContracts(ctx context.Context, before time.Time, limit int) ([]uuid.UUID, error) {
-	return queryIDs(ctx, r.pool,
-		`SELECT id FROM contracts
-		 WHERE status = 'open' AND last_refreshed_at <= $1
-		 ORDER BY last_refreshed_at LIMIT $2`, before, limit)
-}
-
-func (r *pgRepository) MarkRefreshed(ctx context.Context, id uuid.UUID, now time.Time) (bool, error) {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	tag, err := tx.Exec(ctx,
-		`UPDATE contracts SET last_refreshed_at = $1 WHERE id = $2 AND status = 'open'`, now, id)
-	if err != nil {
-		return false, err
-	}
-	if tag.RowsAffected() != 1 {
-		return false, nil // closed in the meantime
-	}
-	if err := r.enqueueRefresh(ctx, tx, id); err != nil {
-		return false, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 func (r *pgRepository) NotifyDue(ctx context.Context, now time.Time, within time.Duration, limit int) ([]uuid.UUID, error) {

@@ -490,64 +490,6 @@ func (_c *MockRepository_MarkNotified_Call) RunAndReturn(run func(context.Contex
 	return _c
 }
 
-// MarkRefreshed provides a mock function with given fields: ctx, id, now
-func (_m *MockRepository) MarkRefreshed(ctx context.Context, id uuid.UUID, now time.Time) (bool, error) {
-	ret := _m.Called(ctx, id, now)
-
-	if len(ret) == 0 {
-		panic("no return value specified for MarkRefreshed")
-	}
-
-	var r0 bool
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, time.Time) (bool, error)); ok {
-		return rf(ctx, id, now)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, time.Time) bool); ok {
-		r0 = rf(ctx, id, now)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, time.Time) error); ok {
-		r1 = rf(ctx, id, now)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockRepository_MarkRefreshed_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkRefreshed'
-type MockRepository_MarkRefreshed_Call struct {
-	*mock.Call
-}
-
-// MarkRefreshed is a helper method to define mock.On call
-//   - ctx context.Context
-//   - id uuid.UUID
-//   - now time.Time
-func (_e *MockRepository_Expecter) MarkRefreshed(ctx interface{}, id interface{}, now interface{}) *MockRepository_MarkRefreshed_Call {
-	return &MockRepository_MarkRefreshed_Call{Call: _e.mock.On("MarkRefreshed", ctx, id, now)}
-}
-
-func (_c *MockRepository_MarkRefreshed_Call) Run(run func(ctx context.Context, id uuid.UUID, now time.Time)) *MockRepository_MarkRefreshed_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(time.Time))
-	})
-	return _c
-}
-
-func (_c *MockRepository_MarkRefreshed_Call) Return(_a0 bool, _a1 error) *MockRepository_MarkRefreshed_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockRepository_MarkRefreshed_Call) RunAndReturn(run func(context.Context, uuid.UUID, time.Time) (bool, error)) *MockRepository_MarkRefreshed_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // MemberOutstanding provides a mock function with given fields: ctx, serverID, threadID, userID
 func (_m *MockRepository) MemberOutstanding(ctx context.Context, serverID uuid.UUID, threadID string, userID string) ([]contracts.MemberItem, error) {
 	ret := _m.Called(ctx, serverID, threadID, userID)
@@ -1051,66 +993,6 @@ func (_c *MockRepository_SetThreadID_Call) Return(_a0 error) *MockRepository_Set
 }
 
 func (_c *MockRepository_SetThreadID_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_SetThreadID_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// StaleContracts provides a mock function with given fields: ctx, before, limit
-func (_m *MockRepository) StaleContracts(ctx context.Context, before time.Time, limit int) ([]uuid.UUID, error) {
-	ret := _m.Called(ctx, before, limit)
-
-	if len(ret) == 0 {
-		panic("no return value specified for StaleContracts")
-	}
-
-	var r0 []uuid.UUID
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time, int) ([]uuid.UUID, error)); ok {
-		return rf(ctx, before, limit)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, time.Time, int) []uuid.UUID); ok {
-		r0 = rf(ctx, before, limit)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]uuid.UUID)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, time.Time, int) error); ok {
-		r1 = rf(ctx, before, limit)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockRepository_StaleContracts_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StaleContracts'
-type MockRepository_StaleContracts_Call struct {
-	*mock.Call
-}
-
-// StaleContracts is a helper method to define mock.On call
-//   - ctx context.Context
-//   - before time.Time
-//   - limit int
-func (_e *MockRepository_Expecter) StaleContracts(ctx interface{}, before interface{}, limit interface{}) *MockRepository_StaleContracts_Call {
-	return &MockRepository_StaleContracts_Call{Call: _e.mock.On("StaleContracts", ctx, before, limit)}
-}
-
-func (_c *MockRepository_StaleContracts_Call) Run(run func(ctx context.Context, before time.Time, limit int)) *MockRepository_StaleContracts_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(time.Time), args[2].(int))
-	})
-	return _c
-}
-
-func (_c *MockRepository_StaleContracts_Call) Return(_a0 []uuid.UUID, _a1 error) *MockRepository_StaleContracts_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockRepository_StaleContracts_Call) RunAndReturn(run func(context.Context, time.Time, int) ([]uuid.UUID, error)) *MockRepository_StaleContracts_Call {
 	_c.Call.Return(run)
 	return _c
 }
