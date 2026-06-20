@@ -1,21 +1,17 @@
-# Prod stack: build the image once, run migrations once, then run the bot.
+# Prod stack: pull the published image, run migrations once, then run the bot.
 #
-#   docker compose build          # build the image only (no containers start)
-#   docker compose up             # migrate runs to completion, then bot starts
+#   IMAGE_TAG=1.2.3 docker compose up   # migrate runs to completion, then bot starts
 #
-# migrate and bot share ONE built image (same tag) so the binary is compiled a
-# single time and reused across both services.
+# The image is built and pushed to Docker Hub by CI (.github/workflows/release.yml)
+# on a vX.X.X tag; this stack only pulls it. migrate and bot share ONE image (the
+# same pulled tag) so both run the identical binary.
 
-# Shared image + build definition. The explicit `image:` tag is what lets migrate
-# and bot reuse a single build instead of compose building one image per service.
+# Shared image reference. IMAGE_TAG selects which published tag to run (e.g.
+# IMAGE_TAG=1.2.3), defaulting to latest. pull_policy: always re-fetches the tag on
+# `up` so a redeploy (especially of latest) picks up the freshest image.
 x-bot-image: &bot-image
-  image: spacecraft-corporation:${APP_VERSION:-0.0.0-unspecified}
-  pull_policy: "never"
-  build:
-    context: .
-    target: prod
-    args:
-      APP_VERSION: ${APP_VERSION:-0.0.0-unspecified}
+  image: kweezls/spacecraft-corporation:${IMAGE_TAG:-latest}
+  pull_policy: always
 
 # Shared runtime env. migrate only needs the DB settings; bot needs all of them.
 # Kept in one block for simplicity (the unused token is harmless to migrate).
@@ -84,14 +80,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
-  # Build-only scenario: `docker compose build` (or `make build`) builds the
-  # shared image without starting anything. Profile-gated so it never runs on
-  # `up`; it exists to name the build target and reuses the shared tag.
-  build:
-    <<: *bot-image
-    profiles: ["build"]
-    entrypoint: ["true"]   # never started on `up`; exists only as a build target
 
   # One-shot migrations: applies the schema with `--migrate`, then exits 0.
   # The bot waits for this to complete before it starts (see depends_on below).

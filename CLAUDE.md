@@ -271,21 +271,21 @@ A single multi-stage `Dockerfile` with named targets:
   `go build -ldflags "-X <module>/internal/appconfig.version=${APP_VERSION}" -o /bot ./cmd/bot`.
   `APP_VERSION` is a build arg, required for prod, defaulting to `dev` if unset.
 - **`prod`** stage (minimal, e.g. `gcr.io/distroless/static` or `alpine`):
-  copies only the binary; runs as non-root. Used by the prod compose file.
+  copies only the binary; runs as non-root. Built and pushed to Docker Hub by CI
+  (the release workflow) on a version tag; the prod compose file pulls it.
 - **`dev`** stage (`golang` image + `air` + `delve`): used by the dev compose
   file for hot reload and step debugging (see below). Built **without**
   optimizations/inlining (`-gcflags="all=-N -l"`) so the debugger works.
 
 ### Two compose files
 
-- **`docker-compose.yml` (prod)** — builds the image at the `prod` target with
-  `build.args.APP_VERSION` (from a shell/CI variable). `migrate` and `bot` share one
-  built image (same `image:` tag, so the binary is compiled once). Runs
-  `postgres` (named volume) → `migrate` (one-shot `--migrate`, runs to
-  completion) → `bot` (waits on `migrate` via
-  `service_completed_successfully`). No source mount, no debugger. A profile-
-  gated `build` service makes `docker compose build` / `make build` a
-  build-only scenario.
+- **`docker-compose.yml` (prod)** — **pulls** the published image
+  `kweezls/spacecraft-corporation:${IMAGE_TAG:-latest}` from Docker Hub (it does
+  **not** build; CI does — see CI/CD below). `IMAGE_TAG` selects the release tag
+  to run (default `latest`); `pull_policy: always` re-fetches on `up`. `migrate`
+  and `bot` share that one pulled image. Runs `postgres` (named volume) →
+  `migrate` (one-shot `--migrate`, runs to completion) → `bot` (waits on
+  `migrate` via `service_completed_successfully`). No source mount, no debugger.
 - **`docker-compose.dev.yml` (local dev)** — builds the `dev` target. Mounts the
   source tree into the container and runs **`air`** (`air -c .air.toml`) for hot
   reload. A one-shot `migrate` service (`go run ./cmd/bot --migrate` over the
@@ -367,10 +367,23 @@ startupProbe:
 
 ## CI/CD & linting
 
-- **GitHub Actions** (`.github/workflows/ci.yml`) runs on push/PR:
-  - `golangci-lint run` (config in `.golangci.yml`),
-  - `go test ./...` (with a `postgres` service container for DB-backed tests),
-  - optionally a Docker build of the `prod` target to catch build breakage.
+- **Test + lint** live in a **reusable workflow** (`.github/workflows/checks.yml`,
+  `on: workflow_call`): `go test ./... -race` (with a `postgres` service
+  container for DB-backed tests) and `golangci-lint` (config in `.golangci.yml`).
+  Defined once so every caller runs the identical suite.
+- **GitHub Actions** (`.github/workflows/ci.yml`) runs on push/PR: calls the
+  `checks` reusable workflow, plus a Docker build of the `prod` target to catch
+  build breakage.
+- **Release** (`.github/workflows/release.yml`) runs on a `vX.X.X` git tag and is
+  **gated on `checks`** (the Docker job `needs:` it, so a tag on a red commit
+  fails before publishing). It builds the `prod` target **multi-arch
+  (`linux/amd64,linux/arm64`)** with `docker/build-push-action` and pushes a
+  manifest to Docker Hub as `kweezls/spacecraft-corporation` tagged `X.X.X` (the `v`
+  stripped) — plus `latest` for non-prerelease tags (`flavor: latest=auto`) —
+  with OCI `org.opencontainers.image.*` labels from `docker/metadata-action`.
+  `APP_VERSION` is baked from the bare semver. Needs the `DOCKERHUB_USERNAME` /
+  `DOCKERHUB_TOKEN` repo secrets. The prod compose then pulls this image by
+  `IMAGE_TAG`.
 - **Lint:** `golangci-lint` is the standard linter; config lives in
   `.golangci.yml`. Run it locally before pushing.
 - **DB-backed tests** (`internal/testdb`) connect via **`TEST_DATABASE_URL`**
