@@ -56,5 +56,60 @@
   "bases.list.extractors_header": "🔧 Extractors",
   "bases.list.production_header": "🏭 Fabricators",
   "bases.list.prev": "◀ Prev",
-  "bases.list.next": "Next ▶"
+  "bases.list.next": "Next ▶",
+
+  "contracts.error.unknown": "Unrecognized order.",
+  "contracts.error.not_in_thread": "Issue this order from within a contract dispatch thread.",
+  "contracts.error.closed": "This contract is sealed.",
+  "contracts.error.expired": "This contract's window has lapsed.",
+  "contracts.error.item_not_found": "That commodity is not on the manifest.",
+
+  "contracts.create.bad_title": "Name the contract.",
+  "contracts.create.bad_duration": "Set the window as `Nd Nh Nm`, e.g. `3d 11h 10m`, `5h`, or `41m`.",
+  "contracts.create.no_forum": "No contracts board is designated. A station officer must run `/contract forum` first.",
+  "contracts.create.accepted": "Contract logged — opening the dispatch thread…",
+  "contracts.create.ok": "Contract **{{.Title}}** posted: <#{{.Thread}}>",
+  "contracts.create.failed_forum": "Couldn't post the contract — the contracts board is missing. A station officer should re-run `/contract forum`.",
+  "contracts.create.failed_perms": "Couldn't open the dispatch thread — the bot lacks clearance on the contracts board.",
+
+  "contracts.item.bad_input": "Name a commodity and a positive quota.",
+  "contracts.item.added": "Manifest updated: **{{.Qty}}× {{.Name}}** required.",
+  "contracts.item.removed": "Struck **{{.Name}}** from the manifest ({{.Cleared}} pledge(s) voided).",
+  "contracts.item.exists": "That commodity is already on the manifest.",
+  "contracts.item.max_items": "The manifest already lists the maximum of {{.Limit}} commodities.",
+
+  "contracts.participate.ok": "Pledged **{{.Qty}}× {{.Item}}**.",
+  "contracts.participate.over_cap": "That exceeds the contract's outstanding quota for this commodity.",
+
+  "contracts.deliver.ok": "Hauled in **{{.Qty}}× {{.Item}}**.",
+  "contracts.deliver.completed": "Hauled in **{{.Qty}}× {{.Item}}** — contract fulfilled! 🎉",
+  "contracts.deliver.over_reserved": "You cannot haul in more than you pledged.",
+
+  "contracts.release.ok": "Withdrew your pledge of **{{.Qty}}× {{.Item}}**.",
+  "contracts.release.ok_member": "Withdrew **{{.Qty}}× {{.Item}}** from <@{{.Member}}>'s pledge.",
+  "contracts.release.no_reservation": "No matching pledge to withdraw.",
+  "contracts.release.below_delivered": "You cannot withdraw what has already been hauled in.",
+  "contracts.release.no_target": "Name the crew member with the `member` option.",
+
+  "contracts.cancel.ok": "Contract rescinded.",
+
+  "contracts.forum.set": "Contracts will be filed in <#{{.Channel}}>.",
+  "contracts.forum.bad_channel": "Designate a forum channel.",
+
+  "contracts.embed.title": "📜 {{.Title}}",
+  "contracts.embed.status_open": "🟢 Active",
+  "contracts.embed.status_completed": "✅ Fulfilled",
+  "contracts.embed.status_expired": "⌛ Lapsed",
+  "contracts.embed.status_cancelled": "🚫 Rescinded",
+  "contracts.embed.time_left": "⏳ {{.Left}} remaining",
+  "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} hauled · {{.Reserved}} pledged",
+  "contracts.embed.no_items": "Manifest empty — add commodities with `/contract item add`.",
+
+  "contracts.list.title": "📜 Contract Board",
+  "contracts.list.empty": "No contracts match.",
+  "contracts.list.expired": "This board has gone stale — run `/contract list` to refresh.",
+  "contracts.list.footer": "Board page {{.Page}} / {{.Pages}} · {{.Total}} contract(s)",
+  "contracts.list.entry": "<#{{.Thread}}> · {{.Status}}\n{{.Delivered}} / {{.Required}} hauled · {{.Items}} commodity(ies)",
+  "contracts.list.prev": "◀ Prev",
+  "contracts.list.next": "Next ▶"
 }

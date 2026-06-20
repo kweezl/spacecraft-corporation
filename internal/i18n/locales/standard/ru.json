@@ -56,5 +56,60 @@
   "bases.list.extractors_header": "🔧 Экстракторы",
   "bases.list.production_header": "🏭 Производство",
   "bases.list.prev": "◀ Назад",
-  "bases.list.next": "Вперёд ▶"
+  "bases.list.next": "Вперёд ▶",
+
+  "contracts.error.unknown": "Неизвестная подкоманда.",
+  "contracts.error.not_in_thread": "Выполните это внутри ветки контракта.",
+  "contracts.error.closed": "Этот контракт закрыт.",
+  "contracts.error.expired": "Срок контракта истёк.",
+  "contracts.error.item_not_found": "Такого предмета нет в контракте.",
+
+  "contracts.create.bad_title": "Укажите название контракта.",
+  "contracts.create.bad_duration": "Укажите оставшееся время как `Nd Nh Nm`, например `3d 11h 10m`, `5h` или `41m`.",
+  "contracts.create.no_forum": "Форум контрактов не задан. Сначала администратор должен выполнить `/contract forum`.",
+  "contracts.create.accepted": "Контракт принят — создаём ветку…",
+  "contracts.create.ok": "Контракт **{{.Title}}** создан: <#{{.Thread}}>",
+  "contracts.create.failed_forum": "Не удалось создать контракт — форумный канал отсутствует. Администратору нужно заново выполнить `/contract forum`.",
+  "contracts.create.failed_perms": "Не удалось создать ветку контракта — у бота нет прав на форумном канале.",
+
+  "contracts.item.bad_input": "Укажите название предмета и положительное количество.",
+  "contracts.item.added": "Добавлено в контракт: **{{.Qty}}× {{.Name}}**.",
+  "contracts.item.removed": "Удалено: **{{.Name}}** (снято броней: {{.Cleared}}).",
+  "contracts.item.exists": "Этот предмет уже есть в контракте.",
+  "contracts.item.max_items": "В контракте уже максимум предметов ({{.Limit}}).",
+
+  "contracts.participate.ok": "Забронировано: **{{.Qty}}× {{.Item}}**.",
+  "contracts.participate.over_cap": "Это больше, чем контракту ещё нужно по этому предмету.",
+
+  "contracts.deliver.ok": "Сдано: **{{.Qty}}× {{.Item}}**.",
+  "contracts.deliver.completed": "Сдано: **{{.Qty}}× {{.Item}}** — контракт выполнен! 🎉",
+  "contracts.deliver.over_reserved": "Нельзя сдать больше, чем вы забронировали.",
+
+  "contracts.release.ok": "Снята ваша бронь: **{{.Qty}}× {{.Item}}**.",
+  "contracts.release.ok_member": "Снято **{{.Qty}}× {{.Item}}** с <@{{.Member}}>.",
+  "contracts.release.no_reservation": "Подходящей брони для снятия нет.",
+  "contracts.release.below_delivered": "Нельзя снять то, что уже сдано.",
+  "contracts.release.no_target": "Укажите участника через параметр `member`.",
+
+  "contracts.cancel.ok": "Контракт отменён.",
+
+  "contracts.forum.set": "Контракты будут публиковаться в <#{{.Channel}}>.",
+  "contracts.forum.bad_channel": "Выберите форумный канал.",
+
+  "contracts.embed.title": "📜 {{.Title}}",
+  "contracts.embed.status_open": "🟢 Открыт",
+  "contracts.embed.status_completed": "✅ Выполнен",
+  "contracts.embed.status_expired": "⌛ Истёк",
+  "contracts.embed.status_cancelled": "🚫 Отменён",
+  "contracts.embed.time_left": "⏳ осталось {{.Left}}",
+  "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} сдано · {{.Reserved}} забронировано",
+  "contracts.embed.no_items": "Пока нет предметов — добавьте через `/contract item add`.",
+
+  "contracts.list.title": "📜 Контракты",
+  "contracts.list.empty": "Нет подходящих контрактов.",
+  "contracts.list.expired": "Список устарел — выполните `/contract list` снова.",
+  "contracts.list.footer": "Страница {{.Page}} / {{.Pages}} · контрактов: {{.Total}}",
+  "contracts.list.entry": "<#{{.Thread}}> · {{.Status}}\n{{.Delivered}} / {{.Required}} сдано · предметов: {{.Items}}",
+  "contracts.list.prev": "◀ Назад",
+  "contracts.list.next": "Вперёд ▶"
 }

@@ -56,5 +56,60 @@
   "bases.list.extractors_header": "🔧 Extractors",
   "bases.list.production_header": "🏭 Production",
   "bases.list.prev": "◀ Prev",
-  "bases.list.next": "Next ▶"
+  "bases.list.next": "Next ▶",
+
+  "contracts.error.unknown": "Unknown subcommand.",
+  "contracts.error.not_in_thread": "Run this inside a contract thread.",
+  "contracts.error.closed": "This contract is closed.",
+  "contracts.error.expired": "This contract's deadline has passed.",
+  "contracts.error.item_not_found": "That item isn't on this contract.",
+
+  "contracts.create.bad_title": "Give the contract a title.",
+  "contracts.create.bad_duration": "Enter the time left as `Nd Nh Nm`, e.g. `3d 11h 10m`, `5h`, or `41m`.",
+  "contracts.create.no_forum": "No contracts forum is set. An admin must run `/contract forum` first.",
+  "contracts.create.accepted": "Contract accepted — creating the thread…",
+  "contracts.create.ok": "Contract **{{.Title}}** created: <#{{.Thread}}>",
+  "contracts.create.failed_forum": "Couldn't create the contract — the forum channel is missing. An admin should re-run `/contract forum`.",
+  "contracts.create.failed_perms": "Couldn't create the contract thread — the bot lacks permission on the forum channel.",
+
+  "contracts.item.bad_input": "Give an item name and a positive quantity.",
+  "contracts.item.added": "Added **{{.Qty}}× {{.Name}}** to the contract.",
+  "contracts.item.removed": "Removed **{{.Name}}** ({{.Cleared}} reservation(s) cleared).",
+  "contracts.item.exists": "That item is already on the contract.",
+  "contracts.item.max_items": "This contract already has the maximum of {{.Limit}} items.",
+
+  "contracts.participate.ok": "Reserved **{{.Qty}}× {{.Item}}**.",
+  "contracts.participate.over_cap": "That's more than the contract still needs for this item.",
+
+  "contracts.deliver.ok": "Delivered **{{.Qty}}× {{.Item}}**.",
+  "contracts.deliver.completed": "Delivered **{{.Qty}}× {{.Item}}** — contract complete! 🎉",
+  "contracts.deliver.over_reserved": "You can't deliver more than you reserved.",
+
+  "contracts.release.ok": "Released your reservation of **{{.Qty}}× {{.Item}}**.",
+  "contracts.release.ok_member": "Released **{{.Qty}}× {{.Item}}** from <@{{.Member}}>.",
+  "contracts.release.no_reservation": "No matching reservation to release.",
+  "contracts.release.below_delivered": "You can't release what's already delivered.",
+  "contracts.release.no_target": "Specify the member with the `member` option.",
+
+  "contracts.cancel.ok": "Contract cancelled.",
+
+  "contracts.forum.set": "Contracts will be posted in <#{{.Channel}}>.",
+  "contracts.forum.bad_channel": "Pick a forum channel.",
+
+  "contracts.embed.title": "📜 {{.Title}}",
+  "contracts.embed.status_open": "🟢 Open",
+  "contracts.embed.status_completed": "✅ Completed",
+  "contracts.embed.status_expired": "⌛ Expired",
+  "contracts.embed.status_cancelled": "🚫 Cancelled",
+  "contracts.embed.time_left": "⏳ {{.Left}} left",
+  "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} delivered · {{.Reserved}} reserved",
+  "contracts.embed.no_items": "No items yet — add them with `/contract item add`.",
+
+  "contracts.list.title": "📜 Contracts",
+  "contracts.list.empty": "No contracts match.",
+  "contracts.list.expired": "This listing expired — run `/contract list` again.",
+  "contracts.list.footer": "Page {{.Page}} / {{.Pages}} · {{.Total}} contract(s)",
+  "contracts.list.entry": "<#{{.Thread}}> · {{.Status}}\n{{.Delivered}} / {{.Required}} delivered · {{.Items}} item(s)",
+  "contracts.list.prev": "◀ Prev",
+  "contracts.list.next": "Next ▶"
 }

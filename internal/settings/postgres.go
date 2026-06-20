@@ -23,9 +23,9 @@ func newRepository(pool *pgxpool.Pool) Repository {
 func (r *pgRepository) Get(ctx context.Context, serverID uuid.UUID) (Settings, error) {
 	var s Settings
 	err := r.pool.QueryRow(ctx,
-		`SELECT COALESCE(theme, ''), COALESCE(language, '') FROM server_settings
-		 WHERE servers_id = $1`,
-		serverID).Scan(&s.Theme, &s.Language)
+		`SELECT COALESCE(theme, ''), COALESCE(language, ''), COALESCE(contracts_forum_channel_id, '')
+		 FROM server_settings WHERE servers_id = $1`,
+		serverID).Scan(&s.Theme, &s.Language, &s.ContractsForumChannelID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Settings{}, nil
 	}
@@ -38,6 +38,10 @@ func (r *pgRepository) SetTheme(ctx context.Context, serverID uuid.UUID, theme s
 
 func (r *pgRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error {
 	return r.upsert(ctx, serverID, "language", language)
+}
+
+func (r *pgRepository) SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
+	return r.upsert(ctx, serverID, "contracts_forum_channel_id", channelID)
 }
 
 // upsert sets one column (theme or language) for a server, inserting the row if
