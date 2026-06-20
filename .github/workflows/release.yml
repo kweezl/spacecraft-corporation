@@ -34,7 +34,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: kweezls/spacecraft-corp
+          images: kweezls/spacecraft-corporation
           # vX.X.X -> X.X.X (the v is stripped). latest is handled by flavor
           # (latest=auto) below, which is pre-release-aware: a stable vX.X.X also
           # moves latest, but a vX.X.X-rc1 tags only the rc and leaves latest put.

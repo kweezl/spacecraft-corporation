@@ -280,7 +280,7 @@ A single multi-stage `Dockerfile` with named targets:
 ### Two compose files
 
 - **`docker-compose.yml` (prod)** — **pulls** the published image
-  `kweezls/spacecraft-corp:${IMAGE_TAG:-latest}` from Docker Hub (it does
+  `kweezls/spacecraft-corporation:${IMAGE_TAG:-latest}` from Docker Hub (it does
   **not** build; CI does — see CI/CD below). `IMAGE_TAG` selects the release tag
   to run (default `latest`); `pull_policy: always` re-fetches on `up`. `migrate`
   and `bot` share that one pulled image. Runs `postgres` (named volume) →
@@ -378,7 +378,7 @@ startupProbe:
   **gated on `checks`** (the Docker job `needs:` it, so a tag on a red commit
   fails before publishing). It builds the `prod` target **multi-arch
   (`linux/amd64,linux/arm64`)** with `docker/build-push-action` and pushes a
-  manifest to Docker Hub as `kweezls/spacecraft-corp` tagged `X.X.X` (the `v`
+  manifest to Docker Hub as `kweezls/spacecraft-corporation` tagged `X.X.X` (the `v`
   stripped) — plus `latest` for non-prerelease tags (`flavor: latest=auto`) —
   with OCI `org.opencontainers.image.*` labels from `docker/metadata-action`.
   `APP_VERSION` is baked from the bare semver. Needs the `DOCKERHUB_USERNAME` /
