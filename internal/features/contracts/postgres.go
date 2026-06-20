@@ -527,7 +527,46 @@ func (r *pgRepository) loadItems(ctx context.Context, contractID uuid.UUID) ([]I
 		}
 		items = append(items, it)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Attach the per-member breakdown onto the (already item-ordered) items, so the
+	// embed can list contributors under each item.
+	parts, err := r.loadParticipants(ctx, contractID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].Participants = parts[items[i].ID]
+	}
+	return items, nil
+}
+
+// loadParticipants returns each item's per-member reservation lines, keyed by
+// contract_items_id and ordered by user within an item. Released-to-zero rows are
+// already deleted, so every row here is a live contribution.
+func (r *pgRepository) loadParticipants(ctx context.Context, contractID uuid.UUID) (map[uuid.UUID][]Participant, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT r.contract_items_id, r.user_id, r.reserved_qty, r.delivered_qty
+		FROM contract_reservations r
+		JOIN contract_items ci ON ci.id = r.contract_items_id
+		WHERE ci.contracts_id = $1
+		ORDER BY r.user_id`, contractID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	parts := make(map[uuid.UUID][]Participant)
+	for rows.Next() {
+		var itemID uuid.UUID
+		var p Participant
+		if err := rows.Scan(&itemID, &p.UserID, &p.Reserved, &p.Delivered); err != nil {
+			return nil, err
+		}
+		parts[itemID] = append(parts[itemID], p)
+	}
+	return parts, rows.Err()
 }
 
 func (r *pgRepository) MemberOutstanding(ctx context.Context, serverID uuid.UUID, threadID, userID string) ([]MemberItem, error) {

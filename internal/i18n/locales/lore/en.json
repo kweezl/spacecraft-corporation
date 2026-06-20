@@ -103,6 +103,8 @@
   "contracts.embed.status_cancelled": "🚫 Rescinded",
   "contracts.embed.time_left": "⏳ {{.Left}} remaining",
   "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} hauled · {{.Reserved}} pledged",
+  "contracts.embed.participant_line": "<@{{.User}}> — {{.Reserved}} pledged · {{.Delivered}} hauled",
+  "contracts.embed.participants_more": "…and {{.Count}} more haulers",
   "contracts.embed.no_items": "Manifest empty — add commodities with `/contract item add`.",
 
   "contracts.list.title": "📜 Contract Board",

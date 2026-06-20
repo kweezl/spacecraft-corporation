@@ -68,6 +68,28 @@ func (s *contractsSuite) TestCreateAndProgress() {
 	assert.Equal(t, 0, p.Items[0].ReservedQty)
 }
 
+func (s *contractsSuite) TestProgress_Participants() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	s.newContract(ctx, g, thread)
+	require.NoError(t, repo.AddItem(ctx, g, thread, "Steel", 1000, 25, mgr))
+
+	// Reserve out of user order to prove Progress sorts contributors by user id.
+	require.NoError(t, repo.Participate(ctx, g, thread, "Steel", u2, 100))
+	require.NoError(t, repo.Participate(ctx, g, thread, "Steel", u1, 200))
+	_, err := repo.Deliver(ctx, g, thread, "Steel", u1, 50)
+	require.NoError(t, err)
+
+	p, err := repo.Progress(ctx, g, thread)
+	require.NoError(t, err)
+	require.Len(t, p.Items, 1)
+	parts := p.Items[0].Participants
+	require.Len(t, parts, 2)
+	// Ordered by user id: u1 ("user-1") before u2 ("user-2").
+	assert.Equal(t, Participant{UserID: u1, Reserved: 200, Delivered: 50}, parts[0])
+	assert.Equal(t, Participant{UserID: u2, Reserved: 100, Delivered: 0}, parts[1])
+}
+
 func (s *contractsSuite) TestAddItem_DuplicateAndLimit() {
 	t := s.T()
 	repo, ctx, g := s.seed()

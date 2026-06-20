@@ -103,6 +103,8 @@
   "contracts.embed.status_cancelled": "🚫 Расторгнут",
   "contracts.embed.time_left": "⏳ осталось {{.Left}}",
   "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} доставлено · {{.Reserved}} обязательств",
+  "contracts.embed.participant_line": "<@{{.User}}> — {{.Reserved}} обязательств · {{.Delivered}} доставлено",
+  "contracts.embed.participants_more": "…и ещё {{.Count}}",
   "contracts.embed.no_items": "Манифест пуст — добавьте товары через `/contract item add`.",
 
   "contracts.list.title": "📜 Доска контрактов",
