@@ -64,10 +64,15 @@ dev.up:
 	$(COMPOSE_DEV) --profile $(DEV_PROFILE) \
        	up $(DEV_UP_DETACH) --no-log-prefix --remove-orphans
 
-## dev.up-app: run only the bot in the foreground (needs `dev.up-infra` first).
-## --no-deps means compose doesn't pull in / attach / stop postgres, so Ctrl+C
-## stops just the bot and the DB keeps running — re-run to restart the bot.
+## dev.up-app: apply pending migrations, then run only the bot in the foreground
+## (needs `dev.up-infra` first). The migrate one-shot runs fresh on every invocation
+## (`run` always starts a new container) so a newly added migration is always
+## applied; it only waits on the already-running postgres and never restarts the DB,
+## and a failed migration aborts the target before the bot starts. --no-deps on the
+## bot means compose doesn't pull in / attach / stop postgres, so Ctrl+C stops just
+## the bot and the DB keeps running — re-run to restart the bot.
 dev.up-app:
+	$(COMPOSE_DEV) run --rm migrate
 	$(COMPOSE_DEV) up --no-deps --no-log-prefix bot
 
 ## dev.up-infra: start the infrastructure (postgres + one-shot migrate), detached

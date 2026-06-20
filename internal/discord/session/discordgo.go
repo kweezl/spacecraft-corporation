@@ -106,6 +106,10 @@ func (d *discordSession) ChannelMessageEditComplex(m *discordgo.MessageEdit) (*d
 	return d.s.ChannelMessageEditComplex(m)
 }
 
+func (d *discordSession) ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend) (*discordgo.Message, error) {
+	return d.s.ChannelMessageSendComplex(channelID, data)
+}
+
 func (d *discordSession) ChannelEditComplex(channelID string, data *discordgo.ChannelEdit) (*discordgo.Channel, error) {
 	return d.s.ChannelEditComplex(channelID, data)
 }

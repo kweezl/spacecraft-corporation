@@ -107,6 +107,7 @@ type Discord interface {
 	// change; these wrap the matching *discordgo.Session calls.
 	ForumThreadStartComplex(channelID string, threadData *discordgo.ThreadStart, messageData *discordgo.MessageSend) (*discordgo.Channel, error)
 	ChannelMessageEditComplex(m *discordgo.MessageEdit) (*discordgo.Message, error)
+	ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend) (*discordgo.Message, error)
 	ChannelEditComplex(channelID string, data *discordgo.ChannelEdit) (*discordgo.Channel, error)
 	// InteractionResponseEdit edits an interaction's original reply via the
 	// webhook identified by the interaction's app id + token (used to deliver an

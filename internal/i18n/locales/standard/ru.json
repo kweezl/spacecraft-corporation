@@ -106,6 +106,11 @@
   "contracts.embed.participant_line": "<@{{.User}}> — {{.Reserved}} забронировано · {{.Delivered}} сдано",
   "contracts.embed.participants_more": "…и ещё {{.Count}}",
   "contracts.embed.no_items": "Пока нет предметов — добавьте через `/contract item add`.",
+  "contracts.embed.updated_footer": "Обновлено",
+  "contracts.embed.updated_relative": "обновлено {{.Updated}}",
+  "contracts.notify.closing_soon": "📢 {{.Mentions}} — контракт закрывается через {{.Left}}. Доставьте зарезервированное до истечения срока.",
+  "contracts.notify.closing_soon_done": "📢 Контракт закрывается через {{.Left}} — всё зарезервированное доставлено.",
+  "contracts.notify.and_more": "и ещё {{.Count}}",
 
   "contracts.list.title": "📜 Контракты",
   "contracts.list.empty": "Нет подходящих контрактов.",
