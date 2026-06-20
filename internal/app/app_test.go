@@ -67,3 +67,15 @@ func TestOptions_BasesGraphValidates(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fx.ValidateApp(opts...))
 }
+
+// TestOptions_ContractsGraphValidates resolves the graph with the contracts
+// feature, which consumes core services across module boundaries (the session
+// Manager as its Discord Gateway, the settings Store as its ForumConfig) and
+// registers the expiry sweeper's lifecycle hook — so a mis-wired provider or a
+// missing dependency fails here, not in production.
+func TestOptions_ContractsGraphValidates(t *testing.T) {
+	t.Setenv("FEATURES", "contracts")
+	opts, err := Options(false)
+	require.NoError(t, err)
+	require.NoError(t, fx.ValidateApp(opts...))
+}

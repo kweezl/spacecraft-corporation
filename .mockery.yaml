@@ -15,3 +15,8 @@ packages:
   github.com/kweezl/spacecraft-corporation/internal/features/bases:
     interfaces:
       Repository:
+  github.com/kweezl/spacecraft-corporation/internal/features/contracts:
+    interfaces:
+      Repository:
+      Gateway:
+      ForumConfig:

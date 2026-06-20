@@ -16,12 +16,14 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
 	"github.com/kweezl/spacecraft-corporation/internal/features/bases"
+	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
 	"github.com/kweezl/spacecraft-corporation/internal/features/permissions"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/instrumentation"
 	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"github.com/kweezl/spacecraft-corporation/internal/migrator"
+	"github.com/kweezl/spacecraft-corporation/internal/outbox"
 	"github.com/kweezl/spacecraft-corporation/internal/settings"
 )
 
@@ -44,6 +46,9 @@ func coreModules() []fx.Option {
 		// start; readiness goes green only once every contributed check passes.
 		instrumentation.Module(),
 		db.Module(),
+		// outbox: transactional-outbox queue + worker. Core so the Enqueuer is
+		// available to feature repositories (e.g. contracts) and the worker runs.
+		outbox.Module(),
 		registry.Module(),
 		// i18n + settings render all user-facing messages: settings provides the
 		// per-server theme/language resolver that i18n's Localizer reads.
@@ -81,6 +86,8 @@ func selectFeatures(names []feature.Name) ([]fx.Option, error) {
 			opts = append(opts, permissions.Module())
 		case feature.Bases:
 			opts = append(opts, bases.Module())
+		case feature.Contracts:
+			opts = append(opts, contracts.Module())
 		default:
 			return nil, fmt.Errorf("no module registered for feature %q", name)
 		}

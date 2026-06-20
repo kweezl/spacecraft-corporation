@@ -80,6 +80,54 @@ func (_c *MockRepository_Get_Call) RunAndReturn(run func(context.Context, uuid.U
 	return _c
 }
 
+// SetContractsForumChannelID provides a mock function with given fields: ctx, serverID, channelID
+func (_m *MockRepository) SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
+	ret := _m.Called(ctx, serverID, channelID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetContractsForumChannelID")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
+		r0 = rf(ctx, serverID, channelID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetContractsForumChannelID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetContractsForumChannelID'
+type MockRepository_SetContractsForumChannelID_Call struct {
+	*mock.Call
+}
+
+// SetContractsForumChannelID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - channelID string
+func (_e *MockRepository_Expecter) SetContractsForumChannelID(ctx interface{}, serverID interface{}, channelID interface{}) *MockRepository_SetContractsForumChannelID_Call {
+	return &MockRepository_SetContractsForumChannelID_Call{Call: _e.mock.On("SetContractsForumChannelID", ctx, serverID, channelID)}
+}
+
+func (_c *MockRepository_SetContractsForumChannelID_Call) Run(run func(ctx context.Context, serverID uuid.UUID, channelID string)) *MockRepository_SetContractsForumChannelID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetContractsForumChannelID_Call) Return(_a0 error) *MockRepository_SetContractsForumChannelID_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetContractsForumChannelID_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_SetContractsForumChannelID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetLanguage provides a mock function with given fields: ctx, serverID, language
 func (_m *MockRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error {
 	ret := _m.Called(ctx, serverID, language)
