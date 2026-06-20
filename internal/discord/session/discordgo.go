@@ -42,8 +42,8 @@ func (d *discordSession) Connected() bool {
 	return d.s.DataReady
 }
 
-func (d *discordSession) CreateCommand(serverID string, cmd *discordgo.ApplicationCommand) error {
-	_, err := d.s.ApplicationCommandCreate(d.s.State.User.ID, serverID, cmd)
+func (d *discordSession) OverwriteCommands(serverID string, cmds []*discordgo.ApplicationCommand) error {
+	_, err := d.s.ApplicationCommandBulkOverwrite(d.s.State.User.ID, serverID, cmds)
 	return err
 }
 
