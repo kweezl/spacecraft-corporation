@@ -10,6 +10,7 @@
 # reuse a single build.
 x-bot-image: &bot-image
   image: spacecraft-corporation-dev:${APP_VERSION:-dev}
+  pull_policy: "never"
   build:
     context: .
     target: dev

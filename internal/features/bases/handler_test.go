@@ -256,7 +256,7 @@ func TestHandle_ListThenPaginate(t *testing.T) {
 	r := &capture{}
 	run(t, f, r, listCmd(strv(pSector, "Orion")))
 	require.NotNil(t, r.embed)
-	require.Len(t, r.embed.Fields, 1)
+	require.Len(t, r.embed.Fields, 3, "one base renders as three inline columns")
 	nextID := nextButtonID(t, r.components)
 
 	// Clicking "next" re-runs the stored filter at the next offset and edits in place.

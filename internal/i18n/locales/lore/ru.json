@@ -51,7 +51,10 @@
   "bases.list.owner_member": "Командир: <@{{.User}}>",
   "bases.list.owner_corp": "Владение: корпорация",
   "bases.list.none": "—",
-  "bases.list.entry": "{{.Owner}}\n🔧 Экстракторы: {{.Extractors}}\n🏭 Фабрикаторы: {{.Productions}}",
+  "bases.list.location": "{{.Sector}} / {{.System}} {{.Planet}}",
+  "bases.list.field_base": "{{.Location}}\n{{.Owner}}",
+  "bases.list.extractors_header": "🔧 Экстракторы",
+  "bases.list.production_header": "🏭 Фабрикаторы",
   "bases.list.prev": "◀ Назад",
   "bases.list.next": "Вперёд ▶"
 }
