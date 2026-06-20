@@ -103,6 +103,8 @@
   "contracts.embed.status_cancelled": "🚫 Отменён",
   "contracts.embed.time_left": "⏳ осталось {{.Left}}",
   "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} сдано · {{.Reserved}} забронировано",
+  "contracts.embed.participant_line": "<@{{.User}}> — {{.Reserved}} забронировано · {{.Delivered}} сдано",
+  "contracts.embed.participants_more": "…и ещё {{.Count}}",
   "contracts.embed.no_items": "Пока нет предметов — добавьте через `/contract item add`.",
 
   "contracts.list.title": "📜 Контракты",

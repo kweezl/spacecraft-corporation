@@ -103,6 +103,8 @@
   "contracts.embed.status_cancelled": "🚫 Cancelled",
   "contracts.embed.time_left": "⏳ {{.Left}} left",
   "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} delivered · {{.Reserved}} reserved",
+  "contracts.embed.participant_line": "<@{{.User}}> — {{.Reserved}} reserved · {{.Delivered}} delivered",
+  "contracts.embed.participants_more": "…and {{.Count}} more",
   "contracts.embed.no_items": "No items yet — add them with `/contract item add`.",
 
   "contracts.list.title": "📜 Contracts",

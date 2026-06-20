@@ -113,13 +113,24 @@ type Contract struct {
 }
 
 // Item is a required line item with its progress aggregates (summed across all
-// members). ReservedQty/DeliveredQty are populated by Progress.
+// members). ReservedQty/DeliveredQty are populated by Progress, as are the
+// per-member Participants (ordered by user).
 type Item struct {
 	ID           uuid.UUID
 	Name         string
 	RequiredQty  int
 	ReservedQty  int
 	DeliveredQty int
+	Participants []Participant
+}
+
+// Participant is one member's contribution to an item: how much they have
+// reserved and how much of that they have already delivered. The breakdown
+// behind the embed's per-item contributor lines.
+type Participant struct {
+	UserID    string
+	Reserved  int
+	Delivered int
 }
 
 // Remaining is how much of the item is not yet reserved by anyone.
