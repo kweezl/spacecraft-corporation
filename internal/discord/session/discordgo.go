@@ -98,6 +98,32 @@ func (d *discordSession) UpdateMessage(i *discordgo.Interaction, embed *discordg
 	})
 }
 
+// RespondComponentsV2Ephemeral sends an ephemeral Components V2 message: the
+// IsComponentsV2 flag means the body is components only (no content/embeds), so
+// text is carried by TextDisplay components.
+func (d *discordSession) RespondComponentsV2Ephemeral(i *discordgo.Interaction, components []discordgo.MessageComponent) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Components: components,
+			Flags:      discordgo.MessageFlagsEphemeral | discordgo.MessageFlagsIsComponentsV2,
+		},
+	})
+}
+
+// UpdateComponentsV2 edits a Components V2 message in place. The IsComponentsV2
+// flag must be kept on the update; ephemeral is fixed at creation, so it is not
+// re-set here.
+func (d *discordSession) UpdateComponentsV2(i *discordgo.Interaction, components []discordgo.MessageComponent) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Components: components,
+			Flags:      discordgo.MessageFlagsIsComponentsV2,
+		},
+	})
+}
+
 func (d *discordSession) ForumThreadStartComplex(channelID string, threadData *discordgo.ThreadStart, messageData *discordgo.MessageSend) (*discordgo.Channel, error) {
 	return d.s.ForumThreadStartComplex(channelID, threadData, messageData)
 }

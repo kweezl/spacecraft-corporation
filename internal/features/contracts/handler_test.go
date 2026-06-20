@@ -93,6 +93,12 @@ func (c *capture) UpdateMessage(_ *discordgo.Interaction, e *discordgo.MessageEm
 	c.embed = e
 	return nil
 }
+func (c *capture) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+	return nil
+}
+func (c *capture) UpdateComponentsV2(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+	return nil
+}
 
 // Command handlers are now DB-only and ack immediately; the Discord side effects
 // run on the outbox worker (see tasks_test.go). So these tests assert the repo

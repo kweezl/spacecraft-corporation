@@ -134,6 +134,12 @@ func (c *capture) UpdateMessage(_ *discordgo.Interaction, e *discordgo.MessageEm
 	c.embed, c.components, c.updated = e, comps, true
 	return nil
 }
+func (c *capture) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+	return nil
+}
+func (c *capture) UpdateComponentsV2(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+	return nil
+}
 
 // --- register ---
 

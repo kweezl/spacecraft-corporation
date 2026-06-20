@@ -23,104 +23,6 @@ func (_m *MockRepository) EXPECT() *MockRepository_Expecter {
 	return &MockRepository_Expecter{mock: &_m.Mock}
 }
 
-// Clear provides a mock function with given fields: ctx, serverID, command
-func (_m *MockRepository) Clear(ctx context.Context, serverID uuid.UUID, command string) error {
-	ret := _m.Called(ctx, serverID, command)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Clear")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
-		r0 = rf(ctx, serverID, command)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockRepository_Clear_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Clear'
-type MockRepository_Clear_Call struct {
-	*mock.Call
-}
-
-// Clear is a helper method to define mock.On call
-//   - ctx context.Context
-//   - serverID uuid.UUID
-//   - command string
-func (_e *MockRepository_Expecter) Clear(ctx interface{}, serverID interface{}, command interface{}) *MockRepository_Clear_Call {
-	return &MockRepository_Clear_Call{Call: _e.mock.On("Clear", ctx, serverID, command)}
-}
-
-func (_c *MockRepository_Clear_Call) Run(run func(ctx context.Context, serverID uuid.UUID, command string)) *MockRepository_Clear_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
-	})
-	return _c
-}
-
-func (_c *MockRepository_Clear_Call) Return(_a0 error) *MockRepository_Clear_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockRepository_Clear_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_Clear_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Grant provides a mock function with given fields: ctx, serverID, command, roleID, createdByUserID
-func (_m *MockRepository) Grant(ctx context.Context, serverID uuid.UUID, command string, roleID string, createdByUserID string) error {
-	ret := _m.Called(ctx, serverID, command, roleID, createdByUserID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Grant")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, string, string) error); ok {
-		r0 = rf(ctx, serverID, command, roleID, createdByUserID)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockRepository_Grant_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Grant'
-type MockRepository_Grant_Call struct {
-	*mock.Call
-}
-
-// Grant is a helper method to define mock.On call
-//   - ctx context.Context
-//   - serverID uuid.UUID
-//   - command string
-//   - roleID string
-//   - createdByUserID string
-func (_e *MockRepository_Expecter) Grant(ctx interface{}, serverID interface{}, command interface{}, roleID interface{}, createdByUserID interface{}) *MockRepository_Grant_Call {
-	return &MockRepository_Grant_Call{Call: _e.mock.On("Grant", ctx, serverID, command, roleID, createdByUserID)}
-}
-
-func (_c *MockRepository_Grant_Call) Run(run func(ctx context.Context, serverID uuid.UUID, command string, roleID string, createdByUserID string)) *MockRepository_Grant_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string), args[3].(string), args[4].(string))
-	})
-	return _c
-}
-
-func (_c *MockRepository_Grant_Call) Return(_a0 error) *MockRepository_Grant_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockRepository_Grant_Call) RunAndReturn(run func(context.Context, uuid.UUID, string, string, string) error) *MockRepository_Grant_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // List provides a mock function with given fields: ctx, serverID
 func (_m *MockRepository) List(ctx context.Context, serverID uuid.UUID) ([]permissions.Mapping, error) {
 	ret := _m.Called(ctx, serverID)
@@ -176,55 +78,6 @@ func (_c *MockRepository_List_Call) Return(_a0 []permissions.Mapping, _a1 error)
 }
 
 func (_c *MockRepository_List_Call) RunAndReturn(run func(context.Context, uuid.UUID) ([]permissions.Mapping, error)) *MockRepository_List_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Revoke provides a mock function with given fields: ctx, serverID, command, roleID
-func (_m *MockRepository) Revoke(ctx context.Context, serverID uuid.UUID, command string, roleID string) error {
-	ret := _m.Called(ctx, serverID, command, roleID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Revoke")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, string) error); ok {
-		r0 = rf(ctx, serverID, command, roleID)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockRepository_Revoke_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Revoke'
-type MockRepository_Revoke_Call struct {
-	*mock.Call
-}
-
-// Revoke is a helper method to define mock.On call
-//   - ctx context.Context
-//   - serverID uuid.UUID
-//   - command string
-//   - roleID string
-func (_e *MockRepository_Expecter) Revoke(ctx interface{}, serverID interface{}, command interface{}, roleID interface{}) *MockRepository_Revoke_Call {
-	return &MockRepository_Revoke_Call{Call: _e.mock.On("Revoke", ctx, serverID, command, roleID)}
-}
-
-func (_c *MockRepository_Revoke_Call) Run(run func(ctx context.Context, serverID uuid.UUID, command string, roleID string)) *MockRepository_Revoke_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string), args[3].(string))
-	})
-	return _c
-}
-
-func (_c *MockRepository_Revoke_Call) Return(_a0 error) *MockRepository_Revoke_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockRepository_Revoke_Call) RunAndReturn(run func(context.Context, uuid.UUID, string, string) error) *MockRepository_Revoke_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -285,6 +138,56 @@ func (_c *MockRepository_RolesFor_Call) Return(_a0 []string, _a1 error) *MockRep
 }
 
 func (_c *MockRepository_RolesFor_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) ([]string, error)) *MockRepository_RolesFor_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetRoles provides a mock function with given fields: ctx, serverID, command, roleIDs, createdByUserID
+func (_m *MockRepository) SetRoles(ctx context.Context, serverID uuid.UUID, command string, roleIDs []string, createdByUserID string) error {
+	ret := _m.Called(ctx, serverID, command, roleIDs, createdByUserID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetRoles")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, []string, string) error); ok {
+		r0 = rf(ctx, serverID, command, roleIDs, createdByUserID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetRoles'
+type MockRepository_SetRoles_Call struct {
+	*mock.Call
+}
+
+// SetRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - command string
+//   - roleIDs []string
+//   - createdByUserID string
+func (_e *MockRepository_Expecter) SetRoles(ctx interface{}, serverID interface{}, command interface{}, roleIDs interface{}, createdByUserID interface{}) *MockRepository_SetRoles_Call {
+	return &MockRepository_SetRoles_Call{Call: _e.mock.On("SetRoles", ctx, serverID, command, roleIDs, createdByUserID)}
+}
+
+func (_c *MockRepository_SetRoles_Call) Run(run func(ctx context.Context, serverID uuid.UUID, command string, roleIDs []string, createdByUserID string)) *MockRepository_SetRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string), args[3].([]string), args[4].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetRoles_Call) Return(_a0 error) *MockRepository_SetRoles_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetRoles_Call) RunAndReturn(run func(context.Context, uuid.UUID, string, []string, string) error) *MockRepository_SetRoles_Call {
 	_c.Call.Return(run)
 	return _c
 }

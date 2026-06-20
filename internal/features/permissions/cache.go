@@ -26,8 +26,8 @@ type serverRoles map[string]map[string]struct{}
 // as a single process (one session), so there are no other writers; a horizontal
 // scale-out would need cross-process invalidation instead.
 //
-// Admin reads (RolesFor/List, used by /permissions) bypass the cache and hit the
-// database directly, so management output is always fresh.
+// Admin reads (RolesFor/List, used by the /permissions panel) bypass the cache
+// and hit the database directly, so management output is always fresh.
 type Store struct {
 	repo  Repository
 	cache *lru.Cache[uuid.UUID, serverRoles]
@@ -94,27 +94,10 @@ func (s *Store) List(ctx context.Context, serverID uuid.UUID) ([]Mapping, error)
 	return s.repo.List(ctx, serverID)
 }
 
-// Grant persists a role grant and invalidates the server's cached mapping.
-func (s *Store) Grant(ctx context.Context, serverID uuid.UUID, command, roleID, createdByUserID string) error {
-	if err := s.repo.Grant(ctx, serverID, command, roleID, createdByUserID); err != nil {
-		return err
-	}
-	s.invalidate(serverID)
-	return nil
-}
-
-// Revoke removes a role grant and invalidates the server's cached mapping.
-func (s *Store) Revoke(ctx context.Context, serverID uuid.UUID, command, roleID string) error {
-	if err := s.repo.Revoke(ctx, serverID, command, roleID); err != nil {
-		return err
-	}
-	s.invalidate(serverID)
-	return nil
-}
-
-// Clear removes all role grants for a command and invalidates the server's cache.
-func (s *Store) Clear(ctx context.Context, serverID uuid.UUID, command string) error {
-	if err := s.repo.Clear(ctx, serverID, command); err != nil {
+// SetRoles replaces a command's granted roles and invalidates the server's
+// cached mapping so the gate sees the change on its next check.
+func (s *Store) SetRoles(ctx context.Context, serverID uuid.UUID, command string, roleIDs []string, createdByUserID string) error {
+	if err := s.repo.SetRoles(ctx, serverID, command, roleIDs, createdByUserID); err != nil {
 		return err
 	}
 	s.invalidate(serverID)

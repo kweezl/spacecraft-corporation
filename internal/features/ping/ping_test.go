@@ -54,6 +54,12 @@ func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, embed *discordgo
 	f.lastEmbed = embed
 	return nil
 }
+func (f *fakeResponder) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+	return nil
+}
+func (f *fakeResponder) UpdateComponentsV2(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+	return nil
+}
 
 // discordEpoch is the start of Discord's snowflake epoch (2015-01-01), used to
 // synthesize an interaction ID whose timestamp the handler decodes back.
