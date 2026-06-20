@@ -5,7 +5,6 @@
 # fmt/mock targets exec into that already-running container and pull the pinned
 # tools via `go run`, so no host Go toolchain (or extra image layers) is needed.
 
-COMPOSE       := docker compose
 COMPOSE_DEV   := docker compose -f docker-compose.dev.yml
 DEV_SERVICE   := bot
 # Full-stack profile for `dev.up`/`dev.stop`. `app` alone is an invalid project
@@ -30,10 +29,9 @@ GOOSE_VERSION    := v3.27.1
 # Where goose migrations live (embedded into the binary by the migrator module).
 MIGRATIONS_DIR := internal/migrator/migrations
 
-# Image build args. Override via env or .env (e.g. `make build APP_VERSION=1.2.3`).
-# APP_VERSION is baked into the prod binary via ldflags; UID/GID make the dev
-# image's user match the host so bind-mounted files aren't root-owned.
-APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.0.0-unspecified)
+# Dev image build args: UID/GID make the dev image's user match the host so
+# bind-mounted files aren't root-owned. (The prod image is built and pushed by CI
+# — .github/workflows/release.yml — not locally.)
 UID     ?= $(shell id -u)
 GID     ?= $(shell id -g)
 
@@ -41,14 +39,6 @@ GID     ?= $(shell id -g)
 
 help:
 	@grep -oE "^[a-z\.-]+:" Makefile | uniq
-
-# Both targets build the dedicated `build` service, which carries the shared
-# image tag (reused by migrate + bot). Naming the service enables its `build`
-# profile, so the build runs even though every service is profile-gated.
-
-## build: build (or rebuild) the prod bot image, without starting any container
-build:
-	$(COMPOSE) build --build-arg APP_VERSION=$(APP_VERSION) build
 
 ## build-dev: build (or rebuild) the dev bot image, without starting any container
 build-dev:
