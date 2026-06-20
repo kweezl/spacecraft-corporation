@@ -67,3 +67,33 @@ func (d *discordSession) RespondEmbed(i *discordgo.Interaction, embed *discordgo
 		Data: &discordgo.InteractionResponseData{Embeds: []*discordgo.MessageEmbed{embed}},
 	})
 }
+
+func (d *discordSession) RespondAutocomplete(i *discordgo.Interaction, choices []*discordgo.ApplicationCommandOptionChoice) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionApplicationCommandAutocompleteResult,
+		Data: &discordgo.InteractionResponseData{Choices: choices},
+	})
+}
+
+func (d *discordSession) RespondEmbedComponents(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: components,
+		},
+	})
+}
+
+// UpdateMessage edits the message the component is attached to (the pagination
+// case): Discord replaces the embed and components in place rather than posting
+// a new message.
+func (d *discordSession) UpdateMessage(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: components,
+		},
+	})
+}

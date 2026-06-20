@@ -57,3 +57,13 @@ func TestOptions_MigrateGraphValidates(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fx.ValidateApp(opts...))
 }
+
+// TestOptions_BasesGraphValidates resolves the graph with the bases feature,
+// which pulls in permissions (its Requires) and exercises the registry's
+// components fx group — so a mis-wired component provider fails here.
+func TestOptions_BasesGraphValidates(t *testing.T) {
+	t.Setenv("FEATURES", "bases")
+	opts, err := Options(false)
+	require.NoError(t, err)
+	require.NoError(t, fx.ValidateApp(opts...))
+}

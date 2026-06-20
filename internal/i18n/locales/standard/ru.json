@@ -21,5 +21,37 @@
 
   "settings.theme_set": "Тема сервера установлена: **{{.Theme}}**.",
   "settings.language_set": "Язык бота установлен: **{{.Language}}**.",
-  "settings.current": "Этот сервер использует тему **{{.Theme}}** и язык **{{.Language}}**."
+  "settings.current": "Этот сервер использует тему **{{.Theme}}** и язык **{{.Language}}**.",
+
+  "bases.error.no_member": "Укажите, чья база, с помощью параметра `member`.",
+  "bases.error.unknown": "Неизвестная подкоманда.",
+  "bases.error.bad_base": "Выберите базу из подсказок.",
+  "bases.error.bad_equipment": "Выберите элемент из подсказок.",
+  "bases.error.base_not_found": "База не найдена или не принадлежит вам.",
+  "bases.error.equipment_not_found": "Этот элемент на базе не найден.",
+
+  "bases.register.ok": "База **{{.Name}}** зарегистрирована в {{.Sector}} / {{.System}} {{.Planet}}.",
+  "bases.register.limit": "Достигнут лимит баз ({{.Limit}}). Сначала снимите одну с регистрации.",
+
+  "bases.unregister.ok": "База снята с регистрации.",
+  "bases.unregister.all": "Снято с регистрации баз: {{.Count}}.",
+
+  "bases.extractor.added": "Установлен экстрактор для **{{.Resource}}**.",
+  "bases.extractor.removed": "Экстрактор удалён.",
+  "bases.extractor.limit": "На этой базе уже максимум экстракторов ({{.Limit}}).",
+
+  "bases.production.added": "Установлено производство для **{{.Item}}**.",
+  "bases.production.removed": "Производство удалено.",
+  "bases.production.limit": "На этой базе уже максимум производств ({{.Limit}}).",
+
+  "bases.list.title": "🛰️ Базы",
+  "bases.list.empty": "Под ваши фильтры пока нет баз.",
+  "bases.list.expired": "Список устарел — выполните `/base list` снова.",
+  "bases.list.footer": "Страница {{.Page}} / {{.Pages}} · баз: {{.Total}}",
+  "bases.list.owner_member": "Владелец: <@{{.User}}>",
+  "bases.list.owner_corp": "Владелец: корпорация",
+  "bases.list.none": "—",
+  "bases.list.entry": "{{.Owner}}\n🔧 Экстракторы: {{.Extractors}}\n🏭 Производство: {{.Productions}}",
+  "bases.list.prev": "◀ Назад",
+  "bases.list.next": "Вперёд ▶"
 }

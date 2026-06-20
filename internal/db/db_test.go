@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
@@ -16,13 +15,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kweezl/spacecraft-corporation/internal/db"
+	"github.com/kweezl/spacecraft-corporation/internal/testdb"
 )
 
 func TestPool_ConnectsAndPings(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
+	// Only pings, so the admin database is fine (no schema needed).
+	dsn := testdb.DSN(t)
 	// The module builds its DSN from POSTGRES_* now, so decompose the test DSN
 	// into those parts rather than passing a whole connection string.
 	setPostgresEnvFromDSN(t, dsn)

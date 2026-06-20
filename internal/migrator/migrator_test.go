@@ -2,7 +2,6 @@ package migrator_test
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,13 +13,10 @@ import (
 )
 
 func TestRun_CreatesTables(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
+	t.Parallel()
 	ctx := context.Background()
-	// Clean (not Reset): this test exercises migrator.Run itself.
-	pool := testdb.Clean(t, dsn)
+	// An empty (un-migrated) database: this test exercises migrator.Run itself.
+	pool := testdb.NewEmptyDB(t)
 
 	require.NoError(t, migrator.Run(pool, zap.NewNop()))
 
