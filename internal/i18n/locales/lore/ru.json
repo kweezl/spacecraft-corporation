@@ -15,9 +15,9 @@
   "permissions.panel.prev": "◀ Назад",
   "permissions.panel.next": "Вперёд ▶",
 
-  "settings.theme_set": "Протокол станции установлен: **{{.Theme}}**.",
-  "settings.language_set": "Язык связи установлен: **{{.Language}}**.",
-  "settings.current": "Эта станция работает по протоколу **{{.Theme}}** на языке связи **{{.Language}}**.",
+  "settings.panel.header": "**Конфигурация станции**\nПротокол: **{{.Theme}}** · Связь: **{{.Language}}**\nВыберите значение ниже; изменения вступают в силу немедленно.",
+  "settings.panel.theme_placeholder": "Выберите протокол",
+  "settings.panel.language_placeholder": "Выберите язык связи",
 
   "bases.error.no_member": "Укажите члена экипажа через параметр `member`.",
   "bases.error.unknown": "Неизвестный приказ.",
