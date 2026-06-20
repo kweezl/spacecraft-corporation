@@ -29,7 +29,8 @@ func Module() fx.Option {
 		fx.Provide(func(s *settings.Store) ForumConfig { return s }),
 		fx.Provide(newSweeper),
 		fx.Invoke(func(lc fx.Lifecycle, s *Sweeper) {
-			lc.Append(fx.Hook{OnStart: s.Start, OnStop: s.Stop})
+			lc.Append(fx.StartHook(s.Start))
+			lc.Append(fx.StopHook(s.Stop))
 		}),
 		// Contribute the /contract command and its pagination component.
 		fx.Provide(fx.Annotate(

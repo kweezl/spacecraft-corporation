@@ -98,6 +98,27 @@ func (c *capture) UpdateMessage(_ *discordgo.Interaction, e *discordgo.MessageEm
 // run on the outbox worker (see tasks_test.go). So these tests assert the repo
 // call + the ack, and the Gateway is never touched on the interaction path.
 
+func TestShow_EmbedCarriesUpdatedStamp(t *testing.T) {
+	repo := mocks.NewMockRepository(t)
+	updated := time.Now().Add(-5 * time.Minute)
+	prog := contracts.Progress{Contract: contracts.Contract{
+		ID: uuid.New(), ServerID: gid, ThreadID: "thread-9", Title: "Steel Run",
+		Status: contracts.StatusOpen, Deadline: time.Now().Add(2 * time.Hour), LastRefreshedAt: updated,
+	}}
+	repo.EXPECT().Progress(mock.Anything, gid, "thread-9").Return(prog, nil).Once()
+
+	r := &capture{}
+	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r, cmd("thread-9", member("u1"), leaf("show")))
+
+	require.NotNil(t, r.embed)
+	// Footer "last updated" label + native timestamp (viewer-localized by Discord).
+	require.NotNil(t, r.embed.Footer)
+	assert.NotEmpty(t, r.embed.Footer.Text)
+	assert.Equal(t, updated.Format(time.RFC3339), r.embed.Timestamp)
+	// Live "… ago" relative stamp in the open status line.
+	assert.Contains(t, r.embed.Description, "<t:")
+}
+
 func TestCreate_AcksAndPersists(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
 	forum := mocks.NewMockForumConfig(t)
