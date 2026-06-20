@@ -15,6 +15,7 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/discord/servers"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
+	"github.com/kweezl/spacecraft-corporation/internal/features/bases"
 	"github.com/kweezl/spacecraft-corporation/internal/features/permissions"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
@@ -78,6 +79,8 @@ func selectFeatures(names []feature.Name) ([]fx.Option, error) {
 			opts = append(opts, ping.Module())
 		case feature.Permissions:
 			opts = append(opts, permissions.Module())
+		case feature.Bases:
+			opts = append(opts, bases.Module())
 		default:
 			return nil, fmt.Errorf("no module registered for feature %q", name)
 		}

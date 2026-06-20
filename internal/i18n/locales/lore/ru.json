@@ -21,5 +21,37 @@
 
   "settings.theme_set": "Протокол станции установлен: **{{.Theme}}**.",
   "settings.language_set": "Язык связи установлен: **{{.Language}}**.",
-  "settings.current": "Эта станция работает по протоколу **{{.Theme}}** на языке связи **{{.Language}}**."
+  "settings.current": "Эта станция работает по протоколу **{{.Theme}}** на языке связи **{{.Language}}**.",
+
+  "bases.error.no_member": "Укажите члена экипажа через параметр `member`.",
+  "bases.error.unknown": "Неизвестный приказ.",
+  "bases.error.bad_base": "Выберите форпост из предложенного реестра.",
+  "bases.error.bad_equipment": "Выберите установку из предложенного реестра.",
+  "bases.error.base_not_found": "Такого форпоста нет в реестре, либо он вне вашего командования.",
+  "bases.error.equipment_not_found": "Такой установки на этом форпосте нет.",
+
+  "bases.register.ok": "Форпост **{{.Name}}** нанесён на карту в {{.Sector}} / {{.System}} {{.Planet}}.",
+  "bases.register.limit": "Достигнута квота форпостов ({{.Limit}}). Сначала выведите один из эксплуатации.",
+
+  "bases.unregister.ok": "Форпост выведен из эксплуатации.",
+  "bases.unregister.all": "Выведено из эксплуатации форпостов: {{.Count}}.",
+
+  "bases.extractor.added": "Развёрнут экстрактор для **{{.Resource}}**.",
+  "bases.extractor.removed": "Экстрактор демонтирован.",
+  "bases.extractor.limit": "На этом форпосте уже максимум экстракторов ({{.Limit}}).",
+
+  "bases.production.added": "Введён в строй фабрикатор для **{{.Item}}**.",
+  "bases.production.removed": "Фабрикатор демонтирован.",
+  "bases.production.limit": "На этом форпосте уже максимум фабрикаторов ({{.Limit}}).",
+
+  "bases.list.title": "🛰️ Реестр форпостов",
+  "bases.list.empty": "Под параметры разведки нет форпостов.",
+  "bases.list.expired": "Разведданные устарели — выполните `/base list` для повторного сканирования.",
+  "bases.list.footer": "Страница сектора {{.Page}} / {{.Pages}} · форпостов: {{.Total}}",
+  "bases.list.owner_member": "Командир: <@{{.User}}>",
+  "bases.list.owner_corp": "Владение: корпорация",
+  "bases.list.none": "—",
+  "bases.list.entry": "{{.Owner}}\n🔧 Экстракторы: {{.Extractors}}\n🏭 Фабрикаторы: {{.Productions}}",
+  "bases.list.prev": "◀ Назад",
+  "bases.list.next": "Вперёд ▶"
 }

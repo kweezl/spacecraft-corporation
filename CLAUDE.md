@@ -115,11 +115,30 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   the **`/settings`** command (`theme` / `language` / `show`, `DefaultDeny` so
   it is owner/admin-gated, with theme/language **choices** sourced from the
   Translator catalog).
-- **`commandregistry`** — collects `Command`s from feature modules via an fx
-  group, builds the route map, dispatches interactions to handlers.
-- **feature modules** (first: **`ping`**) — each provides `Command`s into the
-  group. They are plain modules (no self-gating); which ones load is decided by
-  the composition root.
+- **`commandregistry`** (`internal/discord/registry`) — collects `Command`s and
+  `Component`s from feature modules via fx groups, builds the route maps, and
+  dispatches three interaction kinds: slash commands (by name), **autocomplete**
+  (a `Command`'s optional `Autocomplete` handler, by command name), and **message
+  components** (a `Component`'s handler, by the namespace prefix of its CustomID,
+  e.g. `base:…`). A `Command` may set **`SubcommandGated`** so the access gate
+  keys on the full subcommand path (`AccessKey`) — e.g. `base own register` —
+  letting each leaf be granted to different roles; `Policy` still resolves
+  `DefaultDeny` per top-level command. The `Responder` also exposes
+  `RespondAutocomplete`, `RespondEmbedComponents`, and `UpdateMessage` (in-place
+  edit, used for button pagination).
+- **feature modules** (`ping`, **`bases`**) — each provides `Command`s (and
+  optionally `Component`s) into the groups. They are plain modules (no
+  self-gating); which ones load is decided by the composition root.
+- **`bases`** (`internal/features/bases`) — the member-bases feature: a single
+  SubcommandGated **`/base`** command with three tier groups (`own` / `corp` /
+  `member`) × six operations (register, unregister, add/remove extractor,
+  add/remove production) plus a paginated, filterable **`list`**. Tier is part of
+  the gated path, so per-tier roles are the coarse authorization; on top of that
+  **every mutation is ownership-scoped in SQL** (a `WHERE` predicate keyed on
+  server + kind + owner), so a forged base id affects zero rows — autocomplete
+  pickers are convenience only, never the boundary. Requires the `permissions`
+  feature. List pagination keeps its filter context in an in-memory LRU keyed by
+  a token in the button CustomID (`base:list:<token>:<page>`).
 - **`app`** (composition root, `internal/app`) — assembles the fx option list:
   always-on core modules plus the feature modules selected from `FEATURES`
   (parsed once via `feature.Load()`); `selectFeatures` switches each enabled
@@ -154,6 +173,7 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
 | `servers` | `APPROVED_SERVER_ID` (comma-separated allowlist of auto-approved server IDs; may be empty; promote-only) |
 | `instrumentation` | `INSTRUMENTATION_ADDR` (default `:9464`) |
 | `i18n` | `APP_THEME` (default `standard`); `APP_LANGUAGE` (default `en`) — app-wide fallback wording theme + language; must match an embedded bundle. `settings` has no env of its own (per-server overrides; defaults from `i18n`) |
+| `bases` | `BASES_MEMBER_LIMIT` (default `3`), `BASES_CORP_LIMIT` (default `6`) — live bases per member / per corp; `BASES_EXTRACTOR_LIMIT` (default `4`), `BASES_PRODUCTION_LIMIT` (default `30`) — equipment per base; `BASES_LIST_PAGE_SIZE` (default `8`). Only read when the `bases` feature is enabled |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `APP_TIMEZONE` (IANA name, default `UTC`, pins `time.Local`); `APP_OWNER_DISCORD_ID` (optional bot-owner Discord ID for the unapproved-server reply); `Version` injected via build-time ldflags |
 
@@ -178,6 +198,18 @@ per-feature env var.
   role_id)`.
 - **`server_settings`** — `id` (**UUIDv7**, app-supplied), `servers_id` (unique),
   `theme`, `language` (both NULL = use app default), `created_at`, `updated_at`.
+- **`bases`** — `id` (**UUIDv7**, app-supplied), `servers_id`, `kind`
+  (`member`\|`corp`), `owner_user_id` (NULL for corp bases), `name`,
+  `sector_name`, `system_code`, `planet_number` (1–10, rendered I–X),
+  `created_by_user_id` (differs from owner when a manager registers for a member),
+  `created_at`, `updated_at`, `deleted_at` (NULL = live; **soft delete**). Check
+  constraints enforce the kind↔owner invariant. Partial indexes on the live rows
+  back the listing and the per-member ownership scope.
+- **`base_extractors`** / **`base_productions`** — `id` (**UUIDv7**), `bases_id`
+  FK, `resource_name` / `item_name`, `created_at`. A base's two independent
+  equipment lists (raw-resource extractors vs crafted-item production),
+  **hard-deleted** on removal (not audited, unlike bases). One table per
+  migration.
 
 `servers_id` is a **`UUID` foreign key to `servers.id`** (`ON DELETE RESTRICT`),
 **not** the Discord snowflake — distinguished by name from `servers.server_id`
@@ -341,6 +373,16 @@ startupProbe:
   - optionally a Docker build of the `prod` target to catch build breakage.
 - **Lint:** `golangci-lint` is the standard linter; config lives in
   `.golangci.yml`. Run it locally before pushing.
+- **DB-backed tests** (`internal/testdb`) connect via **`TEST_DATABASE_URL`**
+  (the admin DSN). It has no default and DB tests **fail — never skip — when it
+  is unset**, so a missing config can't hide a regression behind a green check.
+  Each testify suite gets its **own** `CREATE DATABASE`d database (migrated in
+  `SetupSuite`, tables truncated between tests, `DROP`ped in `TearDownSuite`), so
+  package test binaries run in parallel with no shared state or locking. CI
+  points `TEST_DATABASE_URL` at a `postgres` service container; locally, set it to
+  a reachable Postgres (e.g. a throwaway `spacecraft_test` DB) — the per-suite
+  databases are created beside it. Needs no Docker at test time (unlike
+  testcontainers), which suits environments that forbid Docker-in-Docker.
 
 ## Project layout
 
@@ -354,9 +396,10 @@ internal/db/
 internal/migrator/           # + migrations/*.sql (embedded)
 internal/instrumentation/    # liveness/readiness probes + /metrics
 internal/discord/session/    # single-session manager + discordgo wrapper
-internal/discord/registry/   # command registry + router + Command type
+internal/discord/registry/   # command/component registry + router + Command type
 internal/discord/servers/    # server tracking + approval gate + event log
 internal/features/ping/
+internal/features/bases/     # /base: registry + command tree + list pagination
 .mockery.yaml         # mock generation config
 .air.toml            # hot-reload config (local dev)
 .golangci.yml        # linter config
