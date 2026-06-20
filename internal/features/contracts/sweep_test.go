@@ -48,38 +48,6 @@ func (s *contractsSuite) TestLastRefreshedAt_SetAndAdvances() {
 	assert.False(t, p1.LastRefreshedAt.Before(p0.LastRefreshedAt), "a mutation advances the watermark")
 }
 
-// StaleContracts selects open contracts last rendered at or before the cutoff;
-// MarkRefreshed advances the watermark and only fires for open contracts.
-func (s *contractsSuite) TestStaleContracts_AndMarkRefreshed() {
-	t := s.T()
-	repo, ctx, g := s.seed()
-	id := s.newContract(ctx, g, thread)
-
-	// A cutoff in the future includes the just-created contract; one in the past
-	// excludes it.
-	stale, err := repo.StaleContracts(ctx, time.Now().Add(time.Minute), 100)
-	require.NoError(t, err)
-	assert.True(t, contains(stale, id))
-	stale, err = repo.StaleContracts(ctx, time.Now().Add(-time.Hour), 100)
-	require.NoError(t, err)
-	assert.False(t, contains(stale, id))
-
-	p0, err := repo.ProgressByID(ctx, id)
-	require.NoError(t, err)
-	ok, err := repo.MarkRefreshed(ctx, id, time.Now().Add(time.Hour))
-	require.NoError(t, err)
-	assert.True(t, ok)
-	p1, err := repo.ProgressByID(ctx, id)
-	require.NoError(t, err)
-	assert.True(t, p1.LastRefreshedAt.After(p0.LastRefreshedAt), "MarkRefreshed advances the watermark")
-
-	// A closed contract is never kept warm.
-	require.NoError(t, repo.Cancel(ctx, g, thread, mgr))
-	ok, err = repo.MarkRefreshed(ctx, id, time.Now())
-	require.NoError(t, err)
-	assert.False(t, ok)
-}
-
 // NotifyDue selects open, not-yet-notified contracts inside the window that have
 // at least one participant; MarkNotified latches so the ping fires exactly once.
 func (s *contractsSuite) TestNotifyDue_AndMarkNotified() {

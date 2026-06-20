@@ -50,7 +50,6 @@ x-bot-env: &bot-env
   # explicitly — the anchor is an allowlist, so an unmapped var never reaches the
   # container and the code default silently wins.
   CONTRACTS_SWEEP_INTERVAL: ${CONTRACTS_SWEEP_INTERVAL:-1m}
-  CONTRACTS_REFRESH_INTERVAL: ${CONTRACTS_REFRESH_INTERVAL:-3h}
   CONTRACTS_EXPIRES_NOTIFY: ${CONTRACTS_EXPIRES_NOTIFY:-1h}
   CONTRACTS_MAX_ITEMS: ${CONTRACTS_MAX_ITEMS:-25}
   CONTRACTS_LIST_PAGE_SIZE: ${CONTRACTS_LIST_PAGE_SIZE:-8}
