@@ -51,7 +51,10 @@
   "bases.list.owner_member": "Commander: <@{{.User}}>",
   "bases.list.owner_corp": "Holding: Corporation",
   "bases.list.none": "—",
-  "bases.list.entry": "{{.Owner}}\n🔧 Extractors: {{.Extractors}}\n🏭 Fabricators: {{.Productions}}",
+  "bases.list.location": "{{.Sector}} / {{.System}} {{.Planet}}",
+  "bases.list.field_base": "{{.Location}}\n{{.Owner}}",
+  "bases.list.extractors_header": "🔧 Extractors",
+  "bases.list.production_header": "🏭 Fabricators",
   "bases.list.prev": "◀ Prev",
   "bases.list.next": "Next ▶"
 }

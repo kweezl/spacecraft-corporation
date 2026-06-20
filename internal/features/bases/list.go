@@ -132,12 +132,9 @@ func (h *Feature) handleComponent(ctx context.Context, r registry.Responder, i *
 func (h *Feature) renderPage(ctx context.Context, serverID uuid.UUID, bases []Base, page, total int, token string) (*discordgo.MessageEmbed, []discordgo.MessageComponent) {
 	totalPages := (total + h.cfg.PageSize - 1) / h.cfg.PageSize
 
-	fields := make([]*discordgo.MessageEmbedField, 0, len(bases))
+	fields := make([]*discordgo.MessageEmbedField, 0, len(bases)*3)
 	for _, b := range bases {
-		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:  baseLabel(b),
-			Value: h.entryValue(ctx, serverID, b),
-		})
+		fields = append(fields, h.entryFields(ctx, serverID, b)...)
 	}
 	embed := &discordgo.MessageEmbed{
 		Title:  h.loc.Render(ctx, serverID, "bases.list.title", nil),
@@ -151,18 +148,27 @@ func (h *Feature) renderPage(ctx context.Context, serverID uuid.UUID, bases []Ba
 	return embed, h.pageButtons(ctx, serverID, token, page, totalPages)
 }
 
-// entryValue renders one base's owner + equipment block (the field value).
-func (h *Feature) entryValue(ctx context.Context, serverID uuid.UUID, b Base) string {
+// entryFields renders one base as three inline embed fields — identity (name,
+// location, owner), extractors, production — so Discord lays the listing out as
+// table rows of three columns. Inline fields keep clickable @mention owners and
+// emoji (unlike a code-block table) and wrap responsively on narrow clients.
+func (h *Feature) entryFields(ctx context.Context, serverID uuid.UUID, b Base) []*discordgo.MessageEmbedField {
 	owner := h.loc.Render(ctx, serverID, "bases.list.owner_corp", nil)
 	if b.Kind == KindMember {
 		owner = h.loc.Render(ctx, serverID, "bases.list.owner_member", map[string]any{"User": b.OwnerUserID})
 	}
-	none := h.loc.Render(ctx, serverID, "bases.list.none", nil)
-	return h.loc.Render(ctx, serverID, "bases.list.entry", map[string]any{
-		"Owner":       owner,
-		"Extractors":  joinOr(extractorNames(b), none),
-		"Productions": joinOr(productionNames(b), none),
+	identity := h.loc.Render(ctx, serverID, "bases.list.field_base", map[string]any{
+		"Location": h.loc.Render(ctx, serverID, "bases.list.location", map[string]any{
+			"Sector": b.SectorName, "System": b.SystemCode, "Planet": toRoman(b.PlanetNumber),
+		}),
+		"Owner": owner,
 	})
+	none := h.loc.Render(ctx, serverID, "bases.list.none", nil)
+	return []*discordgo.MessageEmbedField{
+		{Name: truncate(b.Name, 256), Value: identity, Inline: true},
+		{Name: h.loc.Render(ctx, serverID, "bases.list.extractors_header", nil), Value: joinOr(extractorNames(b), none), Inline: true},
+		{Name: h.loc.Render(ctx, serverID, "bases.list.production_header", nil), Value: joinOr(productionNames(b), none), Inline: true},
+	}
 }
 
 // pageButtons returns the prev/next row, or nil when there is only one page.

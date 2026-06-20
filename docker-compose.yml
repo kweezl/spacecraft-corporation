@@ -10,6 +10,7 @@
 # and bot reuse a single build instead of compose building one image per service.
 x-bot-image: &bot-image
   image: spacecraft-corporation:${APP_VERSION:-0.0.0-unspecified}
+  pull_policy: "never"
   build:
     context: .
     target: prod
