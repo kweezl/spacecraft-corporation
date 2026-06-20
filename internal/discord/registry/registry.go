@@ -145,6 +145,7 @@ func New(p Params) *Registry {
 		if c.Autocomplete != nil {
 			r.autocompletes[c.Def.Name] = c.Autocomplete
 		}
+		applyDefaultMemberPermissions(c)
 		r.defs = append(r.defs, c.Def)
 	}
 	for _, c := range p.Components {
@@ -154,6 +155,33 @@ func New(p Params) *Registry {
 		r.components[c.Prefix] = c.Handler
 	}
 	return r
+}
+
+// adminOnly is the default_member_permissions value that hides a command from
+// every non-administrator in the Discord client. Discord serialises the field as
+// a permission bitfield string; the empty bitfield ("0") means "no permission is
+// enough", so only members with Administrator (who bypass the check) see it.
+const adminOnly int64 = 0
+
+// applyDefaultMemberPermissions mirrors a command's DefaultDeny policy onto
+// Discord's native default_member_permissions as a client-side, defence-in-depth
+// layer: an owner/admin command (DefaultDeny) is also hidden from non-admins in
+// the Discord UI, so they never get as far as invoking it. The custom permissions
+// gate remains the real authorization boundary (it is also the only thing that
+// can grant a non-admin role access per subcommand path).
+//
+// Caveat for delegation: because Discord enforces this BEFORE the interaction
+// reaches the bot, a non-admin who was granted a role via /permissions still
+// won't see a DefaultDeny command unless a server admin also unhides it for that
+// role in Server Settings → Integrations. We only set the field when a command
+// hasn't already declared one, so a feature can opt into a looser default (e.g.
+// Manage Guild) to keep delegation reachable.
+func applyDefaultMemberPermissions(c *Command) {
+	if !c.DefaultDeny || c.Def.DefaultMemberPermissions != nil {
+		return
+	}
+	perm := adminOnly
+	c.Def.DefaultMemberPermissions = &perm
 }
 
 // Policy reports a command's default-deny policy (see Command.DefaultDeny) and

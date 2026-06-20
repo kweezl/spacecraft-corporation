@@ -56,5 +56,62 @@
   "bases.list.extractors_header": "🔧 Экстракторы",
   "bases.list.production_header": "🏭 Фабрикаторы",
   "bases.list.prev": "◀ Назад",
-  "bases.list.next": "Вперёд ▶"
+  "bases.list.next": "Вперёд ▶",
+
+  "contracts.error.unknown": "Неизвестный приказ.",
+  "contracts.error.not_in_thread": "Отдайте этот приказ внутри ветки контракта.",
+  "contracts.error.closed": "Этот контракт опечатан.",
+  "contracts.error.expired": "Окно контракта истекло.",
+  "contracts.error.item_not_found": "Этого товара нет в манифесте.",
+
+  "contracts.create.bad_title": "Дайте контракту название.",
+  "contracts.create.bad_duration": "Задайте окно как `Nd Nh Nm`, например `3d 11h 10m`, `5h` или `41m`.",
+  "contracts.create.no_forum": "Доска контрактов не назначена. Сначала офицер станции должен выполнить `/contract forum`.",
+  "contracts.create.accepted": "Контракт зарегистрирован — открываем диспетчерскую ветку…",
+  "contracts.create.ok": "Контракт **{{.Title}}** размещён: <#{{.Thread}}>",
+  "contracts.create.failed_forum": "Не удалось разместить контракт — доска контрактов отсутствует. Офицеру станции нужно заново выполнить `/contract forum`.",
+  "contracts.create.failed_perms": "Не удалось открыть диспетчерскую ветку — у бота нет допуска к доске контрактов.",
+
+  "contracts.item.bad_input": "Укажите товар и положительную квоту.",
+  "contracts.item.added": "Манифест обновлён: требуется **{{.Qty}}× {{.Name}}**.",
+  "contracts.item.removed": "Из манифеста удалено: **{{.Name}}** (аннулировано обязательств: {{.Cleared}}).",
+  "contracts.item.exists": "Этот товар уже в манифесте.",
+  "contracts.item.max_items": "В манифесте уже максимум товаров ({{.Limit}}).",
+
+  "contracts.participate.ok": "Принято обязательство: **{{.Qty}}× {{.Item}}**.",
+  "contracts.participate.over_cap": "Это превышает оставшуюся квоту контракта по этому товару.",
+
+  "contracts.deliver.ok": "Доставлено: **{{.Qty}}× {{.Item}}**.",
+  "contracts.deliver.completed": "Доставлено: **{{.Qty}}× {{.Item}}** — контракт выполнен! 🎉",
+  "contracts.deliver.over_reserved": "Нельзя доставить больше, чем вы обязались.",
+
+  "contracts.release.ok": "Ваше обязательство снято: **{{.Qty}}× {{.Item}}**.",
+  "contracts.release.ok_member": "Снято **{{.Qty}}× {{.Item}}** с обязательства <@{{.Member}}>.",
+  "contracts.release.no_reservation": "Подходящего обязательства для снятия нет.",
+  "contracts.release.below_delivered": "Нельзя снять то, что уже доставлено.",
+  "contracts.release.no_target": "Укажите члена экипажа через параметр `member`.",
+
+  "contracts.cancel.ok": "Контракт расторгнут.",
+
+  "contracts.forum.set": "Контракты будут размещаться в <#{{.Channel}}>.",
+  "contracts.forum.bad_channel": "Выберите форумный канал.",
+
+  "contracts.embed.title": "📜 {{.Title}}",
+  "contracts.embed.status_open": "🟢 Активен",
+  "contracts.embed.status_completed": "✅ Выполнен",
+  "contracts.embed.status_expired": "⌛ Истёк",
+  "contracts.embed.status_cancelled": "🚫 Расторгнут",
+  "contracts.embed.time_left": "⏳ осталось {{.Left}}",
+  "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} доставлено · {{.Reserved}} обязательств",
+  "contracts.embed.participant_line": "<@{{.User}}> — {{.Reserved}} обязательств · {{.Delivered}} доставлено",
+  "contracts.embed.participants_more": "…и ещё {{.Count}}",
+  "contracts.embed.no_items": "Манифест пуст — добавьте товары через `/contract item add`.",
+
+  "contracts.list.title": "📜 Доска контрактов",
+  "contracts.list.empty": "Нет подходящих контрактов.",
+  "contracts.list.expired": "Доска устарела — выполните `/contract list` для обновления.",
+  "contracts.list.footer": "Страница доски {{.Page}} / {{.Pages}} · контрактов: {{.Total}}",
+  "contracts.list.entry": "<#{{.Thread}}> · {{.Status}}\n{{.Delivered}} / {{.Required}} доставлено · товаров: {{.Items}}",
+  "contracts.list.prev": "◀ Назад",
+  "contracts.list.next": "Вперёд ▶"
 }
