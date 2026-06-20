@@ -2,13 +2,19 @@
 ARG GO_VERSION=1.26
 
 # --- build -------------------------------------------------------------------
-FROM golang:${GO_VERSION}-alpine AS build
+# Pin the build stage to the BUILDPLATFORM (the native runner arch) and
+# cross-compile to the requested TARGET* — the build is CGO-free, so Go
+# cross-compiles natively instead of running the compiler under slow emulation.
+# BUILDPLATFORM/TARGETOS/TARGETARCH are auto-provided by Buildx.
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG APP_VERSION=0.0.0-unspecified
-RUN CGO_ENABLED=0 go build \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags "-X github.com/kweezl/spacecraft-corporation/internal/appconfig.version=${APP_VERSION}" \
     -o /bot ./cmd/bot
 

@@ -1,0 +1,77 @@
+name: Release
+
+# Publish the prod image to Docker Hub on a version tag. Tags must be vX.X.X;
+# the image is pushed as X.X.X (the v stripped) and latest, with OCI labels.
+on:
+  push:
+    tags: [ 'v*.*.*' ]
+
+# Least privilege: Docker Hub auth is via DOCKERHUB_* secrets and the GHA build
+# cache needs no elevated GITHUB_TOKEN, so read-only repo access is enough.
+permissions:
+  contents: read
+
+# Serialize all releases (constant group, not per-ref) so two tags pushed back to
+# back can't race on the latest manifest. Don't cancel an in-flight publish —
+# let it finish pushing, then run the next.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Gate the publish on the same test + lint suite CI runs, so a tag on a red
+  # commit fails here instead of shipping a broken image (and moving latest).
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  docker:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Docker metadata (tags + OCI labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: kweezls/spacecraft-corp
+          # vX.X.X -> X.X.X (the v is stripped). latest is handled by flavor
+          # (latest=auto) below, which is pre-release-aware: a stable vX.X.X also
+          # moves latest, but a vX.X.X-rc1 tags only the rc and leaves latest put.
+          tags: |
+            type=semver,pattern={{version}}
+          flavor: |
+            latest=auto
+          # type=semver already emits the org.opencontainers.image.* set
+          # (source, revision, created, version, ...); enrich it with title/description.
+          labels: |
+            org.opencontainers.image.title=spacecraft-corporation
+            org.opencontainers.image.description=Companion Discord bot for the Steam game SpaceCraft
+
+      # QEMU emulators so Buildx can cross-build the non-native arch (arm64 on
+      # the amd64 runner). The Go build is CGO-free, so emulation is only used
+      # for the few RUN steps in the prod stage.
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: prod
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # Bake the bare semver into the binary (ldflags), matching the image tag.
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
