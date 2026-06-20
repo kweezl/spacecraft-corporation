@@ -2,6 +2,7 @@ package settings_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
@@ -16,12 +17,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/settings"
 	"github.com/kweezl/spacecraft-corporation/internal/settings/mocks"
 )
 
-// g1 is a fixed resolved servers.id used across the store/command tests (the
+// g1 is a fixed resolved servers.id used across the store/panel tests (the
 // session would resolve the snowflake to this before the handler runs).
 var g1 = uuid.New()
 
@@ -30,6 +32,11 @@ func translator(t *testing.T) *i18n.Translator {
 	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
 	require.NoError(t, err)
 	return tr
+}
+
+func testLoc(t *testing.T, tr *i18n.Translator) *i18n.Localizer {
+	t.Helper()
+	return i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
 }
 
 func newStore(t *testing.T, repo settings.Repository) *settings.Store {
@@ -96,111 +103,219 @@ func TestStore_InvalidatesOnWrite(t *testing.T) {
 	assert.Equal(t, "lore", theme, "the set invalidated the cache; resolve reloaded")
 }
 
-// --- /settings command ---
+// --- /settings panel ---
 
-type fakeResponder struct{ last string }
-
-func (f *fakeResponder) Respond(_ *discordgo.Interaction, content string) error {
-	f.last = content
-	return nil
-}
-func (f *fakeResponder) RespondEphemeral(_ *discordgo.Interaction, content string) error {
-	f.last = content
-	return nil
+// fakeResponder records the last response so panel tests can inspect it.
+type fakeResponder struct {
+	components  []discordgo.MessageComponent
+	respondedV2 bool
+	updatedV2   bool
 }
 
-func (f *fakeResponder) RespondEmbed(_ *discordgo.Interaction, embed *discordgo.MessageEmbed) error {
-	if embed != nil {
-		f.last = embed.Title
-	}
+func (f *fakeResponder) Respond(_ *discordgo.Interaction, _ string) error          { return nil }
+func (f *fakeResponder) RespondEphemeral(_ *discordgo.Interaction, _ string) error { return nil }
+func (f *fakeResponder) RespondEmbed(_ *discordgo.Interaction, _ *discordgo.MessageEmbed) error {
 	return nil
 }
 func (f *fakeResponder) RespondAutocomplete(_ *discordgo.Interaction, _ []*discordgo.ApplicationCommandOptionChoice) error {
 	return nil
 }
-func (f *fakeResponder) RespondEmbedComponents(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
-	if embed != nil {
-		f.last = embed.Title
-	}
+func (f *fakeResponder) RespondEmbedComponents(_ *discordgo.Interaction, _ *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
 	return nil
 }
-func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
-	if embed != nil {
-		f.last = embed.Title
-	}
+func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, _ *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
 	return nil
 }
-func (f *fakeResponder) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+func (f *fakeResponder) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, components []discordgo.MessageComponent) error {
+	f.components = components
+	f.respondedV2 = true
 	return nil
 }
-func (f *fakeResponder) UpdateComponentsV2(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+func (f *fakeResponder) UpdateComponentsV2(_ *discordgo.Interaction, components []discordgo.MessageComponent) error {
+	f.components = components
+	f.updatedV2 = true
 	return nil
 }
 
-func settingsInteraction(sub string, opts ...*discordgo.ApplicationCommandInteractionDataOption) *discordgo.InteractionCreate {
+// denyAccess is a CommandAccess that refuses everyone (for the unauthorized test).
+type denyAccess struct{}
+
+func (denyAccess) IsAllowed(context.Context, session.AccessRequest) (bool, error) { return false, nil }
+
+func adminMember() *discordgo.Member {
+	return &discordgo.Member{Permissions: discordgo.PermissionAdministrator, User: &discordgo.User{ID: "u1"}}
+}
+
+func plainMember() *discordgo.Member {
+	return &discordgo.Member{User: &discordgo.User{ID: "u1"}}
+}
+
+func commandInteraction(member *discordgo.Member) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
 		Type:    discordgo.InteractionApplicationCommand,
 		GuildID: "g1",
-		Member:  &discordgo.Member{User: &discordgo.User{ID: "u1"}},
-		Data: discordgo.ApplicationCommandInteractionData{
-			Name: "settings",
-			Options: []*discordgo.ApplicationCommandInteractionDataOption{
-				{Name: sub, Type: discordgo.ApplicationCommandOptionSubCommand, Options: opts},
-			},
-		},
+		Member:  member,
+		Data:    discordgo.ApplicationCommandInteractionData{Name: "settings"},
 	}}
 }
 
-func opt(name, value string) *discordgo.ApplicationCommandInteractionDataOption {
-	return &discordgo.ApplicationCommandInteractionDataOption{
-		Name: name, Type: discordgo.ApplicationCommandOptionString, Value: value,
+func componentInteraction(customID, value string, member *discordgo.Member) *discordgo.InteractionCreate {
+	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type:    discordgo.InteractionMessageComponent,
+		GuildID: "g1",
+		Member:  member,
+		Data:    discordgo.MessageComponentInteractionData{CustomID: customID, Values: []string{value}},
+	}}
+}
+
+// textOf concatenates the TextDisplay contents of a Components V2 view.
+func textOf(comps []discordgo.MessageComponent) string {
+	var b strings.Builder
+	for _, c := range comps {
+		if td, ok := c.(discordgo.TextDisplay); ok {
+			b.WriteString(td.Content)
+		}
 	}
+	return b.String()
 }
 
-func newCommand(t *testing.T, repo settings.Repository) *registry.Command {
-	t.Helper()
+// selects indexes the view's string-selects by CustomID.
+func selects(comps []discordgo.MessageComponent) map[string]discordgo.SelectMenu {
+	out := map[string]discordgo.SelectMenu{}
+	for _, c := range comps {
+		row, ok := c.(discordgo.ActionsRow)
+		if !ok {
+			continue
+		}
+		for _, rc := range row.Components {
+			if sm, ok := rc.(discordgo.SelectMenu); ok {
+				out[sm.CustomID] = sm
+			}
+		}
+	}
+	return out
+}
+
+func defaultValue(sm discordgo.SelectMenu) string {
+	for _, o := range sm.Options {
+		if o.Default {
+			return o.Value
+		}
+	}
+	return ""
+}
+
+func TestPanel_IsDefaultDeny(t *testing.T) {
 	tr := translator(t)
-	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
-	return settings.NewCommand(newStore(t, repo), tr, loc)
-}
-
-func TestCommand_IsDefaultDeny(t *testing.T) {
-	cmd := newCommand(t, mocks.NewMockRepository(t))
+	cmd := settings.NewPanelCommand(newStore(t, mocks.NewMockRepository(t)), tr, testLoc(t, tr))
 	assert.True(t, cmd.DefaultDeny, "/settings is owner/admin-only by default")
 	assert.Equal(t, "settings", cmd.Def.Name)
+	assert.Empty(t, cmd.Def.Options, "the V2 panel replaces the old subcommands")
 }
 
-func TestCommand_SetTheme(t *testing.T) {
-	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().SetTheme(mock.Anything, g1, "lore").Return(nil).Once()
-
-	resp := &fakeResponder{}
-	err := newCommand(t, repo).Handler(context.Background(), resp,
-		settingsInteraction("theme", opt("name", "lore")), g1)
-	require.NoError(t, err)
-	assert.Contains(t, resp.last, "lore")
-}
-
-func TestCommand_SetLanguage(t *testing.T) {
-	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().SetLanguage(mock.Anything, g1, "ru").Return(nil).Once()
-
-	resp := &fakeResponder{}
-	err := newCommand(t, repo).Handler(context.Background(), resp,
-		settingsInteraction("language", opt("code", "ru")), g1)
-	require.NoError(t, err)
-	assert.Contains(t, resp.last, "ru")
-}
-
-func TestCommand_Show(t *testing.T) {
+// TestPanel_Opens renders an ephemeral V2 panel with a theme select and a
+// language select, each prefilled with the server's current value.
+func TestPanel_Opens(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
 	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{Theme: "lore", Language: "ru"}, nil).Once()
 
+	tr := translator(t)
+	cmd := settings.NewPanelCommand(newStore(t, repo), tr, testLoc(t, tr))
 	resp := &fakeResponder{}
-	err := newCommand(t, repo).Handler(context.Background(), resp, settingsInteraction("show"), g1)
-	require.NoError(t, err)
-	assert.Contains(t, resp.last, "lore")
-	assert.Contains(t, resp.last, "ru")
+	require.NoError(t, cmd.Handler(context.Background(), resp, commandInteraction(adminMember()), g1))
+
+	assert.True(t, resp.respondedV2, "panel is an ephemeral Components V2 reply")
+	header := textOf(resp.components)
+	assert.Contains(t, header, "lore")
+	assert.Contains(t, header, "ru")
+
+	sel := selects(resp.components)
+	require.Contains(t, sel, "settings:theme")
+	require.Contains(t, sel, "settings:language")
+	assert.Equal(t, "lore", defaultValue(sel["settings:theme"]), "current theme is preselected")
+	assert.Equal(t, "ru", defaultValue(sel["settings:language"]), "current language is preselected")
+}
+
+// TestPanel_SetTheme applies a theme-select change and re-renders in the new
+// theme. The pre-write Resolve reads the old value (default), so the new
+// selection differs and a write fires.
+func TestPanel_SetTheme(t *testing.T) {
+	repo := mocks.NewMockRepository(t)
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{}, nil).Once() // current: default
+	repo.EXPECT().SetTheme(mock.Anything, g1, "lore").Return(nil).Once()
+
+	tr := translator(t)
+	comp := settings.NewPanelComponent(newStore(t, repo), tr, testLoc(t, tr), nil)
+	resp := &fakeResponder{}
+	require.NoError(t, comp.Handler(context.Background(), resp,
+		componentInteraction("settings:theme", "lore", adminMember()), g1))
+
+	assert.True(t, resp.updatedV2, "the panel edits itself in place")
+	assert.Contains(t, textOf(resp.components), "lore")
+}
+
+// TestPanel_SetLanguage applies a language-select change.
+func TestPanel_SetLanguage(t *testing.T) {
+	repo := mocks.NewMockRepository(t)
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{}, nil).Once() // current: default
+	repo.EXPECT().SetLanguage(mock.Anything, g1, "ru").Return(nil).Once()
+
+	tr := translator(t)
+	comp := settings.NewPanelComponent(newStore(t, repo), tr, testLoc(t, tr), nil)
+	resp := &fakeResponder{}
+	require.NoError(t, comp.Handler(context.Background(), resp,
+		componentInteraction("settings:language", "ru", adminMember()), g1))
+
+	assert.True(t, resp.updatedV2)
+	assert.Contains(t, textOf(resp.components), "ru")
+}
+
+// TestPanel_ReselectCurrentNoWrite re-picks the already-current value: the panel
+// re-renders but performs no DB write (no SetTheme expectation on the mock).
+func TestPanel_ReselectCurrentNoWrite(t *testing.T) {
+	repo := mocks.NewMockRepository(t)
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{Theme: "lore"}, nil).Once() // current: lore
+
+	tr := translator(t)
+	comp := settings.NewPanelComponent(newStore(t, repo), tr, testLoc(t, tr), nil)
+	resp := &fakeResponder{}
+	require.NoError(t, comp.Handler(context.Background(), resp,
+		componentInteraction("settings:theme", "lore", adminMember()), g1))
+
+	assert.True(t, resp.updatedV2)
+	assert.Contains(t, textOf(resp.components), "lore", "unchanged: still the current theme")
+}
+
+// TestPanel_UnknownValueIgnored does not write for a value that is not a real
+// theme (a crafted/stale selection); it still re-renders the panel.
+func TestPanel_UnknownValueIgnored(t *testing.T) {
+	repo := mocks.NewMockRepository(t)
+	// No SetTheme expected. Only the re-render's Resolve reads.
+	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{}, nil).Once()
+
+	tr := translator(t)
+	comp := settings.NewPanelComponent(newStore(t, repo), tr, testLoc(t, tr), nil)
+	resp := &fakeResponder{}
+	require.NoError(t, comp.Handler(context.Background(), resp,
+		componentInteraction("settings:theme", "ghost", adminMember()), g1))
+
+	assert.True(t, resp.updatedV2)
+	assert.Contains(t, textOf(resp.components), "standard", "unchanged: still the default theme")
+}
+
+// TestPanel_UnauthorizedDenied re-authorizes every panel interaction: a
+// non-admin without the granted role gets a denial and no write happens.
+func TestPanel_UnauthorizedDenied(t *testing.T) {
+	repo := mocks.NewMockRepository(t) // no calls expected
+
+	tr := translator(t)
+	comp := settings.NewPanelComponent(newStore(t, repo), tr, testLoc(t, tr), denyAccess{})
+	resp := &fakeResponder{}
+	require.NoError(t, comp.Handler(context.Background(), resp,
+		componentInteraction("settings:theme", "lore", plainMember()), g1))
+
+	assert.True(t, resp.updatedV2)
+	assert.Contains(t, textOf(resp.components), "settings", "the denial names the command")
 }
 
 func TestModule(t *testing.T) {
