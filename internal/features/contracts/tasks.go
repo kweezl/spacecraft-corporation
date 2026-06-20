@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
@@ -20,8 +22,14 @@ func (h *Feature) Registrations() []outbox.Registration {
 		{Kind: taskCreateThread, Handler: h.taskCreateThread},
 		{Kind: taskRefresh, Handler: h.taskRefresh},
 		{Kind: taskClose, Handler: h.taskClose},
+		{Kind: taskNotify, Handler: h.taskNotify},
 	}
 }
+
+// notifyMentionCap bounds how many participants are @-mentioned in the closing-
+// soon notice, so the message stays within Discord's length / mention limits; the
+// rest collapse into a localized "+N more".
+const notifyMentionCap = 50
 
 func decodePayload(t outbox.Task) (taskPayload, error) {
 	var p taskPayload
@@ -115,6 +123,69 @@ func (h *Feature) taskClose(ctx context.Context, t outbox.Task) error {
 		return nil
 	}
 	return permanentIfDiscord(h.gw.ClosePost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog)))
+}
+
+// taskNotify posts the one-shot "closing soon" comment. It pings only members who
+// still owe delivery (reserved > delivered) — someone who has delivered everything
+// they reserved has nothing left to do. When every participant has already
+// delivered, it posts an informational notice that pings no one (the latch fired
+// because the contract has participants, so there is still a comment to make).
+// No-op once the thread is gone or the contract is no longer open.
+func (h *Feature) taskNotify(ctx context.Context, t outbox.Task) error {
+	p, err := decodePayload(t)
+	if err != nil {
+		return outbox.Permanent(err)
+	}
+	prog, err := h.repo.ProgressByID(ctx, p.ContractID)
+	if errors.Is(err, ErrNotFound) {
+		return outbox.Permanent(err)
+	}
+	if err != nil {
+		return err
+	}
+	if prog.ThreadID == "" || prog.Status != StatusOpen {
+		return nil
+	}
+	ids, err := h.repo.OutstandingParticipantUserIDs(ctx, p.ContractID)
+	if err != nil {
+		return err
+	}
+	var content string
+	var mentions []string
+	if len(ids) == 0 {
+		// All participants have delivered what they reserved — nobody to nudge, so
+		// just leave an informational notice (no pings).
+		content = h.loc.Render(ctx, prog.ServerID, "contracts.notify.closing_soon_done",
+			map[string]any{"Left": formatTimeLeft(time.Until(prog.Deadline))})
+	} else {
+		content, mentions = h.notifyContent(ctx, prog, ids)
+	}
+	return permanentIfDiscord(h.gw.CommentPost(prog.ThreadID, content, mentions))
+}
+
+// notifyContent renders the closing-soon message and the capped list of user ids
+// to pass through AllowedMentions. The mention list is capped at notifyMentionCap
+// (the overflow becomes a localized "+N more"); only the rendered ids are allowed
+// to ping, so the "+N more" never silently mass-pings beyond the cap.
+func (h *Feature) notifyContent(ctx context.Context, prog Progress, ids []string) (string, []string) {
+	mentioned := ids
+	if len(mentioned) > notifyMentionCap {
+		mentioned = mentioned[:notifyMentionCap]
+	}
+	mentions := make([]string, len(mentioned))
+	for i, id := range mentioned {
+		mentions[i] = "<@" + id + ">"
+	}
+	list := strings.Join(mentions, " ")
+	if len(ids) > len(mentioned) {
+		list += " " + h.loc.Render(ctx, prog.ServerID, "contracts.notify.and_more",
+			map[string]any{"Count": len(ids) - len(mentioned)})
+	}
+	content := h.loc.Render(ctx, prog.ServerID, "contracts.notify.closing_soon", map[string]any{
+		"Mentions": list,
+		"Left":     formatTimeLeft(time.Until(prog.Deadline)),
+	})
+	return content, mentioned
 }
 
 // notifyCreated edits the original reply with the created thread (a <#thread>

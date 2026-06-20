@@ -99,6 +99,22 @@ func (l *Live) ClosePost(threadID string, embed *discordgo.MessageEmbed) error {
 	return err
 }
 
+// CommentPost posts a plain message into a contract thread, mentioning
+// mentionUserIDs. The ids are passed through AllowedMentions so they actually
+// ping (without it Discord renders <@id> as inert text); nothing else is allowed
+// to ping. Used for the pre-expiry "closing soon" notice.
+func (l *Live) CommentPost(threadID, content string, mentionUserIDs []string) error {
+	s := l.get()
+	if s == nil {
+		return ErrNotConnected
+	}
+	_, err := s.ChannelMessageSendComplex(threadID, &discordgo.MessageSend{
+		Content:         content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{Users: mentionUserIDs},
+	})
+	return err
+}
+
 // EditOriginalResponse edits the original reply of an interaction identified by
 // its app id and token (the async create outcome). The token is valid ~15 min;
 // past that this fails and the caller logs it as best-effort.

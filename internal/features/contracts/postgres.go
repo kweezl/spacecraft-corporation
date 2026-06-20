@@ -98,12 +98,22 @@ func lockItem(ctx context.Context, tx pgx.Tx, contractID uuid.UUID, itemName str
 	return id, required, err
 }
 
-// touch advances a contract's updated_at/updated_by within a transaction.
+// touch advances a contract's updated_at/updated_by within a transaction. It also
+// advances last_refreshed_at: every caller enqueues a refresh in the same tx, so
+// the watermark must move with it (keeping the keep-warm sweep and the embed's
+// "last updated" footer in sync with the edit that's about to happen).
 func touch(ctx context.Context, tx pgx.Tx, contractID uuid.UUID, now time.Time, actor string) error {
 	_, err := tx.Exec(ctx,
-		`UPDATE contracts SET updated_at = $1, updated_by_user_id = $2 WHERE id = $3`,
+		`UPDATE contracts SET updated_at = $1, updated_by_user_id = $2, last_refreshed_at = $1 WHERE id = $3`,
 		now, actor, contractID)
 	return err
+}
+
+// enqueueNotify enqueues the pre-expiry "closing soon" notice on the caller's tx.
+func (r *pgRepository) enqueueNotify(ctx context.Context, tx pgx.Tx, contractID uuid.UUID) error {
+	return r.enq.Enqueue(ctx, tx, outbox.Request{
+		Kind: taskNotify, Payload: taskPayload{ContractID: contractID}, ChronometricID: contractID,
+	})
 }
 
 func (r *pgRepository) Create(ctx context.Context, in CreateInput) (uuid.UUID, error) {
@@ -122,8 +132,8 @@ func (r *pgRepository) Create(ctx context.Context, in CreateInput) (uuid.UUID, e
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO contracts
 			(id, servers_id, thread_id, title, description, status, deadline,
-			 created_by_user_id, updated_by_user_id, created_at, updated_at)
-		VALUES ($1, $2, NULL, $3, $4, 'open', $5, $6, $6, $7, $7)`,
+			 created_by_user_id, updated_by_user_id, created_at, updated_at, last_refreshed_at)
+		VALUES ($1, $2, NULL, $3, $4, 'open', $5, $6, $6, $7, $7, $7)`,
 		id, in.ServerID, in.Title, in.Description, in.Deadline, in.CreatedByUserID, now); err != nil {
 		return uuid.Nil, err
 	}
@@ -346,7 +356,7 @@ func (r *pgRepository) Deliver(ctx context.Context, serverID uuid.UUID, threadID
 
 	if complete {
 		if _, err := tx.Exec(ctx,
-			`UPDATE contracts SET status = 'completed', closed_at = $1, updated_at = $1, updated_by_user_id = $2 WHERE id = $3`,
+			`UPDATE contracts SET status = 'completed', closed_at = $1, updated_at = $1, last_refreshed_at = $1, updated_by_user_id = $2 WHERE id = $3`,
 			now, userID, cid); err != nil {
 			return false, err
 		}
@@ -446,7 +456,7 @@ func (r *pgRepository) Cancel(ctx context.Context, serverID uuid.UUID, threadID,
 		return ErrClosed
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE contracts SET status = 'cancelled', closed_at = $1, updated_at = $1, updated_by_user_id = $2 WHERE id = $3`,
+		`UPDATE contracts SET status = 'cancelled', closed_at = $1, updated_at = $1, last_refreshed_at = $1, updated_by_user_id = $2 WHERE id = $3`,
 		now, actor, id); err != nil {
 		return err
 	}
@@ -458,12 +468,12 @@ func (r *pgRepository) Cancel(ctx context.Context, serverID uuid.UUID, threadID,
 
 // contractCols is the shared contract projection. thread_id is COALESCEd because
 // it is NULL until the worker creates the thread.
-const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, deadline, created_by_user_id`
+const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, deadline, created_by_user_id, last_refreshed_at`
 
 func scanContract(row pgx.Row) (Progress, error) {
 	var p Progress
 	var status string
-	err := row.Scan(&p.ID, &p.ServerID, &p.ThreadID, &p.Title, &p.Description, &status, &p.Deadline, &p.CreatedByUserID)
+	err := row.Scan(&p.ID, &p.ServerID, &p.ThreadID, &p.Title, &p.Description, &status, &p.Deadline, &p.CreatedByUserID, &p.LastRefreshedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Progress{}, ErrNotFound
 	}
@@ -472,6 +482,7 @@ func scanContract(row pgx.Row) (Progress, error) {
 	}
 	p.Status = Status(status)
 	p.Deadline = asLocal(p.Deadline)
+	p.LastRefreshedAt = asLocal(p.LastRefreshedAt)
 	return p, nil
 }
 
@@ -670,7 +681,7 @@ func (r *pgRepository) MarkExpired(ctx context.Context, id uuid.UUID, now time.T
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	tag, err := tx.Exec(ctx,
-		`UPDATE contracts SET status = 'expired', closed_at = $1, updated_at = $1, updated_by_user_id = $2
+		`UPDATE contracts SET status = 'expired', closed_at = $1, updated_at = $1, last_refreshed_at = $1, updated_by_user_id = $2
 		 WHERE id = $3 AND status = 'open'`, now, systemActor, id)
 	if err != nil {
 		return false, err
@@ -687,4 +698,126 @@ func (r *pgRepository) MarkExpired(ctx context.Context, id uuid.UUID, now time.T
 		return false, err
 	}
 	return true, nil
+}
+
+// queryIDs runs a query returning a single uuid column into a slice (shared by
+// the sweeper scans).
+func queryIDs(ctx context.Context, pool *pgxpool.Pool, sql string, args ...any) ([]uuid.UUID, error) {
+	rows, err := pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func (r *pgRepository) StaleContracts(ctx context.Context, before time.Time, limit int) ([]uuid.UUID, error) {
+	return queryIDs(ctx, r.pool,
+		`SELECT id FROM contracts
+		 WHERE status = 'open' AND last_refreshed_at <= $1
+		 ORDER BY last_refreshed_at LIMIT $2`, before, limit)
+}
+
+func (r *pgRepository) MarkRefreshed(ctx context.Context, id uuid.UUID, now time.Time) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	tag, err := tx.Exec(ctx,
+		`UPDATE contracts SET last_refreshed_at = $1 WHERE id = $2 AND status = 'open'`, now, id)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() != 1 {
+		return false, nil // closed in the meantime
+	}
+	if err := r.enqueueRefresh(ctx, tx, id); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *pgRepository) NotifyDue(ctx context.Context, now time.Time, within time.Duration, limit int) ([]uuid.UUID, error) {
+	// Only surface contracts that have someone to ping. The notice is a one-shot
+	// latch, so a contract entering the window with zero participants must NOT be
+	// latched yet — short-deadline contracts can legitimately gain their first
+	// reservation after the window opens, and they still deserve the ping. The
+	// latch is therefore deferred until a participant exists.
+	return queryIDs(ctx, r.pool,
+		`SELECT id FROM contracts c
+		 WHERE status = 'open' AND expiry_notified_at IS NULL
+		   AND deadline > $1 AND deadline <= $2
+		   AND EXISTS (
+		       SELECT 1 FROM contract_reservations r
+		       JOIN contract_items ci ON ci.id = r.contract_items_id
+		       WHERE ci.contracts_id = c.id)
+		 ORDER BY deadline LIMIT $3`, now, now.Add(within), limit)
+}
+
+func (r *pgRepository) MarkNotified(ctx context.Context, id uuid.UUID, now time.Time) (bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// The EXISTS guard makes the latch atomic with "has a participant": if the last
+	// reservation was released between the NotifyDue scan and here, this affects
+	// zero rows and the contract stays un-latched for a future sweep — so the
+	// one-shot is never consumed without someone to ping.
+	tag, err := tx.Exec(ctx,
+		`UPDATE contracts SET expiry_notified_at = $1
+		 WHERE id = $2 AND status = 'open' AND expiry_notified_at IS NULL
+		   AND EXISTS (
+		       SELECT 1 FROM contract_reservations r
+		       JOIN contract_items ci ON ci.id = r.contract_items_id
+		       WHERE ci.contracts_id = contracts.id)`, now, id)
+	if err != nil {
+		return false, err
+	}
+	if tag.RowsAffected() != 1 {
+		return false, nil // already notified, closed, or no participant to ping
+	}
+	if err := r.enqueueNotify(ctx, tx, id); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *pgRepository) OutstandingParticipantUserIDs(ctx context.Context, contractID uuid.UUID) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT DISTINCT r.user_id
+		FROM contract_reservations r
+		JOIN contract_items ci ON ci.id = r.contract_items_id
+		WHERE ci.contracts_id = $1 AND r.reserved_qty > r.delivered_qty
+		ORDER BY r.user_id`, contractID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		out = append(out, uid)
+	}
+	return out, rows.Err()
 }

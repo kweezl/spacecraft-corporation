@@ -18,25 +18,39 @@ const (
 // passed. It is the bot's first scheduled worker; it owns a session-lifetime
 // context (cancelled on Stop), not the fx OnStart context.
 type Sweeper struct {
-	feature  *Feature
-	interval time.Duration
-	log      *zap.Logger
+	feature      *Feature
+	interval     time.Duration
+	refreshEvery time.Duration
+	notifyWithin time.Duration
+	log          *zap.Logger
 
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
 func newSweeper(f *Feature, cfg Config, log *zap.Logger) *Sweeper {
-	return &Sweeper{feature: f, interval: cfg.SweepInterval, log: log}
+	return &Sweeper{
+		feature:      f,
+		interval:     cfg.SweepInterval,
+		refreshEvery: cfg.RefreshInterval,
+		notifyWithin: cfg.ExpiresNotify,
+		log:          log,
+	}
 }
 
-// Start launches the ticker goroutine.
-func (s *Sweeper) Start(context.Context) error {
+// Start launches the ticker goroutine. The fx OnStart context is intentionally
+// not used: the loop owns a session-lifetime context (cancelled on Stop), not the
+// start context, which is done once Start returns — so it is wired via
+// fx.StartHook, which accepts a context-less func.
+func (s *Sweeper) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.done = make(chan struct{})
 	go s.loop(ctx)
-	s.log.Info("contract sweeper started", zap.Duration("interval", s.interval))
+	s.log.Info("contract sweeper started",
+		zap.Duration("interval", s.interval),
+		zap.Duration("refresh_interval", s.refreshEvery),
+		zap.Duration("notify_within", s.notifyWithin))
 	return nil
 }
 
@@ -50,14 +64,15 @@ func (s *Sweeper) loop(ctx context.Context) {
 			return
 		case <-t.C:
 			sctx, cancel := context.WithTimeout(ctx, sweepTimeout)
-			s.feature.sweep(sctx)
+			s.feature.sweep(sctx, s.refreshEvery, s.notifyWithin)
 			cancel()
 		}
 	}
 }
 
-// Stop cancels the ticker and waits for an in-flight sweep to unwind.
-func (s *Sweeper) Stop(context.Context) error {
+// Stop cancels the ticker and waits for an in-flight sweep to unwind. Wired via
+// fx.StopHook (no context needed — the wait is bounded by the sweep timeout).
+func (s *Sweeper) Stop() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -67,20 +82,50 @@ func (s *Sweeper) Stop(context.Context) error {
 	return nil
 }
 
-// sweep expires every open contract past its deadline. MarkExpired is the
-// authoritative, idempotent transition: in one transaction it flips the status
-// and enqueues the thread-close outbox task, so the Discord side effect is
-// durable and runs on the worker (off this path). Only the winning update
-// enqueues, so a double-run or second instance can't double-close.
-func (h *Feature) sweep(ctx context.Context) {
-	due, err := h.repo.DueContracts(ctx, time.Now(), sweepBatch)
+// sweep runs the three time-driven passes for open contracts, each via an
+// idempotent, collapsing repository transition so a double-run or second instance
+// can't duplicate a side effect:
+//
+//   - expire   — past-deadline contracts flip to expired and enqueue their close.
+//   - keep-warm — contracts whose embed is older than refreshEvery re-render, so
+//     the "time left" never looks abandoned without member activity.
+//   - notice   — contracts within notifyWithin of their deadline (and not yet
+//     notified) post the one-shot "closing soon" participant ping.
+//
+// The passes partition cleanly: the notice scan requires deadline > now, so an
+// already-due contract expires rather than getting a closing-soon ping.
+func (h *Feature) sweep(ctx context.Context, refreshEvery, notifyWithin time.Duration) {
+	now := time.Now()
+
+	due, err := h.repo.DueContracts(ctx, now, sweepBatch)
 	if err != nil {
 		h.log.Error("sweep: list due contracts", zap.Error(err))
-		return
 	}
 	for _, id := range due {
 		if _, err := h.repo.MarkExpired(ctx, id, time.Now()); err != nil {
 			h.log.Error("sweep: mark expired",
+				zap.String("contract_id", id.String()), zap.Error(err))
+		}
+	}
+
+	stale, err := h.repo.StaleContracts(ctx, now.Add(-refreshEvery), sweepBatch)
+	if err != nil {
+		h.log.Error("sweep: list stale contracts", zap.Error(err))
+	}
+	for _, id := range stale {
+		if _, err := h.repo.MarkRefreshed(ctx, id, time.Now()); err != nil {
+			h.log.Error("sweep: mark refreshed",
+				zap.String("contract_id", id.String()), zap.Error(err))
+		}
+	}
+
+	soon, err := h.repo.NotifyDue(ctx, now, notifyWithin, sweepBatch)
+	if err != nil {
+		h.log.Error("sweep: list notify-due contracts", zap.Error(err))
+	}
+	for _, id := range soon {
+		if _, err := h.repo.MarkNotified(ctx, id, time.Now()); err != nil {
+			h.log.Error("sweep: mark notified",
 				zap.String("contract_id", id.String()), zap.Error(err))
 		}
 	}

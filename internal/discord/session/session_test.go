@@ -94,6 +94,9 @@ func (f *fakeDiscord) ForumThreadStartComplex(_ string, threadData *discordgo.Th
 func (f *fakeDiscord) ChannelMessageEditComplex(_ *discordgo.MessageEdit) (*discordgo.Message, error) {
 	return &discordgo.Message{}, nil
 }
+func (f *fakeDiscord) ChannelMessageSendComplex(_ string, _ *discordgo.MessageSend) (*discordgo.Message, error) {
+	return &discordgo.Message{}, nil
+}
 func (f *fakeDiscord) ChannelEditComplex(_ string, _ *discordgo.ChannelEdit) (*discordgo.Channel, error) {
 	return &discordgo.Channel{}, nil
 }
