@@ -157,6 +157,18 @@ func (it Item) Remaining() int {
 	return r
 }
 
+// OutstandingReserved is the still-pending reserved amount across all members:
+// reserved minus already delivered, floored at zero. The display figure for
+// "reserved" — once everything reserved has been delivered it is zero and the
+// reserved part of the line is dropped.
+func (it Item) OutstandingReserved() int {
+	r := it.ReservedQty - it.DeliveredQty
+	if r < 0 {
+		return 0
+	}
+	return r
+}
+
 // Progress is a contract plus its items with aggregates — the data behind the
 // thread's progress embed.
 type Progress struct {
