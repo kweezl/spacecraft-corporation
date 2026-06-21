@@ -8,6 +8,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestItemOutstandingReserved(t *testing.T) {
+	cases := []struct {
+		name      string
+		reserved  int
+		delivered int
+		want      int
+	}{
+		{"none delivered", 100, 0, 100},
+		{"partially delivered", 100, 40, 60},
+		{"fully delivered", 100, 100, 0},
+		{"over-delivered floors at zero", 100, 120, 0},
+		{"nothing reserved", 0, 0, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			it := Item{ReservedQty: c.reserved, DeliveredQty: c.delivered}
+			assert.Equal(t, c.want, it.OutstandingReserved())
+		})
+	}
+}
+
 func TestParseDuration(t *testing.T) {
 	cases := []struct {
 		in   string

@@ -99,6 +99,7 @@
   "contracts.embed.status_cancelled": "🚫 Отменён",
   "contracts.embed.expires": "⏳ Истекает {{.At}} · {{.Rel}}",
   "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} сдано · {{.Reserved}} забронировано",
+  "contracts.embed.item_line_done": "{{.Delivered}} / {{.Required}} сдано",
   "contracts.embed.participant_line": "<@{{.User}}> — {{.Outstanding}} забронировано · {{.Delivered}} сдано",
   "contracts.embed.participant_line_done": "<@{{.User}}> — {{.Delivered}} сдано",
   "contracts.embed.participants_more": "…и ещё {{.Count}}",

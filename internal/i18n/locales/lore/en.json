@@ -99,6 +99,7 @@
   "contracts.embed.status_cancelled": "🚫 Rescinded",
   "contracts.embed.expires": "⏳ Window closes {{.At}} · {{.Rel}}",
   "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} hauled · {{.Reserved}} pledged",
+  "contracts.embed.item_line_done": "{{.Delivered}} / {{.Required}} hauled",
   "contracts.embed.participant_line": "<@{{.User}}> — {{.Outstanding}} pledged · {{.Delivered}} hauled",
   "contracts.embed.participant_line_done": "<@{{.User}}> — {{.Delivered}} hauled",
   "contracts.embed.participants_more": "…and {{.Count}} more haulers",
