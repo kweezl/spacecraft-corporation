@@ -99,6 +99,7 @@
   "contracts.embed.status_cancelled": "🚫 Cancelled",
   "contracts.embed.expires": "⏳ Expires {{.At}} · {{.Rel}}",
   "contracts.embed.item_line": "{{.Delivered}} / {{.Required}} delivered · {{.Reserved}} reserved",
+  "contracts.embed.item_line_done": "{{.Delivered}} / {{.Required}} delivered",
   "contracts.embed.participant_line": "<@{{.User}}> — {{.Outstanding}} reserved · {{.Delivered}} delivered",
   "contracts.embed.participant_line_done": "<@{{.User}}> — {{.Delivered}} delivered",
   "contracts.embed.participants_more": "…and {{.Count}} more",

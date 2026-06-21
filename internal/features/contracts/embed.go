@@ -64,9 +64,16 @@ const (
 // list is clamped to Discord's 1024-rune field limit; any overflow collapses to a
 // localized "+N more" notice.
 func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Item) string {
-	value := h.loc.Render(ctx, serverID, "contracts.embed.item_line", map[string]any{
+	// Show the still-pending reserved amount (reserved minus delivered), not the
+	// gross reservation; once everything reserved has been delivered that figure is
+	// zero, so drop the reserved part of the line entirely.
+	itemKey := "contracts.embed.item_line"
+	if it.OutstandingReserved() <= 0 {
+		itemKey = "contracts.embed.item_line_done"
+	}
+	value := h.loc.Render(ctx, serverID, itemKey, map[string]any{
 		"Delivered": it.DeliveredQty,
-		"Reserved":  it.ReservedQty,
+		"Reserved":  it.OutstandingReserved(),
 		"Required":  it.RequiredQty,
 		"Remaining": it.Remaining(),
 	})
