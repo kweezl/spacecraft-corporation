@@ -68,7 +68,7 @@ var errBadQty = errors.New("contracts: bad quantity")
 func (h *Feature) panelComponents(ctx context.Context, serverID uuid.UUID) []discordgo.MessageComponent {
 	return []discordgo.MessageComponent{discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 		discordgo.Button{
-			Label:    h.loc.Render(ctx, serverID, "contracts.panel.btn_participate", nil),
+			Label:    h.loc.Render(ctx, serverID, "contracts.panel.btn_reserve", nil),
 			Style:    discordgo.PrimaryButton,
 			CustomID: panelCustomID(opParticipate),
 		},
@@ -132,7 +132,7 @@ func (h *Feature) handlePanelButton(ctx context.Context, r registry.Responder, i
 		return fmt.Errorf("contracts: panel %s options: %w", op, err)
 	}
 	if len(items) == 0 {
-		key := "contracts.panel.none_participate"
+		key := "contracts.panel.none_reserve"
 		switch op {
 		case opDeliver:
 			key = "contracts.panel.none_deliver"
@@ -211,9 +211,9 @@ func (h *Feature) eligibleItems(ctx context.Context, serverID uuid.UUID, threadI
 // Because the modal is a centered overlay it is always on screen, unlike an
 // ephemeral follow-up that would land at the thread's bottom.
 func (h *Feature) openOpModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, op string, items []itemAvail) error {
-	pickKey := "contracts.panel.pick_participate"
-	descKey := "contracts.panel.opt_participate"
-	titleKey := "contracts.panel.modal_participate"
+	pickKey := "contracts.panel.pick_reserve"
+	descKey := "contracts.panel.opt_reserve"
+	titleKey := "contracts.panel.modal_reserve"
 	amountKey := "Remaining"
 	switch op {
 	case opDeliver:
@@ -362,7 +362,7 @@ func (h *Feature) applyOp(ctx context.Context, serverID uuid.UUID, p pendingOp, 
 		if err := h.repo.Participate(ctx, p.serverID, p.threadID, p.item, p.userID, qty); err != nil {
 			return "", err
 		}
-		return h.loc.Render(ctx, serverID, "contracts.participate.ok",
+		return h.loc.Render(ctx, serverID, "contracts.reserve.ok",
 			map[string]any{"Item": p.item, "Qty": qty}), nil
 	case opDeliver:
 		complete, err := h.repo.Deliver(ctx, p.serverID, p.threadID, p.item, p.userID, qty)

@@ -120,7 +120,7 @@ func (h *Feature) replyMapped(ctx context.Context, r registry.Responder, i *disc
 	case errors.Is(err, ErrItemExists):
 		key = "contracts.item.exists"
 	case errors.Is(err, ErrOverCap):
-		key = "contracts.participate.over_cap"
+		key = "contracts.reserve.over_cap"
 	case errors.Is(err, ErrOverReserved):
 		key = "contracts.deliver.over_reserved"
 	case errors.Is(err, ErrNoReservation):
@@ -202,7 +202,7 @@ func (h *Feature) handleParticipate(ctx context.Context, r registry.Responder, i
 		}
 		return fmt.Errorf("participate: %w", err)
 	}
-	return h.reply(ctx, r, i, serverID, "contracts.participate.ok", map[string]any{"Item": item, "Qty": qty})
+	return h.reply(ctx, r, i, serverID, "contracts.reserve.ok", map[string]any{"Item": item, "Qty": qty})
 }
 
 func (h *Feature) handleDeliver(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, opts []*discordgo.ApplicationCommandInteractionDataOption) error {
