@@ -136,6 +136,9 @@ func (f *fakeResponder) UpdateComponentsV2(_ *discordgo.Interaction, components 
 	f.updatedV2 = true
 	return nil
 }
+func (f *fakeResponder) RespondModal(_ *discordgo.Interaction, _, _ string, _ []discordgo.MessageComponent) error {
+	return nil
+}
 
 // denyAccess is a CommandAccess that refuses everyone (for the unauthorized test).
 type denyAccess struct{}

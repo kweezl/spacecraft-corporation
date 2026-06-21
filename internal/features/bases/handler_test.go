@@ -140,6 +140,9 @@ func (c *capture) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, _ []dis
 func (c *capture) UpdateComponentsV2(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
 	return nil
 }
+func (c *capture) RespondModal(_ *discordgo.Interaction, _, _ string, _ []discordgo.MessageComponent) error {
+	return nil
+}
 
 // --- register ---
 

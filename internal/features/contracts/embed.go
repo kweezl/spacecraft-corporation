@@ -71,10 +71,17 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 		"Remaining": it.Remaining(),
 	})
 	for i, part := range it.Participants {
-		line := "\n" + h.loc.Render(ctx, serverID, "contracts.embed.participant_line", map[string]any{
-			"User":      part.UserID,
-			"Reserved":  part.Reserved,
-			"Delivered": part.Delivered,
+		// Show what the member still owes (outstanding), not their gross
+		// reservation; once they have delivered it all the reserved figure is moot,
+		// so drop it and show the delivered total alone.
+		key := "contracts.embed.participant_line"
+		if part.Outstanding() <= 0 {
+			key = "contracts.embed.participant_line_done"
+		}
+		line := "\n" + h.loc.Render(ctx, serverID, key, map[string]any{
+			"User":        part.UserID,
+			"Outstanding": part.Outstanding(),
+			"Delivered":   part.Delivered,
 		})
 		if utf8.RuneCountInString(value)+utf8.RuneCountInString(line) > embedFieldValueMax-embedOverflowReserve {
 			value += "\n" + h.loc.Render(ctx, serverID, "contracts.embed.participants_more",

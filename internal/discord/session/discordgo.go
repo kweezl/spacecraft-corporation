@@ -124,6 +124,23 @@ func (d *discordSession) UpdateComponentsV2(i *discordgo.Interaction, components
 	})
 }
 
+// RespondModal opens a modal popup. The submit comes back as a separate
+// InteractionModalSubmit carrying customID, which the registry routes by prefix.
+// The IsComponentsV2 flag enables the modern modal layout (Label-wrapped inputs,
+// and crucially select menus inside the modal), so a modal can gather both a
+// choice and free text in one overlay.
+func (d *discordSession) RespondModal(i *discordgo.Interaction, customID, title string, components []discordgo.MessageComponent) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseModal,
+		Data: &discordgo.InteractionResponseData{
+			CustomID:   customID,
+			Title:      title,
+			Components: components,
+			Flags:      discordgo.MessageFlagsIsComponentsV2,
+		},
+	})
+}
+
 func (d *discordSession) ForumThreadStartComplex(channelID string, threadData *discordgo.ThreadStart, messageData *discordgo.MessageSend) (*discordgo.Channel, error) {
 	return d.s.ForumThreadStartComplex(channelID, threadData, messageData)
 }

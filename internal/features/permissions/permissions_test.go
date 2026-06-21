@@ -80,6 +80,9 @@ func (f *fakeResponder) UpdateComponentsV2(_ *discordgo.Interaction, components 
 	f.updatedV2 = true
 	return nil
 }
+func (f *fakeResponder) RespondModal(_ *discordgo.Interaction, _, _ string, _ []discordgo.MessageComponent) error {
+	return nil
+}
 
 func newStore(t *testing.T, repo permissions.Repository) *permissions.Store {
 	t.Helper()
