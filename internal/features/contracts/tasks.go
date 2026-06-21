@@ -65,7 +65,7 @@ func (h *Feature) taskCreateThread(ctx context.Context, t outbox.Task) error {
 	}
 
 	embed := h.renderEmbed(ctx, prog.ServerID, prog)
-	threadID, err := h.gw.CreateForumPost(forumCh, truncate(prog.Title, 100), embed)
+	threadID, err := h.gw.CreateForumPost(forumCh, truncate(prog.Title, 100), embed, h.panelComponents(ctx, prog.ServerID))
 	if err != nil {
 		if isPermanentDiscordError(err) {
 			h.notify(ctx, p, prog.ServerID, "contracts.create.failed_perms", nil)
@@ -103,7 +103,7 @@ func (h *Feature) taskRefresh(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" || prog.Status != StatusOpen {
 		return nil
 	}
-	return permanentIfDiscord(h.gw.EditPost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog)))
+	return permanentIfDiscord(h.gw.EditPost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog), h.panelComponents(ctx, prog.ServerID)))
 }
 
 // taskClose writes the final embed and locks/archives the thread.

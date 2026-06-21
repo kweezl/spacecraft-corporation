@@ -92,6 +92,9 @@ func (f *fakeDiscord) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, _ [
 func (f *fakeDiscord) UpdateComponentsV2(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
 	return nil
 }
+func (f *fakeDiscord) RespondModal(_ *discordgo.Interaction, _, _ string, _ []discordgo.MessageComponent) error {
+	return nil
+}
 func (f *fakeDiscord) ForumThreadStartComplex(_ string, threadData *discordgo.ThreadStart, _ *discordgo.MessageSend) (*discordgo.Channel, error) {
 	name := ""
 	if threadData != nil {
