@@ -53,7 +53,7 @@ func TestTaskCreateThread_CreatesAndNotifies(t *testing.T) {
 
 	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(openProgress(cid, ""), nil).Once()
 	forum.EXPECT().ContractsForumChannelID(mock.Anything, gid).Return("forum-1", true).Once()
-	gw.EXPECT().CreateForumPost("forum-1", "Steel Run", mock.Anything).Return("thread-9", nil).Once()
+	gw.EXPECT().CreateForumPost("forum-1", "Steel Run", mock.Anything, mock.Anything).Return("thread-9", nil).Once()
 	repo.EXPECT().SetThreadID(mock.Anything, cid, "thread-9").Return(nil).Once()
 	gw.EXPECT().EditOriginalResponse("app", "tok", mock.Anything).Return(nil).Once()
 
@@ -93,7 +93,7 @@ func TestTaskRefresh_EditsEmbed(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
 	gw := mocks.NewMockGateway(t)
 	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(openProgress(cid, "thread-9"), nil).Once()
-	gw.EXPECT().EditPost("thread-9", mock.Anything).Return(nil).Once()
+	gw.EXPECT().EditPost("thread-9", mock.Anything, mock.Anything).Return(nil).Once()
 
 	f := newFeature(t, repo, gw, mocks.NewMockForumConfig(t))
 	require.NoError(t, handlerFor(t, f, "contracts.thread.refresh")(context.Background(), payload(t, cid, "", "")))
@@ -186,7 +186,7 @@ func TestTaskCreateThread_TransientErrorRetries(t *testing.T) {
 	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(openProgress(cid, ""), nil).Once()
 	forum.EXPECT().ContractsForumChannelID(mock.Anything, gid).Return("forum-1", true).Once()
 	// A non-Discord transient error bubbles up for retry (not Permanent, no notify).
-	gw.EXPECT().CreateForumPost("forum-1", "Steel Run", mock.Anything).Return("", errors.New("503")).Once()
+	gw.EXPECT().CreateForumPost("forum-1", "Steel Run", mock.Anything, mock.Anything).Return("", errors.New("503")).Once()
 
 	f := newFeature(t, repo, gw, forum)
 	err := handlerFor(t, f, "contracts.thread.create")(context.Background(), payload(t, cid, "app", "tok"))
@@ -205,7 +205,7 @@ func TestTaskCreateThread_PermissionIsPermanent(t *testing.T) {
 	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(openProgress(cid, ""), nil).Once()
 	forum.EXPECT().ContractsForumChannelID(mock.Anything, gid).Return("forum-1", true).Once()
 	restErr := &discordgo.RESTError{Message: &discordgo.APIErrorMessage{Code: discordgo.ErrCodeMissingPermissions}}
-	gw.EXPECT().CreateForumPost("forum-1", "Steel Run", mock.Anything).Return("", restErr).Once()
+	gw.EXPECT().CreateForumPost("forum-1", "Steel Run", mock.Anything, mock.Anything).Return("", restErr).Once()
 	gw.EXPECT().EditOriginalResponse("app", "tok", mock.Anything).Return(nil).Once()
 
 	f := newFeature(t, repo, gw, forum)

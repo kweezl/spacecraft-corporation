@@ -67,6 +67,9 @@ func (f *fakeResponder) UpdateComponentsV2(_ *discordgo.Interaction, components 
 	f.updated = true
 	return nil
 }
+func (f *fakeResponder) RespondModal(_ *discordgo.Interaction, _, _ string, _ []discordgo.MessageComponent) error {
+	return nil
+}
 
 func interaction(name string) *discordgo.InteractionCreate {
 	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{

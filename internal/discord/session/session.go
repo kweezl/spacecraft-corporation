@@ -329,8 +329,17 @@ func (m *Manager) Start(context.Context) error {
 			if derr := m.registry.DispatchComponent(ctx, d, i, serverID); derr != nil {
 				m.log.Error("dispatch component", zap.Error(derr))
 			}
+		case discordgo.InteractionModalSubmit:
+			// Modal submits (e.g. a quantity form opened from a component) are, like
+			// components, re-authorized by their handler; gate only on approval here.
+			if !approved {
+				return
+			}
+			if derr := m.registry.DispatchModal(ctx, d, i, serverID); derr != nil {
+				m.log.Error("dispatch modal", zap.Error(derr))
+			}
 		default:
-			// Other interaction types (e.g. modal submit) are not handled.
+			// Other interaction types are not handled.
 		}
 	})
 

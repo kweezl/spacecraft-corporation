@@ -144,6 +144,10 @@ type Participant struct {
 	Delivered int
 }
 
+// Outstanding is how much this member still owes: reserved minus already
+// delivered. Zero once they have delivered everything they reserved.
+func (p Participant) Outstanding() int { return p.Reserved - p.Delivered }
+
 // Remaining is how much of the item is not yet reserved by anyone.
 func (it Item) Remaining() int {
 	r := it.RequiredQty - it.ReservedQty
@@ -267,8 +271,8 @@ type Repository interface {
 // by session.Live (split out from the session Manager so the contracts wiring,
 // which the registry depends on, doesn't form a dependency cycle through it).
 type Gateway interface {
-	CreateForumPost(channelID, name string, embed *discordgo.MessageEmbed) (threadID string, err error)
-	EditPost(threadID string, embed *discordgo.MessageEmbed) error
+	CreateForumPost(channelID, name string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) (threadID string, err error)
+	EditPost(threadID string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
 	ClosePost(threadID string, embed *discordgo.MessageEmbed) error
 	// CommentPost posts a plain message in the contract thread, mentioning
 	// mentionUserIDs (passed through AllowedMentions so they actually ping). Used
