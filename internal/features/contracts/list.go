@@ -86,7 +86,7 @@ func (h *Feature) handleList(ctx context.Context, r registry.Responder, i *disco
 	return r.RespondEmbedComponents(i.Interaction, embed, components)
 }
 
-func (h *Feature) handleComponent(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
+func (h *Feature) handleListComponent(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
 	token, page, ok := parsePageCustomID(i.MessageComponentData().CustomID)
 	if !ok {
 		return fmt.Errorf("contracts: bad component id %q", i.MessageComponentData().CustomID)

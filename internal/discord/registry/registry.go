@@ -37,6 +37,12 @@ type Responder interface {
 	// RespondComponentsV2Ephemeral replies with an ephemeral message built
 	// entirely from Components V2 (no content/embeds), e.g. the permissions panel.
 	RespondComponentsV2Ephemeral(i *discordgo.Interaction, components []discordgo.MessageComponent) error
+	// RespondModal opens a modal (popup form) in response to a command or
+	// component interaction. customID routes the eventual modal-submit back to a
+	// component handler (by its namespace prefix, like any CustomID); components
+	// are the modal's action rows, each wrapping one input (e.g. a TextInput).
+	// A modal may not be opened in response to another modal submit.
+	RespondModal(i *discordgo.Interaction, customID, title string, components []discordgo.MessageComponent) error
 	// UpdateComponentsV2 edits a Components V2 message in place (panel paging /
 	// applying a role-picker change).
 	UpdateComponentsV2(i *discordgo.Interaction, components []discordgo.MessageComponent) error
@@ -284,6 +290,23 @@ func (r *Registry) DispatchComponent(ctx context.Context, resp Responder, i *dis
 	h, ok := r.components[prefix]
 	if !ok {
 		return fmt.Errorf("no component handler for prefix %q", prefix)
+	}
+	return h(ctx, resp, i, serverID)
+}
+
+// DispatchModal routes a modal-submit interaction to the handler registered for
+// its CustomID namespace (the text before the first ':') — the same component
+// handler map as DispatchComponent, since a feature handles its modal submits
+// alongside its component clicks. The handler tells the two apart by i.Type.
+func (r *Registry) DispatchModal(ctx context.Context, resp Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
+	customID := i.ModalSubmitData().CustomID
+	prefix := customID
+	if idx := strings.IndexByte(customID, ':'); idx >= 0 {
+		prefix = customID[:idx]
+	}
+	h, ok := r.components[prefix]
+	if !ok {
+		return fmt.Errorf("no component handler for modal prefix %q", prefix)
 	}
 	return h(ctx, resp, i, serverID)
 }

@@ -10,28 +10,33 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
 
 // Feature bundles the dependencies the /contract command, its autocomplete, its
-// list-pagination component, and the expiry sweeper share. Constructed via New.
+// list-pagination component, the participate/deliver button panel, and the
+// expiry sweeper share. Constructed via New.
 type Feature struct {
-	repo  Repository
-	loc   *i18n.Localizer
-	cfg   Config
-	gw    Gateway
-	forum ForumConfig
-	log   *zap.Logger
-	pages *pageStore
+	repo   Repository
+	loc    *i18n.Localizer
+	cfg    Config
+	gw     Gateway
+	forum  ForumConfig
+	access session.CommandAccess
+	log    *zap.Logger
+	pages  *pageStore
 }
 
-// New builds the contracts Feature.
-func New(repo Repository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, log *zap.Logger) (*Feature, error) {
+// New builds the contracts Feature. access is the permissions gate (contracts
+// requires the permissions feature), used to re-authorize the participate/deliver
+// buttons against the same per-leaf policy as the slash commands.
+func New(repo Repository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, access session.CommandAccess, log *zap.Logger) (*Feature, error) {
 	pages, err := newPageStore()
 	if err != nil {
 		return nil, err
 	}
-	return &Feature{repo: repo, loc: loc, cfg: cfg, gw: gw, forum: forum, log: log, pages: pages}, nil
+	return &Feature{repo: repo, loc: loc, cfg: cfg, gw: gw, forum: forum, access: access, log: log, pages: pages}, nil
 }
 
 // Command builds the /contract registry command: SubcommandGated and DefaultDeny,

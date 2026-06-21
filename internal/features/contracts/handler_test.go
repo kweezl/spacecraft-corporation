@@ -26,7 +26,7 @@ func newFeature(t *testing.T, repo contracts.Repository, gw contracts.Gateway, f
 	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
 	require.NoError(t, err)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
-	f, err := contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, zap.NewNop())
+	f, err := contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, nil, zap.NewNop())
 	require.NoError(t, err)
 	return f
 }
@@ -69,8 +69,12 @@ func cmd(channelID string, m *discordgo.Member, top *opt) *discordgo.Interaction
 // --- capturing responder ---
 
 type capture struct {
-	content string
-	embed   *discordgo.MessageEmbed
+	content         string
+	embed           *discordgo.MessageEmbed
+	components      []discordgo.MessageComponent
+	modalCustomID   string
+	modalTitle      string
+	modalComponents []discordgo.MessageComponent
 }
 
 func (c *capture) Respond(_ *discordgo.Interaction, s string) error { c.content = s; return nil }
@@ -85,18 +89,28 @@ func (c *capture) RespondEmbed(_ *discordgo.Interaction, e *discordgo.MessageEmb
 func (c *capture) RespondAutocomplete(_ *discordgo.Interaction, _ []*discordgo.ApplicationCommandOptionChoice) error {
 	return nil
 }
-func (c *capture) RespondEmbedComponents(_ *discordgo.Interaction, e *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
+func (c *capture) RespondEmbedComponents(_ *discordgo.Interaction, e *discordgo.MessageEmbed, comps []discordgo.MessageComponent) error {
 	c.embed = e
+	c.components = comps
 	return nil
 }
-func (c *capture) UpdateMessage(_ *discordgo.Interaction, e *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
+func (c *capture) UpdateMessage(_ *discordgo.Interaction, e *discordgo.MessageEmbed, comps []discordgo.MessageComponent) error {
 	c.embed = e
+	c.components = comps
 	return nil
 }
-func (c *capture) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+func (c *capture) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, comps []discordgo.MessageComponent) error {
+	c.components = comps
 	return nil
 }
-func (c *capture) UpdateComponentsV2(_ *discordgo.Interaction, _ []discordgo.MessageComponent) error {
+func (c *capture) UpdateComponentsV2(_ *discordgo.Interaction, comps []discordgo.MessageComponent) error {
+	c.components = comps
+	return nil
+}
+func (c *capture) RespondModal(_ *discordgo.Interaction, customID, title string, comps []discordgo.MessageComponent) error {
+	c.modalCustomID = customID
+	c.modalTitle = title
+	c.modalComponents = comps
 	return nil
 }
 
