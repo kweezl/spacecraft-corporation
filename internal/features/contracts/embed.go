@@ -105,6 +105,11 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 func (h *Feature) statusLine(ctx context.Context, serverID uuid.UUID, p Progress) string {
 	switch p.Status {
 	case StatusOpen:
+		open := h.loc.Render(ctx, serverID, "contracts.embed.status_open", nil)
+		// A deadline-less contract shows "no deadline" instead of a countdown.
+		if p.Deadline == nil {
+			return open + " · " + h.loc.Render(ctx, serverID, "contracts.embed.no_deadline", nil)
+		}
 		// The deadline as Discord timestamp markdown: <t:…:f> renders the absolute
 		// date/time in each viewer's own timezone, <t:…:R> the live relative
 		// countdown ("in 2 days" → "2 days ago") that advances client-side. Because
@@ -115,7 +120,7 @@ func (h *Feature) statusLine(ctx context.Context, serverID uuid.UUID, p Progress
 			"At":  fmt.Sprintf("<t:%d:f>", ts),
 			"Rel": fmt.Sprintf("<t:%d:R>", ts),
 		})
-		return h.loc.Render(ctx, serverID, "contracts.embed.status_open", nil) + " · " + expires
+		return open + " · " + expires
 	case StatusCompleted:
 		return h.loc.Render(ctx, serverID, "contracts.embed.status_completed", nil)
 	case StatusExpired:

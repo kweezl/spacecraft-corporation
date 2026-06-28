@@ -31,6 +31,11 @@ type Responder interface {
 	// RespondEmbedComponents replies with an embed plus attached message
 	// components (e.g. pagination buttons).
 	RespondEmbedComponents(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
+	// RespondEmbedComponentsEphemeral is RespondEmbedComponents but ephemeral
+	// (private to the invoker) — used by the /contracts officer console, an
+	// in-place control each officer drives privately. Its components are later
+	// edited in place with UpdateMessage (which works on ephemeral messages).
+	RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
 	// UpdateMessage edits in place the message a component interaction is
 	// attached to (e.g. flipping a pagination page without posting anew).
 	UpdateMessage(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
@@ -98,6 +103,14 @@ type Command struct {
 	// still applies to the whole command. Off by default: top-level-only gating,
 	// unchanged for existing commands.
 	SubcommandGated bool
+	// ExtraAccessKeys are additional gateable keys this command's handlers
+	// authorize against that don't correspond to a slash (sub)command path —
+	// e.g. a button panel attached to a public message. They are surfaced by
+	// CommandPaths so /permissions can grant them, even though no subcommand
+	// carries the name. Example: the /contracts console authorizes its officer
+	// actions against "contracts" (its own name) but the public reserve/deliver
+	// panel authorizes against the extra key "contracts.use".
+	ExtraAccessKeys []string
 }
 
 // Registry maps command names to handlers and exposes the definitions to
@@ -108,6 +121,7 @@ type Registry struct {
 	components    map[string]ComponentHandler // CustomID prefix -> handler
 	policies      map[string]bool             // command name -> DefaultDeny
 	subGated      map[string]bool             // command name -> SubcommandGated
+	extraKeys     []string                    // non-command gateable keys (e.g. "contracts.use")
 	defs          []*discordgo.ApplicationCommand
 	counter       *prometheus.CounterVec
 	duration      *prometheus.HistogramVec
@@ -154,6 +168,7 @@ func New(p Params) *Registry {
 		r.handlers[c.Def.Name] = c.Handler
 		r.policies[c.Def.Name] = c.DefaultDeny
 		r.subGated[c.Def.Name] = c.SubcommandGated
+		r.extraKeys = append(r.extraKeys, c.ExtraAccessKeys...)
 		if c.Autocomplete != nil {
 			r.autocompletes[c.Def.Name] = c.Autocomplete
 		}
@@ -240,6 +255,7 @@ func (r *Registry) CommandPaths() []string {
 		}
 		out = append(out, leafPaths(def.Name, def.Options)...)
 	}
+	out = append(out, r.extraKeys...)
 	sort.Strings(out)
 	return out
 }

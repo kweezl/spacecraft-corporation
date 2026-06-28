@@ -39,9 +39,10 @@ func payload(t *testing.T, cid uuid.UUID, appID, token string) outbox.Task {
 }
 
 func openProgress(cid uuid.UUID, threadID string) contracts.Progress {
+	dl := time.Now().Add(time.Hour)
 	return contracts.Progress{Contract: contracts.Contract{
 		ID: cid, ServerID: gid, ThreadID: threadID, Title: "Steel Run",
-		Status: contracts.StatusOpen, Deadline: time.Now().Add(time.Hour),
+		Status: contracts.StatusOpen, Deadline: &dl,
 	}}
 }
 

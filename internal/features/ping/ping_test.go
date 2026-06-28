@@ -50,6 +50,9 @@ func (f *fakeResponder) RespondEmbedComponents(_ *discordgo.Interaction, embed *
 	f.lastEmbed = embed
 	return nil
 }
+func (f *fakeResponder) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, c []discordgo.MessageComponent) error {
+	return f.RespondEmbedComponents(i, embed, c)
+}
 func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
 	f.lastEmbed = embed
 	return nil

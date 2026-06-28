@@ -13,7 +13,7 @@ import (
 // expiry/notice scans.
 func (s *contractsSuite) newContractDeadline(ctx context.Context, g uuid.UUID, threadID string, deadline time.Time) uuid.UUID {
 	id, err := s.repo.Create(ctx, CreateInput{
-		ServerID: g, Title: "Steel Run", Deadline: deadline, CreatedByUserID: mgr,
+		ServerID: g, Title: "Steel Run", Deadline: ptrTime(deadline), CreatedByUserID: mgr,
 	})
 	require.NoError(s.T(), err)
 	require.NoError(s.T(), s.repo.SetThreadID(ctx, id, threadID))
@@ -42,7 +42,7 @@ func (s *contractsSuite) TestLastRefreshedAt_SetAndAdvances() {
 	assert.False(t, p0.LastRefreshedAt.IsZero(), "create must stamp last_refreshed_at")
 	assert.False(t, p0.LastRefreshedAt.Before(before))
 
-	require.NoError(t, repo.AddItem(ctx, g, thread, "Steel", 500, 25, mgr))
+	require.NoError(t, s.addItem(ctx, g, thread, "Steel", 500, 25, mgr))
 	p1, err := repo.ProgressByID(ctx, id)
 	require.NoError(t, err)
 	assert.False(t, p1.LastRefreshedAt.Before(p0.LastRefreshedAt), "a mutation advances the watermark")
@@ -62,7 +62,7 @@ func (s *contractsSuite) TestNotifyDue_AndMarkNotified() {
 	// gate) is what excludes far. past is already past its deadline — mutations are
 	// refused there, and it's excluded by deadline > now regardless.
 	for _, th := range []string{"t-soon", "t-far"} {
-		require.NoError(t, repo.AddItem(ctx, g, th, "Steel", 100, 25, mgr))
+		require.NoError(t, s.addItem(ctx, g, th, "Steel", 100, 25, mgr))
 		require.NoError(t, repo.Participate(ctx, g, th, "Steel", u1, 10))
 	}
 
@@ -103,7 +103,7 @@ func (s *contractsSuite) TestNotifyDue_DefersUntilParticipant() {
 	assert.False(t, ok, "the latch is deferred — not consumed without a participant")
 
 	// A member reserves -> now it becomes due, latch intact.
-	require.NoError(t, repo.AddItem(ctx, g, thread, "Steel", 100, 25, mgr))
+	require.NoError(t, s.addItem(ctx, g, thread, "Steel", 100, 25, mgr))
 	require.NoError(t, repo.Participate(ctx, g, thread, "Steel", u1, 10))
 	due, err = repo.NotifyDue(ctx, now, time.Hour, 100)
 	require.NoError(t, err)
@@ -116,8 +116,8 @@ func (s *contractsSuite) TestOutstandingParticipantUserIDs() {
 	t := s.T()
 	repo, ctx, g := s.seed()
 	id := s.newContract(ctx, g, thread)
-	require.NoError(t, repo.AddItem(ctx, g, thread, "Steel", 1000, 25, mgr))
-	require.NoError(t, repo.AddItem(ctx, g, thread, "Iron", 1000, 25, mgr))
+	require.NoError(t, s.addItem(ctx, g, thread, "Steel", 1000, 25, mgr))
+	require.NoError(t, s.addItem(ctx, g, thread, "Iron", 1000, 25, mgr))
 
 	require.NoError(t, repo.Participate(ctx, g, thread, "Steel", u1, 100))
 	require.NoError(t, repo.Participate(ctx, g, thread, "Iron", u1, 100)) // u1 on two items

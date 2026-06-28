@@ -103,7 +103,23 @@ func (h *Feature) taskRefresh(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" || prog.Status != StatusOpen {
 		return nil
 	}
-	return permanentIfDiscord(h.gw.EditPost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog), h.panelComponents(ctx, prog.ServerID)))
+	err = h.gw.EditPost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog), h.panelComponents(ctx, prog.ServerID))
+	if isDeletedPost(err) {
+		// The forum post was deleted out from under us — recreate it (the retry
+		// fix): drop the stale thread id and re-enqueue a create.
+		return h.recreatePost(ctx, p.ContractID)
+	}
+	return permanentIfDiscord(err)
+}
+
+// recreatePost responds to a deleted forum post by clearing the stale thread id
+// and enqueuing a fresh create-thread task; taskCreateThread's empty-thread guard
+// then re-posts. Errors are transient so the worker retries.
+func (h *Feature) recreatePost(ctx context.Context, id uuid.UUID) error {
+	if err := h.repo.ClearThreadID(ctx, id); err != nil {
+		return err
+	}
+	return h.repo.RequeueCreate(ctx, id)
 }
 
 // taskClose writes the final embed and locks/archives the thread.
@@ -122,7 +138,11 @@ func (h *Feature) taskClose(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" {
 		return nil
 	}
-	return permanentIfDiscord(h.gw.ClosePost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog)))
+	err = h.gw.ClosePost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog))
+	if isDeletedPost(err) {
+		return nil // the post is already gone — nothing left to close
+	}
+	return permanentIfDiscord(err)
 }
 
 // taskNotify posts the one-shot "closing soon" comment. It pings only members who
@@ -143,7 +163,9 @@ func (h *Feature) taskNotify(ctx context.Context, t outbox.Task) error {
 	if err != nil {
 		return err
 	}
-	if prog.ThreadID == "" || prog.Status != StatusOpen {
+	// A deadline-less contract is never notified (and never reaches here via the
+	// sweeper, which excludes NULL deadlines) — guard defensively.
+	if prog.ThreadID == "" || prog.Status != StatusOpen || prog.Deadline == nil {
 		return nil
 	}
 	ids, err := h.repo.OutstandingParticipantUserIDs(ctx, p.ContractID)
@@ -156,7 +178,7 @@ func (h *Feature) taskNotify(ctx context.Context, t outbox.Task) error {
 		// All participants have delivered what they reserved — nobody to nudge, so
 		// just leave an informational notice (no pings).
 		content = h.loc.Render(ctx, prog.ServerID, "contracts.notify.closing_soon_done",
-			map[string]any{"Left": formatTimeLeft(time.Until(prog.Deadline))})
+			map[string]any{"Left": formatTimeLeft(time.Until(*prog.Deadline))})
 	} else {
 		content, mentions = h.notifyContent(ctx, prog, ids)
 	}
@@ -183,7 +205,7 @@ func (h *Feature) notifyContent(ctx context.Context, prog Progress, ids []string
 	}
 	content := h.loc.Render(ctx, prog.ServerID, "contracts.notify.closing_soon", map[string]any{
 		"Mentions": list,
-		"Left":     formatTimeLeft(time.Until(prog.Deadline)),
+		"Left":     formatTimeLeft(time.Until(*prog.Deadline)),
 	})
 	return content, mentioned
 }
@@ -221,6 +243,18 @@ func isPermanentDiscordError(err error) bool {
 		}
 	}
 	return false
+}
+
+// isDeletedPost reports a Discord error meaning the forum post/thread no longer
+// exists (deleted out from under us). Distinct from isPermanentDiscordError: a
+// deleted post is recoverable by re-posting, so taskRefresh recreates it rather
+// than abandoning the task. Checked before permanentIfDiscord (UnknownChannel is
+// permanent for a create against a missing forum, but recoverable for an edit
+// against a missing thread).
+func isDeletedPost(err error) bool {
+	var re *discordgo.RESTError
+	return errors.As(err, &re) && re.Message != nil &&
+		(re.Message.Code == discordgo.ErrCodeUnknownMessage || re.Message.Code == discordgo.ErrCodeUnknownChannel)
 }
 
 // permanentIfDiscord marks a permanent Discord error so the worker abandons the

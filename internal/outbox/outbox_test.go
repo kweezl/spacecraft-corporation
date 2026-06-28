@@ -124,6 +124,22 @@ func (s *outboxSuite) TestPermanentFailsImmediately() {
 	assert.True(t, evac)
 }
 
+func (s *outboxSuite) TestHandlerPanicRecovered() {
+	t := s.T()
+	s.enqueue(Request{Kind: "test", Payload: map[string]any{}})
+	// A handler that panics must not crash the worker goroutine (which would
+	// silently stop every future outbox effect); it is treated as a failure.
+	w := newWorker(s.Pool, []Registration{{Kind: "test", Handler: func(context.Context, Task) error {
+		panic("kaboom")
+	}}}, Config{BatchSize: 50, MaxAttempts: 3}, zap.NewNop())
+
+	require.NotPanics(t, func() { w.processBatch(context.Background()) })
+	status, attempts, lastErr, _ := s.rowState("test")
+	assert.Equal(t, "pending", status, "a recovered panic reschedules like any other failure")
+	assert.Equal(t, 1, attempts)
+	assert.Contains(t, lastErr, "panic")
+}
+
 func (s *outboxSuite) TestChronometricSupersedesOlder() {
 	t := s.T()
 	chrono := uuid.New()

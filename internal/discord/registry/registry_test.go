@@ -42,6 +42,10 @@ func (f *fakeResponder) RespondAutocomplete(_ *discordgo.Interaction, choices []
 	return nil
 }
 
+func (f *fakeResponder) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+	return f.RespondEmbedComponents(i, embed, components)
+}
+
 func (f *fakeResponder) RespondEmbedComponents(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
 	if embed != nil {
 		f.last = embed.Title

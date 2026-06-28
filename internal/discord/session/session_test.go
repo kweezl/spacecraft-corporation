@@ -80,6 +80,9 @@ func (f *fakeDiscord) RespondEmbedComponents(_ *discordgo.Interaction, embed *di
 	}
 	return nil
 }
+func (f *fakeDiscord) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, c []discordgo.MessageComponent) error {
+	return f.RespondEmbedComponents(i, embed, c)
+}
 func (f *fakeDiscord) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
 	if embed != nil {
 		f.lastReply = embed.Title

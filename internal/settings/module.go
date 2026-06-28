@@ -20,9 +20,11 @@ func Module() fx.Option {
 		fx.Provide(func(s *Store) i18n.Resolver { return s }),
 		// The panel needs the access gate to re-authorize its mutating component
 		// interactions; it is optional (nil when the permissions feature is off).
+		// settings_sections collects feature-contributed extra settings (e.g. the
+		// contracts forum channel), present only when that feature is enabled.
 		fx.Provide(fx.Annotate(
 			newPanel,
-			fx.ParamTags(``, ``, ``, `optional:"true"`),
+			fx.ParamTags(``, ``, ``, `optional:"true"`, `group:"settings_sections"`),
 		)),
 		// Contribute the /settings command and its component into the registry's groups.
 		fx.Provide(fx.Annotate(

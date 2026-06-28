@@ -11,14 +11,15 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/settings"
 )
 
-// Module provides the /contract command, its list-pagination component, the
-// expiry sweeper, and the outbox task handlers that perform every Discord side
-// effect. Feature module (loaded only when "contracts" is in FEATURES); it
-// requires the permissions feature so the per-leaf subcommand gating takes effect
+// Module provides the /contracts console command, its component + modal handlers,
+// the public panel, the expiry sweeper, and the outbox task handlers that perform
+// every Discord side effect. Feature module (loaded only when "contracts" is in
+// FEATURES); it requires the permissions feature so the access gating takes effect
 // (see internal/feature). It consumes three core services: the session Live as
 // its Discord Gateway (forum thread ops), the settings Store as its ForumConfig
 // (the per-server forum channel), and the outbox Enqueuer (in the repository, for
-// the transactional outbox).
+// the transactional outbox). It also contributes the forum-channel section to the
+// /settings panel via the settings_sections group.
 func Module() fx.Option {
 	return fx.Module("contracts",
 		logger.Decorate("contracts"),
@@ -27,6 +28,11 @@ func Module() fx.Option {
 		fx.Provide(New),
 		fx.Provide(func(l *session.Live) Gateway { return l }),
 		fx.Provide(func(s *settings.Store) ForumConfig { return s }),
+		// Contribute the forum-channel control to the /settings panel.
+		fx.Provide(fx.Annotate(
+			newForumSection,
+			fx.ResultTags(`group:"settings_sections"`),
+		)),
 		fx.Provide(newSweeper),
 		fx.Invoke(func(lc fx.Lifecycle, s *Sweeper) {
 			lc.Append(fx.StartHook(s.Start))

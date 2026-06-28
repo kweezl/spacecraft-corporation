@@ -85,6 +85,21 @@ func (d *discordSession) RespondEmbedComponents(i *discordgo.Interaction, embed 
 	})
 }
 
+// RespondEmbedComponentsEphemeral is RespondEmbedComponents with the ephemeral
+// flag — the /contracts console, private to the invoking officer. UpdateMessage
+// edits it in place on subsequent component/modal interactions (ephemerality is
+// fixed at creation, so it is not re-set on update).
+func (d *discordSession) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: components,
+			Flags:      discordgo.MessageFlagsEphemeral,
+		},
+	})
+}
+
 // UpdateMessage edits the message the component is attached to (the pagination
 // case): Discord replaces the embed and components in place rather than posting
 // a new message.

@@ -1,27 +1,32 @@
 // Package contracts is the corporation-contracts feature: a corporation posts a
 // supply contract requiring large quantities of items, and any member can chip
-// in toward fulfilling it before a deadline. Each contract is a Discord forum
-// thread whose starter message carries a live progress embed; members run the
-// /contract subcommands inside the thread, which the bot maps to the contract by
-// the thread id.
+// in toward fulfilling it (optionally before a deadline). Each contract is a
+// Discord forum thread whose starter message carries a live progress embed.
 //
-// The delivery model is reserve-then-deliver: a member participates (reserves an
-// item + amount, capped at what the contract still needs), then later delivers up
-// to what they reserved; an outstanding reservation can be released (by the
-// member, or by an officer on their behalf). There is no game API, so deliveries
-// are self-reported on a corp-trust basis.
+// There are two interaction surfaces:
 //
-// Authorization is two-layered, like bases: the /contract subcommands are
-// SubcommandGated, so the role gate decides per leaf who may invoke them; on top
-// of that every mutation is scoped in SQL to the contract's server and resolved
-// by thread id, so a forged thread/item id simply affects zero rows.
+//   - The PUBLIC panel — the Reserve/Deliver/Release buttons on the forum post,
+//     which members use to self-serve. Reserve-then-deliver: a member reserves an
+//     item + amount (capped at what the contract still needs), then delivers up to
+//     what they reserved; an outstanding reservation can be released. Deliveries
+//     are self-reported (no game API). The panel re-authorizes against the
+//     grantable "contracts.use" key.
+//   - The OFFICER console — the single ephemeral /contracts command, an in-place
+//     control that navigates List → Contract → Item. Officers create/cancel
+//     contracts, edit name/deadline, add/remove items, and release/remove other
+//     members' reservations, plus Republish (re-post / refresh / recreate the
+//     forum post). The console re-authorizes against the coarse "contracts" key.
+//
+// Authorization is layered like bases: the role gate decides who may act, and on
+// top of that every mutation is scoped in SQL to the contract's server and
+// resolved by a persistent UUID (contract/item) — so a forged id affects zero
+// rows. Deadlines are optional: a contract with no deadline never auto-expires.
 package contracts
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -109,13 +114,15 @@ var (
 
 // Contract is one supply contract.
 type Contract struct {
-	ID              uuid.UUID
-	ServerID        uuid.UUID
-	ThreadID        string
-	Title           string
-	Description     string
-	Status          Status
-	Deadline        time.Time
+	ID          uuid.UUID
+	ServerID    uuid.UUID
+	ThreadID    string
+	Title       string
+	Description string
+	Status      Status
+	// Deadline is when the contract auto-expires, or nil for a deadline-less
+	// contract (never auto-expires, never gets a closing-soon notice).
+	Deadline        *time.Time
 	CreatedByUserID string
 	// LastRefreshedAt is when the contract was last mutated (and its embed
 	// re-rendered); surfaced in the embed footer ("last updated"). Advanced by
@@ -189,12 +196,15 @@ type MemberItem struct {
 func (m MemberItem) Outstanding() int { return m.Reserved - m.Delivered }
 
 // ListEntry is one contract in the paginated listing, with a roll-up of its
-// items (count + overall delivered/required) but not the per-item detail.
+// items (count + overall reserved/delivered/required, plus the distinct
+// participant count) but not the per-item detail.
 type ListEntry struct {
 	Contract
-	ItemCount      int
-	TotalRequired  int
-	TotalDelivered int
+	ItemCount        int
+	TotalRequired    int
+	TotalReserved    int
+	TotalDelivered   int
+	ParticipantCount int
 }
 
 // CreateInput is a new contract to persist (no thread or items yet). AppID/Token
@@ -202,58 +212,107 @@ type ListEntry struct {
 // the worker can edit the original reply with the result; they are opaque to the
 // repository.
 type CreateInput struct {
-	ServerID        uuid.UUID
-	Title           string
-	Description     string
-	Deadline        time.Time
+	ServerID    uuid.UUID
+	Title       string
+	Description string
+	// Deadline is the contract's expiry, or nil for a deadline-less contract.
+	Deadline        *time.Time
 	CreatedByUserID string
 	AppID           string
 	Token           string
 }
 
+// RepublishAction reports what Republish enqueued, so the console can render the
+// right ephemeral feedback.
+type RepublishAction string
+
+const (
+	// RepublishCreating means the forum post did not exist (or was lost) and a
+	// create-thread task was enqueued.
+	RepublishCreating RepublishAction = "creating"
+	// RepublishRefreshing means the forum post exists and a refresh/close was enqueued.
+	RepublishRefreshing RepublishAction = "refreshing"
+)
+
 // Repository persists contracts and their items/reservations. Every method is
-// scoped to a server and resolves the contract by thread id, so cross-server and
-// forged-id access is impossible. serverID is the resolved servers.id.
+// scoped to a server and resolves the target by a persistent id, so cross-server
+// and forged-id access is impossible. serverID is the resolved servers.id.
+//
+// Methods split by surface: the public panel keys by thread id + item name
+// (Progress/Participate/Deliver/Release/MemberOutstanding); the officer console
+// keys by contract/item UUID (the *ByID/*Scoped methods); the worker and sweeper
+// key by contract id.
 type Repository interface {
 	// Create inserts a new open contract and returns its id.
 	Create(ctx context.Context, in CreateInput) (uuid.UUID, error)
 
-	// Progress returns a contract (any status) and its items with aggregates.
+	// Progress returns a contract (any status) and its items with aggregates,
+	// resolved by thread id (the public panel).
 	Progress(ctx context.Context, serverID uuid.UUID, threadID string) (Progress, error)
-	// ProgressByID is Progress keyed by contract id (used by the outbox worker,
-	// which only carries the id; the contract's thread may still be unset).
+	// ProgressByID is Progress keyed by contract id (the outbox worker, which only
+	// carries the id; the contract's thread may still be unset).
 	ProgressByID(ctx context.Context, contractID uuid.UUID) (Progress, error)
+	// ProgressByIDScoped is Progress keyed by contract id AND server (the console
+	// Contract view); a forged/cross-server id yields ErrNotFound.
+	ProgressByIDScoped(ctx context.Context, serverID, contractID uuid.UUID) (Progress, error)
+	// ProgressByItemScoped loads the whole contract from one of its item ids,
+	// scoped to the server (the console Item view, and re-render after item /
+	// participant actions). A forged/cross-server item yields ErrNotFound.
+	ProgressByItemScoped(ctx context.Context, serverID, itemID uuid.UUID) (Progress, error)
+
 	// SetThreadID records the forum thread the worker created for a contract.
 	SetThreadID(ctx context.Context, contractID uuid.UUID, threadID string) error
+	// ClearThreadID unsets a contract's thread id (the post was deleted; Republish
+	// will recreate it).
+	ClearThreadID(ctx context.Context, contractID uuid.UUID) error
+	// RequeueCreate enqueues a fresh create-thread task for a contract (used to
+	// recreate a deleted post). No interaction token travels with it.
+	RequeueCreate(ctx context.Context, contractID uuid.UUID) error
+	// Republish enqueues the appropriate repair task (create if no thread,
+	// refresh/close if it exists) in its own tx and reports which it did.
+	Republish(ctx context.Context, serverID, contractID uuid.UUID) (RepublishAction, error)
 
-	// AddItem adds a required item to an open contract (actor = invoker).
-	AddItem(ctx context.Context, serverID uuid.UUID, threadID, itemName string, qty, maxItems int, actor string) error
-	// RemoveItem deletes an item and cascades its reservations, returning how many
-	// reservations were cleared.
-	RemoveItem(ctx context.Context, serverID uuid.UUID, threadID, itemName, actor string) (cleared int, err error)
+	// AddItemByID adds a required item to an open contract resolved by id (console).
+	AddItemByID(ctx context.Context, serverID, contractID uuid.UUID, itemName string, qty, maxItems int, actor string) error
+	// RemoveItemByID deletes an item (resolved by id) and cascades its
+	// reservations, returning the parent contract id and how many were cleared.
+	RemoveItemByID(ctx context.Context, serverID, itemID uuid.UUID, actor string) (cid uuid.UUID, cleared int, err error)
+	// UpdateItemName renames an item (resolved by id), enforcing case-insensitive
+	// uniqueness within the contract; returns the parent contract id.
+	UpdateItemName(ctx context.Context, serverID, itemID uuid.UUID, newName, actor string) (cid uuid.UUID, err error)
+
+	// UpdateDetails edits an open contract's title and description (console).
+	UpdateDetails(ctx context.Context, serverID, contractID uuid.UUID, title, description, actor string) error
+	// SetDeadline sets (or clears, with nil) an open contract's deadline and
+	// re-arms its closing-soon latch (console).
+	SetDeadline(ctx context.Context, serverID, contractID uuid.UUID, deadline *time.Time, actor string) error
+	// CancelByID flips an open contract (resolved by id) to cancelled (console).
+	CancelByID(ctx context.Context, serverID, contractID uuid.UUID, actor string) error
 
 	// Participate additively reserves qty for a member, capped at the item's
-	// remaining unreserved quantity.
+	// remaining unreserved quantity (public panel).
 	Participate(ctx context.Context, serverID uuid.UUID, threadID, itemName, userID string, qty int) error
 	// Deliver adds qty to a member's delivered total (bounded by their
 	// reservation) and reports whether the contract is now fully delivered; when
 	// it is, the contract is flipped to completed within the same transaction.
 	Deliver(ctx context.Context, serverID uuid.UUID, threadID, itemName, userID string, qty int) (complete bool, err error)
 	// Release reduces a member's reservation by qty, floored at what they already
-	// delivered. actor is the invoker (may differ from targetUserID for the
-	// officer release-member path).
+	// delivered, resolved by thread + item name (public panel, self-scoped).
 	Release(ctx context.Context, serverID uuid.UUID, threadID, itemName, targetUserID string, qty int, actor string) error
-
-	// Cancel flips an open contract to cancelled.
-	Cancel(ctx context.Context, serverID uuid.UUID, threadID, actor string) error
+	// ReleaseByItem is Release keyed by item id + target user (the console officer
+	// release); returns the parent contract id.
+	ReleaseByItem(ctx context.Context, serverID, itemID uuid.UUID, targetUserID string, qty int, actor string) (cid uuid.UUID, err error)
+	// RemoveReservation hard-deletes a participant's reservation on an item
+	// (reserved + delivered both gone); returns the parent contract id (console).
+	RemoveReservation(ctx context.Context, serverID, itemID uuid.UUID, targetUserID, actor string) (cid uuid.UUID, err error)
 
 	// MemberOutstanding returns the items a member still has reserved-but-not-
-	// delivered on a contract (deliver/release autocomplete).
+	// delivered on a contract (the public deliver/release pickers).
 	MemberOutstanding(ctx context.Context, serverID uuid.UUID, threadID, userID string) ([]MemberItem, error)
 
-	// List returns one page of a server's contracts filtered by status (empty =
-	// open), plus the total match count.
-	List(ctx context.Context, serverID uuid.UUID, status string, limit, offset int) (page []ListEntry, total int, err error)
+	// List returns one page of a server's contracts filtered to a set of statuses
+	// (empty = open), plus the total match count.
+	List(ctx context.Context, serverID uuid.UUID, statuses []Status, limit, offset int) (page []ListEntry, total int, err error)
 
 	// DueContracts returns the ids of open contracts whose deadline is at or
 	// before now, across all servers (for the global sweeper, which only needs the
@@ -305,29 +364,58 @@ type ForumConfig interface {
 	SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error
 }
 
-// durationRe matches a relative duration in "Nd Nh Nm" form, each unit optional
-// (but at least one required, enforced separately). Units must appear in d, h, m
-// order; whitespace between them is optional.
-var durationRe = regexp.MustCompile(`(?i)^\s*(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*$`)
+// parseDHM builds a deadline from the console's three-field (days/hours/minutes)
+// modal. Each field is an optional non-negative integer; blank counts as zero.
+// When the total is zero (all blank/zero) the result is nil — the contract has
+// no deadline. A positive total returns now+total in the configured local zone.
+// Negative or non-numeric input is rejected with ErrBadDuration.
+func parseDHM(days, hours, mins string) (*time.Time, error) {
+	d, err := atoiField(days)
+	if err != nil {
+		return nil, err
+	}
+	h, err := atoiField(hours)
+	if err != nil {
+		return nil, err
+	}
+	m, err := atoiField(mins)
+	if err != nil {
+		return nil, err
+	}
+	total := time.Duration(d)*24*time.Hour + time.Duration(h)*time.Hour + time.Duration(m)*time.Minute
+	if total <= 0 {
+		return nil, nil
+	}
+	t := time.Now().Add(total)
+	return &t, nil
+}
 
-// parseDuration turns a "Nd Nh Nm" string into a positive Duration. It rejects
-// the empty match (all units absent) and a non-positive total.
-func parseDuration(s string) (time.Duration, error) {
-	m := durationRe.FindStringSubmatch(s)
-	if m == nil || (m[1] == "" && m[2] == "" && m[3] == "") {
+// atoiField parses one deadline-modal field: blank is zero; otherwise a
+// non-negative integer (negatives and non-numbers are rejected).
+func atoiField(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
 		return 0, ErrBadDuration
 	}
-	atoi := func(v string) int {
-		n, _ := strconv.Atoi(v)
-		return n
+	return n, nil
+}
+
+// splitDHM breaks a duration into whole days/hours/minutes for prefilling the
+// deadline modal. A past/zero duration yields all zeros.
+func splitDHM(d time.Duration) (days, hours, mins int) {
+	if d < 0 {
+		d = 0
 	}
-	d := time.Duration(atoi(m[1]))*24*time.Hour +
-		time.Duration(atoi(m[2]))*time.Hour +
-		time.Duration(atoi(m[3]))*time.Minute
-	if d <= 0 {
-		return 0, ErrBadDuration
-	}
-	return d, nil
+	days = int(d / (24 * time.Hour))
+	d -= time.Duration(days) * 24 * time.Hour
+	hours = int(d / time.Hour)
+	d -= time.Duration(hours) * time.Hour
+	mins = int(d / time.Minute)
+	return days, hours, mins
 }
 
 // formatTimeLeft renders the remaining time as "Nd Nh Nm", omitting zero units
@@ -363,8 +451,3 @@ func formatTimeLeft(d time.Duration) string {
 // normalizeItem trims surrounding whitespace from a free-text item name; matching
 // is case-insensitive in SQL (lower(item_name)).
 func normalizeItem(s string) string { return strings.TrimSpace(s) }
-
-// nowAdd returns the deadline for a duration entered at create time. time.Now()
-// is in the configured local zone (see CLAUDE.md), matching how deadlines are
-// stored and compared.
-func nowAdd(d time.Duration) time.Time { return time.Now().Add(d) }

@@ -26,44 +26,22 @@ func newFeature(t *testing.T, repo contracts.Repository, gw contracts.Gateway, f
 	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
 	require.NoError(t, err)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
-	f, err := contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, nil, zap.NewNop())
-	require.NoError(t, err)
-	return f
+	return contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, nil, zap.NewNop())
+}
+
+func member(id string) *discordgo.Member { return &discordgo.Member{User: &discordgo.User{ID: id}} }
+
+// consoleCmd builds the /contracts slash invocation (the console takes no options).
+func consoleCmd(m *discordgo.Member) *discordgo.InteractionCreate {
+	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
+		Type: discordgo.InteractionApplicationCommand, GuildID: "g", Member: m,
+		Data: discordgo.ApplicationCommandInteractionData{Name: "contracts"},
+	}}
 }
 
 func run(t *testing.T, f *contracts.Feature, r *capture, i *discordgo.InteractionCreate) {
 	t.Helper()
 	require.NoError(t, f.Command().Handler(context.Background(), r, i, gid))
-}
-
-// --- interaction builders ---
-
-type opt = discordgo.ApplicationCommandInteractionDataOption
-
-func member(id string) *discordgo.Member { return &discordgo.Member{User: &discordgo.User{ID: id}} }
-
-func strv(name, val string) *opt {
-	return &opt{Name: name, Type: discordgo.ApplicationCommandOptionString, Value: val}
-}
-func intv(name string, val int) *opt {
-	return &opt{Name: name, Type: discordgo.ApplicationCommandOptionInteger, Value: float64(val)}
-}
-func userv(name, id string) *opt {
-	return &opt{Name: name, Type: discordgo.ApplicationCommandOptionUser, Value: id}
-}
-
-func leaf(name string, opts ...*opt) *opt {
-	return &opt{Name: name, Type: discordgo.ApplicationCommandOptionSubCommand, Options: opts}
-}
-func group(name string, l *opt) *opt {
-	return &opt{Name: name, Type: discordgo.ApplicationCommandOptionSubCommandGroup, Options: []*opt{l}}
-}
-
-func cmd(channelID string, m *discordgo.Member, top *opt) *discordgo.InteractionCreate {
-	return &discordgo.InteractionCreate{Interaction: &discordgo.Interaction{
-		Type: discordgo.InteractionApplicationCommand, GuildID: "g", ChannelID: channelID, Member: m,
-		Data: discordgo.ApplicationCommandInteractionData{Name: "contract", Options: []*opt{top}},
-	}}
 }
 
 // --- capturing responder ---
@@ -72,6 +50,7 @@ type capture struct {
 	content         string
 	embed           *discordgo.MessageEmbed
 	components      []discordgo.MessageComponent
+	updated         bool
 	modalCustomID   string
 	modalTitle      string
 	modalComponents []discordgo.MessageComponent
@@ -90,13 +69,15 @@ func (c *capture) RespondAutocomplete(_ *discordgo.Interaction, _ []*discordgo.A
 	return nil
 }
 func (c *capture) RespondEmbedComponents(_ *discordgo.Interaction, e *discordgo.MessageEmbed, comps []discordgo.MessageComponent) error {
-	c.embed = e
-	c.components = comps
+	c.embed, c.components = e, comps
+	return nil
+}
+func (c *capture) RespondEmbedComponentsEphemeral(_ *discordgo.Interaction, e *discordgo.MessageEmbed, comps []discordgo.MessageComponent) error {
+	c.embed, c.components = e, comps
 	return nil
 }
 func (c *capture) UpdateMessage(_ *discordgo.Interaction, e *discordgo.MessageEmbed, comps []discordgo.MessageComponent) error {
-	c.embed = e
-	c.components = comps
+	c.embed, c.components, c.updated = e, comps, true
 	return nil
 }
 func (c *capture) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, comps []discordgo.MessageComponent) error {
@@ -104,168 +85,84 @@ func (c *capture) RespondComponentsV2Ephemeral(_ *discordgo.Interaction, comps [
 	return nil
 }
 func (c *capture) UpdateComponentsV2(_ *discordgo.Interaction, comps []discordgo.MessageComponent) error {
-	c.components = comps
+	c.components, c.updated = comps, true
 	return nil
 }
 func (c *capture) RespondModal(_ *discordgo.Interaction, customID, title string, comps []discordgo.MessageComponent) error {
-	c.modalCustomID = customID
-	c.modalTitle = title
-	c.modalComponents = comps
+	c.modalCustomID, c.modalTitle, c.modalComponents = customID, title, comps
 	return nil
 }
 
-// Command handlers are now DB-only and ack immediately; the Discord side effects
-// run on the outbox worker (see tasks_test.go). So these tests assert the repo
-// call + the ack, and the Gateway is never touched on the interaction path.
+// --- console tests ---
 
-func TestShow_EmbedCarriesUpdatedStamp(t *testing.T) {
+func TestConsole_CommandIsCoarseGated(t *testing.T) {
+	f := newFeature(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
+	cmd := f.Command()
+	assert.Equal(t, "contracts", cmd.Def.Name)
+	assert.True(t, cmd.DefaultDeny)
+	assert.False(t, cmd.SubcommandGated, "the console is one coarse gate, not per-subcommand")
+	assert.Contains(t, cmd.ExtraAccessKeys, "contracts.use", "the public panel key is grantable via /permissions")
+}
+
+func TestConsole_OpensList(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	updated := time.Now().Add(-5 * time.Minute)
-	prog := contracts.Progress{Contract: contracts.Contract{
-		ID: uuid.New(), ServerID: gid, ThreadID: "thread-9", Title: "Steel Run",
-		Status: contracts.StatusOpen, Deadline: time.Now().Add(2 * time.Hour), LastRefreshedAt: updated,
-	}}
-	repo.EXPECT().Progress(mock.Anything, gid, "thread-9").Return(prog, nil).Once()
+	// Default filter is active (open) only, page 0.
+	repo.EXPECT().List(mock.Anything, gid, []contracts.Status{contracts.StatusOpen}, 3, 0).Return(nil, 0, nil).Once()
 
 	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r, cmd("thread-9", member("u1"), leaf("show")))
-
-	require.NotNil(t, r.embed)
-	// Footer "last updated" label + native timestamp (viewer-localized by Discord).
-	require.NotNil(t, r.embed.Footer)
-	assert.NotEmpty(t, r.embed.Footer.Text)
-	assert.Equal(t, updated.Format(time.RFC3339), r.embed.Timestamp)
-	// Live "… ago" relative stamp in the open status line.
-	assert.Contains(t, r.embed.Description, "<t:")
+	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r, consoleCmd(member("officer")))
+	// The console is a Components V2 message: a container plus the filter row and
+	// the [Prev/Next] + Create row are always present (even with no contracts).
+	require.NotEmpty(t, r.components)
+	assert.GreaterOrEqual(t, len(r.components), 3)
 }
 
-func TestCreate_AcksAndPersists(t *testing.T) {
+func TestConsole_OpenContract(t *testing.T) {
+	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	forum := mocks.NewMockForumConfig(t)
-	forum.EXPECT().ContractsForumChannelID(mock.Anything, gid).Return("forum-1", true).Once()
-	repo.EXPECT().Create(mock.Anything, mock.MatchedBy(func(in contracts.CreateInput) bool {
-		return in.Title == "Steel Run" && in.Deadline.After(time.Now()) && in.Token == "tok" && in.AppID == "app"
-	})).Return(uuid.New(), nil).Once()
+	dl := time.Now().Add(2 * time.Hour)
+	prog := contracts.Progress{
+		Contract: contracts.Contract{ID: cid, ServerID: gid, ThreadID: "t9", Title: "Steel Run", Status: contracts.StatusOpen, Deadline: &dl, LastRefreshedAt: time.Now()},
+		Items:    []contracts.Item{{ID: uuid.New(), Name: "Steel", RequiredQty: 100}},
+	}
+	repo.EXPECT().ProgressByIDScoped(mock.Anything, gid, cid).Return(prog, nil).Once()
 
 	r := &capture{}
-	i := cmd("", member("u1"), leaf("create", strv("title", "Steel Run"), strv("duration", "4d 12h")))
-	i.AppID, i.Token = "app", "tok"
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), forum), r, i)
-	assert.Contains(t, r.content, "accepted")
+	f := newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
+	require.NoError(t, f.Component().Handler(context.Background(), r, component("", member("officer"), "contract:view:"+cid.String()), gid))
+	require.NotEmpty(t, r.components)
+	assert.True(t, r.updated, "drilling into a contract edits the console in place")
 }
 
-func TestCreate_NoForum(t *testing.T) {
-	forum := mocks.NewMockForumConfig(t)
-	forum.EXPECT().ContractsForumChannelID(mock.Anything, gid).Return("", false).Once()
-
-	r := &capture{}
-	run(t, newFeature(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), forum), r,
-		cmd("", member("u1"), leaf("create", strv("title", "X"), strv("duration", "1d"))))
-	assert.Contains(t, r.content, "forum")
-}
-
-func TestCreate_BadDuration(t *testing.T) {
-	r := &capture{}
-	run(t, newFeature(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd("", member("u1"), leaf("create", strv("title", "X"), strv("duration", "soon"))))
-	assert.Contains(t, r.content, "Nd Nh Nm")
-}
-
-func TestItemAdd_OK(t *testing.T) {
+func TestConsole_Republish(t *testing.T) {
+	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().AddItem(mock.Anything, gid, thread, "Steel", 500, 25, "u1").Return(nil).Once()
+	repo.EXPECT().Republish(mock.Anything, gid, cid).Return(contracts.RepublishCreating, nil).Once()
 
 	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd(thread, member("u1"), group("item", leaf("add", strv("name", "Steel"), intv("qty", 500)))))
-	assert.Contains(t, r.content, "Steel")
+	f := newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
+	require.NoError(t, f.Component().Handler(context.Background(), r, component("", member("officer"), "contract:crepub:"+cid.String()), gid))
+	assert.NotEmpty(t, r.content, "republish gives ephemeral feedback")
 }
 
-func TestItemAdd_MaxItems(t *testing.T) {
+func TestConsole_Filter(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().AddItem(mock.Anything, gid, thread, "Steel", 1, 25, "u1").Return(contracts.ErrMaxItems).Once()
+	// Selecting completed+cancelled re-runs List at page 0 with that set.
+	repo.EXPECT().List(mock.Anything, gid, mock.MatchedBy(func(ss []contracts.Status) bool {
+		return len(ss) == 2
+	}), 3, 0).Return(nil, 0, nil).Once()
 
 	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd(thread, member("u1"), group("item", leaf("add", strv("name", "Steel"), intv("qty", 1)))))
-	assert.Contains(t, r.content, "25")
+	f := newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
+	require.NoError(t, f.Component().Handler(context.Background(), r,
+		component("", member("officer"), "contract:cfilter", "completed", "cancelled"), gid))
+	require.NotEmpty(t, r.components)
 }
 
-func TestParticipate_OverCap(t *testing.T) {
-	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Participate(mock.Anything, gid, thread, "Steel", "u1", 100).Return(contracts.ErrOverCap).Once()
-
+func TestConsole_CreateOpensModal(t *testing.T) {
 	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd(thread, member("u1"), leaf("participate", strv("item", "Steel"), intv("qty", 100))))
-	assert.NotEmpty(t, r.content)
-}
-
-func TestDeliver_Completes(t *testing.T) {
-	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Deliver(mock.Anything, gid, thread, "Steel", "u1", 40).Return(true, nil).Once()
-
-	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd(thread, member("u1"), leaf("deliver", strv("item", "Steel"), intv("qty", 40))))
-	assert.NotEmpty(t, r.content)
-}
-
-func TestDeliver_NotInThread(t *testing.T) {
-	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Deliver(mock.Anything, gid, thread, "Steel", "u1", 1).Return(false, contracts.ErrNotFound).Once()
-
-	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd(thread, member("u1"), leaf("deliver", strv("item", "Steel"), intv("qty", 1))))
-	assert.Contains(t, r.content, "thread")
-}
-
-func TestRelease_Self(t *testing.T) {
-	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().Release(mock.Anything, gid, thread, "Steel", "u1", 10, "u1").Return(nil).Once()
-
-	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd(thread, member("u1"), leaf("release", strv("item", "Steel"), intv("qty", 10))))
-	assert.NotEmpty(t, r.content)
-}
-
-func TestReleaseMember_TargetsOption(t *testing.T) {
-	repo := mocks.NewMockRepository(t)
-	// actor is the invoker (officer); target is the member option.
-	repo.EXPECT().Release(mock.Anything, gid, thread, "Steel", "u2", 5, "officer").Return(nil).Once()
-
-	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd(thread, member("officer"), leaf("release-member", userv("member", "u2"), strv("item", "Steel"), intv("qty", 5))))
-	assert.NotEmpty(t, r.content)
-}
-
-func TestReleaseMember_NoTarget(t *testing.T) {
-	r := &capture{}
-	run(t, newFeature(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd(thread, member("officer"), leaf("release-member", strv("item", "Steel"), intv("qty", 5))))
-	assert.NotEmpty(t, r.content)
-}
-
-func TestSetForum_OK(t *testing.T) {
-	forum := mocks.NewMockForumConfig(t)
-	forum.EXPECT().SetContractsForumChannelID(mock.Anything, gid, "chan-7").Return(nil).Once()
-
-	r := &capture{}
-	run(t, newFeature(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), forum), r,
-		cmd("anywhere", member("admin"), leaf("forum", &opt{Name: "channel", Type: discordgo.ApplicationCommandOptionChannel, Value: "chan-7"})))
-	assert.Contains(t, r.content, "chan-7")
-}
-
-func TestList_Empty(t *testing.T) {
-	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().List(mock.Anything, gid, "", 8, 0).Return(nil, 0, nil).Once()
-
-	r := &capture{}
-	run(t, newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t)), r,
-		cmd("anywhere", member("u1"), leaf("list")))
-	require.NotNil(t, r.embed)
-	assert.NotEmpty(t, r.embed.Title)
+	f := newFeature(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
+	require.NoError(t, f.Component().Handler(context.Background(), r, component("", member("officer"), "contract:create"), gid))
+	assert.Equal(t, "contract:m_create", r.modalCustomID)
+	assert.NotEmpty(t, r.modalComponents)
 }

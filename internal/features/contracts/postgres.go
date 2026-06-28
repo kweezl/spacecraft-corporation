@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -59,8 +58,11 @@ func lockOpenContract(ctx context.Context, tx pgx.Tx, serverID uuid.UUID, thread
 	// for both the stored value and the bound now, so comparing in the database is
 	// correct regardless of the process timezone (a Go-side compare against a
 	// time.Local now would be off by the zone offset).
+	// COALESCE so a NULL (deadline-less) contract is never seen as expired: the
+	// bare "deadline <= now" yields NULL for a NULL deadline, which would fail the
+	// bool scan.
 	err := tx.QueryRow(ctx,
-		`SELECT id, status, deadline <= $3 FROM contracts
+		`SELECT id, status, COALESCE(deadline <= $3, false) FROM contracts
 		 WHERE servers_id = $1 AND thread_id = $2 FOR UPDATE`,
 		serverID, threadID, now).Scan(&id, &status, &expired)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -78,11 +80,77 @@ func lockOpenContract(ctx context.Context, tx pgx.Tx, serverID uuid.UUID, thread
 	return id, nil
 }
 
+// lockOpenContractByID is lockOpenContract keyed by contract id + server (the
+// console path). Same open-and-not-expired guard; returns the id back for
+// symmetry with the thread-keyed variant.
+func lockOpenContractByID(ctx context.Context, tx pgx.Tx, serverID, contractID uuid.UUID, now time.Time) (uuid.UUID, error) {
+	var (
+		status  string
+		expired bool
+	)
+	err := tx.QueryRow(ctx,
+		`SELECT status, COALESCE(deadline <= $3, false) FROM contracts
+		 WHERE id = $1 AND servers_id = $2 FOR UPDATE`,
+		contractID, serverID, now).Scan(&status, &expired)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, ErrNotFound
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if Status(status) != StatusOpen {
+		return uuid.Nil, ErrClosed
+	}
+	if expired {
+		return uuid.Nil, ErrExpired
+	}
+	return contractID, nil
+}
+
+// lockOpenContractByItem resolves the open contract owning itemID (scoped to the
+// server), locks the contract row, and enforces the open-and-not-expired guard.
+// A forged/cross-server item id yields ErrNotFound. Returns the contract id.
+func lockOpenContractByItem(ctx context.Context, tx pgx.Tx, serverID, itemID uuid.UUID, now time.Time) (uuid.UUID, error) {
+	var (
+		cid     uuid.UUID
+		status  string
+		expired bool
+	)
+	err := tx.QueryRow(ctx,
+		`SELECT c.id, c.status, COALESCE(c.deadline <= $3, false)
+		 FROM contract_items ci JOIN contracts c ON c.id = ci.contracts_id
+		 WHERE ci.id = $1 AND c.servers_id = $2 FOR UPDATE OF c`,
+		itemID, serverID, now).Scan(&cid, &status, &expired)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, ErrNotFound
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if Status(status) != StatusOpen {
+		return uuid.Nil, ErrClosed
+	}
+	if expired {
+		return uuid.Nil, ErrExpired
+	}
+	return cid, nil
+}
+
 // asLocal reinterprets a TIMESTAMP value (which pgx decodes UTC-labeled, carrying
 // the stored wall-clock numbers) as the configured local zone, so durations
 // against time.Now() come out right. See the lockOpenContract note.
 func asLocal(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)
+}
+
+// asLocalPtr is asLocal for a nullable timestamp: nil passes through (a
+// deadline-less contract), otherwise the wall clock is reinterpreted as local.
+func asLocalPtr(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	v := asLocal(*t)
+	return &v
 }
 
 // lockItem resolves a required item by (case-insensitive) name within a contract
@@ -152,7 +220,8 @@ func (r *pgRepository) Create(ctx context.Context, in CreateInput) (uuid.UUID, e
 	return id, nil
 }
 
-func (r *pgRepository) AddItem(ctx context.Context, serverID uuid.UUID, threadID, itemName string, qty, maxItems int, actor string) error {
+// AddItemByID adds a required item to an open contract resolved by id (console).
+func (r *pgRepository) AddItemByID(ctx context.Context, serverID, contractID uuid.UUID, itemName string, qty, maxItems int, actor string) error {
 	now := time.Now()
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -160,7 +229,7 @@ func (r *pgRepository) AddItem(ctx context.Context, serverID uuid.UUID, threadID
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	cid, err := lockOpenContract(ctx, tx, serverID, threadID, now)
+	cid, err := lockOpenContractByID(ctx, tx, serverID, contractID, now)
 	if err != nil {
 		return err
 	}
@@ -206,42 +275,128 @@ func (r *pgRepository) AddItem(ctx context.Context, serverID uuid.UUID, threadID
 	return tx.Commit(ctx)
 }
 
-func (r *pgRepository) RemoveItem(ctx context.Context, serverID uuid.UUID, threadID, itemName, actor string) (int, error) {
+// RemoveItemByID deletes an item (resolved by id) and cascades its reservations.
+func (r *pgRepository) RemoveItemByID(ctx context.Context, serverID, itemID uuid.UUID, actor string) (uuid.UUID, int, error) {
 	now := time.Now()
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return 0, err
+		return uuid.Nil, 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	cid, err := lockOpenContract(ctx, tx, serverID, threadID, now)
+	cid, err := lockOpenContractByItem(ctx, tx, serverID, itemID, now)
 	if err != nil {
-		return 0, err
-	}
-	itemID, _, err := lockItem(ctx, tx, cid, itemName)
-	if err != nil {
-		return 0, err
+		return uuid.Nil, 0, err
 	}
 
 	// Cascade the reservations explicitly (FK is RESTRICT), then the item.
 	tag, err := tx.Exec(ctx, `DELETE FROM contract_reservations WHERE contract_items_id = $1`, itemID)
 	if err != nil {
-		return 0, err
+		return uuid.Nil, 0, err
 	}
 	cleared := int(tag.RowsAffected())
-	if _, err := tx.Exec(ctx, `DELETE FROM contract_items WHERE id = $1`, itemID); err != nil {
-		return 0, err
+	if _, err := tx.Exec(ctx, `DELETE FROM contract_items WHERE id = $1 AND contracts_id = $2`, itemID, cid); err != nil {
+		return uuid.Nil, 0, err
 	}
 	if err := touch(ctx, tx, cid, now, actor); err != nil {
-		return 0, err
+		return uuid.Nil, 0, err
 	}
 	if err := r.enqueueRefresh(ctx, tx, cid); err != nil {
-		return 0, err
+		return uuid.Nil, 0, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return 0, err
+		return uuid.Nil, 0, err
 	}
-	return cleared, nil
+	return cid, cleared, nil
+}
+
+// UpdateItemName renames an item (resolved by id), enforcing case-insensitive
+// uniqueness within the contract.
+func (r *pgRepository) UpdateItemName(ctx context.Context, serverID, itemID uuid.UUID, newName, actor string) (uuid.UUID, error) {
+	now := time.Now()
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	cid, err := lockOpenContractByItem(ctx, tx, serverID, itemID, now)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM contract_items WHERE contracts_id = $1 AND lower(item_name) = lower($2) AND id <> $3)`,
+		cid, newName, itemID).Scan(&exists); err != nil {
+		return uuid.Nil, err
+	}
+	if exists {
+		return uuid.Nil, ErrItemExists
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE contract_items SET item_name = $1, updated_by_user_id = $2, updated_at = $3 WHERE id = $4 AND contracts_id = $5`,
+		newName, actor, now, itemID, cid); err != nil {
+		return uuid.Nil, err
+	}
+	if err := touch(ctx, tx, cid, now, actor); err != nil {
+		return uuid.Nil, err
+	}
+	if err := r.enqueueRefresh(ctx, tx, cid); err != nil {
+		return uuid.Nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, err
+	}
+	return cid, nil
+}
+
+// UpdateDetails edits an open contract's title and description (console).
+func (r *pgRepository) UpdateDetails(ctx context.Context, serverID, contractID uuid.UUID, title, description, actor string) error {
+	now := time.Now()
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	cid, err := lockOpenContractByID(ctx, tx, serverID, contractID, now)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE contracts SET title = $1, description = $2, updated_at = $3, updated_by_user_id = $4, last_refreshed_at = $3 WHERE id = $5`,
+		title, description, now, actor, cid); err != nil {
+		return err
+	}
+	if err := r.enqueueRefresh(ctx, tx, cid); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// SetDeadline sets (or clears, with nil) an open contract's deadline. It resets
+// expiry_notified_at so the closing-soon notice re-arms for the new deadline.
+func (r *pgRepository) SetDeadline(ctx context.Context, serverID, contractID uuid.UUID, deadline *time.Time, actor string) error {
+	now := time.Now()
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	cid, err := lockOpenContractByID(ctx, tx, serverID, contractID, now)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
+		`UPDATE contracts SET deadline = $1, expiry_notified_at = NULL, updated_at = $2, updated_by_user_id = $3, last_refreshed_at = $2 WHERE id = $4`,
+		deadline, now, actor, cid); err != nil {
+		return err
+	}
+	if err := r.enqueueRefresh(ctx, tx, cid); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *pgRepository) Participate(ctx context.Context, serverID uuid.UUID, threadID, itemName, userID string, qty int) error {
@@ -431,7 +586,97 @@ func (r *pgRepository) Release(ctx context.Context, serverID uuid.UUID, threadID
 	return tx.Commit(ctx)
 }
 
-func (r *pgRepository) Cancel(ctx context.Context, serverID uuid.UUID, threadID, actor string) error {
+// ReleaseByItem reduces a member's reservation on an item (resolved by id) by
+// qty, floored at what they already delivered; a release to zero with nothing
+// delivered deletes the row. Returns the parent contract id (console officer
+// release).
+func (r *pgRepository) ReleaseByItem(ctx context.Context, serverID, itemID uuid.UUID, targetUserID string, qty int, actor string) (uuid.UUID, error) {
+	now := time.Now()
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	cid, err := lockOpenContractByItem(ctx, tx, serverID, itemID, now)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	var (
+		resID               uuid.UUID
+		reserved, delivered int
+	)
+	err = tx.QueryRow(ctx,
+		`SELECT id, reserved_qty, delivered_qty FROM contract_reservations
+		 WHERE contract_items_id = $1 AND user_id = $2 FOR UPDATE`,
+		itemID, targetUserID).Scan(&resID, &reserved, &delivered)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, ErrNoReservation
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if qty > reserved-delivered {
+		return uuid.Nil, ErrBelowDelivered
+	}
+	newReserved := reserved - qty
+	if newReserved == 0 && delivered == 0 {
+		if _, err := tx.Exec(ctx, `DELETE FROM contract_reservations WHERE id = $1`, resID); err != nil {
+			return uuid.Nil, err
+		}
+	} else if _, err := tx.Exec(ctx,
+		`UPDATE contract_reservations SET reserved_qty = $1, updated_by_user_id = $2, updated_at = $3 WHERE id = $4`,
+		newReserved, actor, now, resID); err != nil {
+		return uuid.Nil, err
+	}
+	if err := touch(ctx, tx, cid, now, actor); err != nil {
+		return uuid.Nil, err
+	}
+	if err := r.enqueueRefresh(ctx, tx, cid); err != nil {
+		return uuid.Nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, err
+	}
+	return cid, nil
+}
+
+// RemoveReservation hard-deletes a participant's entire reservation on an item
+// (reserved + delivered both gone). Returns the parent contract id (console).
+func (r *pgRepository) RemoveReservation(ctx context.Context, serverID, itemID uuid.UUID, targetUserID, actor string) (uuid.UUID, error) {
+	now := time.Now()
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	cid, err := lockOpenContractByItem(ctx, tx, serverID, itemID, now)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	tag, err := tx.Exec(ctx,
+		`DELETE FROM contract_reservations WHERE contract_items_id = $1 AND user_id = $2`, itemID, targetUserID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return uuid.Nil, ErrNoReservation
+	}
+	if err := touch(ctx, tx, cid, now, actor); err != nil {
+		return uuid.Nil, err
+	}
+	if err := r.enqueueRefresh(ctx, tx, cid); err != nil {
+		return uuid.Nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, err
+	}
+	return cid, nil
+}
+
+// CancelByID flips an open contract (resolved by id) to cancelled (console).
+func (r *pgRepository) CancelByID(ctx context.Context, serverID, contractID uuid.UUID, actor string) error {
 	now := time.Now()
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -439,13 +684,10 @@ func (r *pgRepository) Cancel(ctx context.Context, serverID uuid.UUID, threadID,
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var (
-		id     uuid.UUID
-		status string
-	)
+	var status string
 	err = tx.QueryRow(ctx,
-		`SELECT id, status FROM contracts WHERE servers_id = $1 AND thread_id = $2 FOR UPDATE`,
-		serverID, threadID).Scan(&id, &status)
+		`SELECT status FROM contracts WHERE id = $1 AND servers_id = $2 FOR UPDATE`,
+		contractID, serverID).Scan(&status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -457,23 +699,27 @@ func (r *pgRepository) Cancel(ctx context.Context, serverID uuid.UUID, threadID,
 	}
 	if _, err := tx.Exec(ctx,
 		`UPDATE contracts SET status = 'cancelled', closed_at = $1, updated_at = $1, last_refreshed_at = $1, updated_by_user_id = $2 WHERE id = $3`,
-		now, actor, id); err != nil {
+		now, actor, contractID); err != nil {
 		return err
 	}
-	if err := r.enqueueClose(ctx, tx, id); err != nil {
+	if err := r.enqueueClose(ctx, tx, contractID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
 // contractCols is the shared contract projection. thread_id is COALESCEd because
-// it is NULL until the worker creates the thread.
+// it is NULL until the worker creates the thread; deadline stays nullable (a
+// deadline-less contract). contractColsC is the same list qualified with the "c"
+// alias for queries that join.
 const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, deadline, created_by_user_id, last_refreshed_at`
+const contractColsC = `c.id, c.servers_id, COALESCE(c.thread_id, ''), c.title, c.description, c.status, c.deadline, c.created_by_user_id, c.last_refreshed_at`
 
 func scanContract(row pgx.Row) (Progress, error) {
 	var p Progress
 	var status string
-	err := row.Scan(&p.ID, &p.ServerID, &p.ThreadID, &p.Title, &p.Description, &status, &p.Deadline, &p.CreatedByUserID, &p.LastRefreshedAt)
+	var deadline *time.Time
+	err := row.Scan(&p.ID, &p.ServerID, &p.ThreadID, &p.Title, &p.Description, &status, &deadline, &p.CreatedByUserID, &p.LastRefreshedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Progress{}, ErrNotFound
 	}
@@ -481,7 +727,7 @@ func scanContract(row pgx.Row) (Progress, error) {
 		return Progress{}, err
 	}
 	p.Status = Status(status)
-	p.Deadline = asLocal(p.Deadline)
+	p.Deadline = asLocalPtr(deadline)
 	p.LastRefreshedAt = asLocal(p.LastRefreshedAt)
 	return p, nil
 }
@@ -510,10 +756,109 @@ func (r *pgRepository) ProgressByID(ctx context.Context, contractID uuid.UUID) (
 	return p, nil
 }
 
+func (r *pgRepository) ProgressByIDScoped(ctx context.Context, serverID, contractID uuid.UUID) (Progress, error) {
+	p, err := scanContract(r.pool.QueryRow(ctx,
+		`SELECT `+contractCols+` FROM contracts WHERE id = $1 AND servers_id = $2`, contractID, serverID))
+	if err != nil {
+		return Progress{}, err
+	}
+	if p.Items, err = r.loadItems(ctx, p.ID); err != nil {
+		return Progress{}, err
+	}
+	return p, nil
+}
+
+func (r *pgRepository) ProgressByItemScoped(ctx context.Context, serverID, itemID uuid.UUID) (Progress, error) {
+	p, err := scanContract(r.pool.QueryRow(ctx,
+		`SELECT `+contractColsC+` FROM contract_items ci JOIN contracts c ON c.id = ci.contracts_id
+		 WHERE ci.id = $1 AND c.servers_id = $2`, itemID, serverID))
+	if err != nil {
+		return Progress{}, err
+	}
+	if p.Items, err = r.loadItems(ctx, p.ID); err != nil {
+		return Progress{}, err
+	}
+	return p, nil
+}
+
 func (r *pgRepository) SetThreadID(ctx context.Context, contractID uuid.UUID, threadID string) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE contracts SET thread_id = $1, updated_at = $2 WHERE id = $3`, threadID, time.Now(), contractID)
 	return err
+}
+
+// ClearThreadID unsets a contract's thread id — used when the forum post was
+// deleted, so Republish (or a worker recreate) re-creates it.
+func (r *pgRepository) ClearThreadID(ctx context.Context, contractID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE contracts SET thread_id = NULL, updated_at = $1 WHERE id = $2`, time.Now(), contractID)
+	return err
+}
+
+// RequeueCreate enqueues a fresh create-thread task (no interaction token), used
+// to recreate a deleted post.
+func (r *pgRepository) RequeueCreate(ctx context.Context, contractID uuid.UUID) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := r.enq.Enqueue(ctx, tx, outbox.Request{
+		Kind: taskCreateThread, Payload: taskPayload{ContractID: contractID}, ChronometricID: contractID,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// Republish enqueues the right repair task for a contract resolved by id+server:
+// create the post if there is no thread, otherwise refresh it (open) or re-write
+// the final embed (terminal). Reports which action it took.
+func (r *pgRepository) Republish(ctx context.Context, serverID, contractID uuid.UUID) (RepublishAction, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var (
+		threadID *string
+		status   string
+	)
+	err = tx.QueryRow(ctx,
+		`SELECT thread_id, status FROM contracts WHERE id = $1 AND servers_id = $2 FOR UPDATE`,
+		contractID, serverID).Scan(&threadID, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+
+	var action RepublishAction
+	switch {
+	case threadID == nil || *threadID == "":
+		if err := r.enq.Enqueue(ctx, tx, outbox.Request{
+			Kind: taskCreateThread, Payload: taskPayload{ContractID: contractID}, ChronometricID: contractID,
+		}); err != nil {
+			return "", err
+		}
+		action = RepublishCreating
+	case Status(status) == StatusOpen:
+		if err := r.enqueueRefresh(ctx, tx, contractID); err != nil {
+			return "", err
+		}
+		action = RepublishRefreshing
+	default:
+		if err := r.enqueueClose(ctx, tx, contractID); err != nil {
+			return "", err
+		}
+		action = RepublishRefreshing
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return action, nil
 }
 
 // loadItems returns a contract's items with reserved/delivered aggregates.
@@ -604,18 +949,23 @@ func (r *pgRepository) MemberOutstanding(ctx context.Context, serverID uuid.UUID
 	return out, rows.Err()
 }
 
-func (r *pgRepository) List(ctx context.Context, serverID uuid.UUID, status string, limit, offset int) ([]ListEntry, int, error) {
-	conds := []string{"c.servers_id = $1"}
+func (r *pgRepository) List(ctx context.Context, serverID uuid.UUID, statuses []Status, limit, offset int) ([]ListEntry, int, error) {
+	// Empty filter defaults to open. Otherwise match any of the requested statuses
+	// (status = ANY($2)).
 	args := []any{serverID}
-	if status != "all" {
-		filter := status
-		if filter == "" {
-			filter = string(StatusOpen)
+	var statusCond string
+	if len(statuses) == 0 {
+		args = append(args, string(StatusOpen))
+		statusCond = fmt.Sprintf("c.status = $%d", len(args))
+	} else {
+		strs := make([]string, len(statuses))
+		for i, s := range statuses {
+			strs[i] = string(s)
 		}
-		args = append(args, filter)
-		conds = append(conds, fmt.Sprintf("c.status = $%d", len(args)))
+		args = append(args, strs)
+		statusCond = fmt.Sprintf("c.status = ANY($%d)", len(args))
 	}
-	where := strings.Join(conds, " AND ")
+	where := "c.servers_id = $1 AND " + statusCond
 
 	var total int
 	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM contracts c WHERE `+where, args...).Scan(&total); err != nil {
@@ -630,11 +980,17 @@ func (r *pgRepository) List(ctx context.Context, serverID uuid.UUID, status stri
 		SELECT c.id, c.servers_id, COALESCE(c.thread_id, ''), c.title, c.description, c.status, c.deadline, c.created_by_user_id,
 		       (SELECT count(*) FROM contract_items ci WHERE ci.contracts_id = c.id),
 		       COALESCE((SELECT SUM(ci.required_qty) FROM contract_items ci WHERE ci.contracts_id = c.id), 0),
+		       COALESCE((SELECT SUM(r.reserved_qty) FROM contract_reservations r
+		                 JOIN contract_items ci ON ci.id = r.contract_items_id
+		                 WHERE ci.contracts_id = c.id), 0),
 		       COALESCE((SELECT SUM(r.delivered_qty) FROM contract_reservations r
 		                 JOIN contract_items ci ON ci.id = r.contract_items_id
-		                 WHERE ci.contracts_id = c.id), 0)
+		                 WHERE ci.contracts_id = c.id), 0),
+		       (SELECT count(DISTINCT r.user_id) FROM contract_reservations r
+		        JOIN contract_items ci ON ci.id = r.contract_items_id
+		        WHERE ci.contracts_id = c.id)
 		FROM contracts c WHERE %s
-		ORDER BY c.deadline, c.id LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2), pageArgs...)
+		ORDER BY c.deadline NULLS LAST, c.id LIMIT $%d OFFSET $%d`, where, len(args)+1, len(args)+2), pageArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -643,12 +999,13 @@ func (r *pgRepository) List(ctx context.Context, serverID uuid.UUID, status stri
 	for rows.Next() {
 		var e ListEntry
 		var st string
-		if err := rows.Scan(&e.ID, &e.ServerID, &e.ThreadID, &e.Title, &e.Description, &st, &e.Deadline,
-			&e.CreatedByUserID, &e.ItemCount, &e.TotalRequired, &e.TotalDelivered); err != nil {
+		var deadline *time.Time
+		if err := rows.Scan(&e.ID, &e.ServerID, &e.ThreadID, &e.Title, &e.Description, &st, &deadline,
+			&e.CreatedByUserID, &e.ItemCount, &e.TotalRequired, &e.TotalReserved, &e.TotalDelivered, &e.ParticipantCount); err != nil {
 			return nil, 0, err
 		}
 		e.Status = Status(st)
-		e.Deadline = asLocal(e.Deadline)
+		e.Deadline = asLocalPtr(deadline)
 		page = append(page, e)
 	}
 	return page, total, rows.Err()
@@ -657,7 +1014,8 @@ func (r *pgRepository) List(ctx context.Context, serverID uuid.UUID, status stri
 func (r *pgRepository) DueContracts(ctx context.Context, now time.Time, limit int) ([]uuid.UUID, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id FROM contracts
-		 WHERE status = 'open' AND deadline <= $1 ORDER BY deadline LIMIT $2`, now, limit)
+		 WHERE status = 'open' AND deadline IS NOT NULL AND deadline <= $1
+		 ORDER BY deadline LIMIT $2`, now, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -680,9 +1038,11 @@ func (r *pgRepository) MarkExpired(ctx context.Context, id uuid.UUID, now time.T
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Re-check the deadline in the UPDATE: it may have been cleared or extended
+	// between the DueContracts scan and here, in which case we must not expire it.
 	tag, err := tx.Exec(ctx,
 		`UPDATE contracts SET status = 'expired', closed_at = $1, updated_at = $1, last_refreshed_at = $1, updated_by_user_id = $2
-		 WHERE id = $3 AND status = 'open'`, now, systemActor, id)
+		 WHERE id = $3 AND status = 'open' AND deadline IS NOT NULL AND deadline <= $1`, now, systemActor, id)
 	if err != nil {
 		return false, err
 	}
@@ -728,7 +1088,7 @@ func (r *pgRepository) NotifyDue(ctx context.Context, now time.Time, within time
 	return queryIDs(ctx, r.pool,
 		`SELECT id FROM contracts c
 		 WHERE status = 'open' AND expiry_notified_at IS NULL
-		   AND deadline > $1 AND deadline <= $2
+		   AND deadline IS NOT NULL AND deadline > $1 AND deadline <= $2
 		   AND EXISTS (
 		       SELECT 1 FROM contract_reservations r
 		       JOIN contract_items ci ON ci.id = r.contract_items_id

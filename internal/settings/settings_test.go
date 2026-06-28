@@ -123,6 +123,9 @@ func (f *fakeResponder) RespondAutocomplete(_ *discordgo.Interaction, _ []*disco
 func (f *fakeResponder) RespondEmbedComponents(_ *discordgo.Interaction, _ *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
 	return nil
 }
+func (f *fakeResponder) RespondEmbedComponentsEphemeral(_ *discordgo.Interaction, _ *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
+	return nil
+}
 func (f *fakeResponder) UpdateMessage(_ *discordgo.Interaction, _ *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
 	return nil
 }
