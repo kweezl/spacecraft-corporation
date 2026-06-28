@@ -1,0 +1,36 @@
+# Dependabot keeps dependencies current and opens PRs for known CVEs. Each PR
+# rides the existing CI (checks.yml: go test -race + golangci-lint, plus the
+# prod Docker build in ci.yml), so every bump is verified before merge.
+#
+# Actions are pinned to commit SHAs (with a version comment) for supply-chain
+# safety; Dependabot reads the comment and updates both the SHA and the comment.
+version: 2
+updates:
+  # Go modules (discordgo, pgx, fx, zap, goose, uuid, testify, ...).
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One batched PR per week instead of one per module.
+      go-modules:
+        patterns: ["*"]
+
+  # Dockerfile base images (golang build stage, distroless/alpine prod stage).
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      docker-images:
+        patterns: ["*"]
+
+  # Third-party GitHub Actions in .github/workflows (keeps the SHA pins fresh).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
