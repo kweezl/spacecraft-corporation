@@ -116,8 +116,26 @@ func TestTaskRefresh_MigratesStalePost(t *testing.T) {
 	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(prog, nil).Once()
 	// No EditPost — migration is proactive on the version, not on a failed edit.
 	gw.EXPECT().DeletePost("thread-9").Return(nil).Once()
-	repo.EXPECT().ClearThreadID(mock.Anything, cid).Return(nil).Once()
-	repo.EXPECT().RequeueCreate(mock.Anything, cid).Return(nil).Once()
+	// Clear-thread + enqueue-create happen atomically in one repo call.
+	repo.EXPECT().RecreatePost(mock.Anything, cid).Return(nil).Once()
+
+	f := newFeature(t, repo, gw, mocks.NewMockForumConfig(t))
+	require.NoError(t, handlerFor(t, f, "contracts.thread.refresh")(context.Background(), payload(t, cid, "", "")))
+}
+
+// On retry after a crash that already deleted the post, the re-delete returns
+// "unknown channel"; migratePost treats that as success and still recreates — so
+// a half-done migration converges rather than getting stuck.
+func TestTaskRefresh_MigrateRetryAfterDelete(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	prog := openProgress(cid, "thread-9")
+	prog.PostVersion = contracts.CurrentPostVersion - 1
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(prog, nil).Once()
+	gone := &discordgo.RESTError{Message: &discordgo.APIErrorMessage{Code: discordgo.ErrCodeUnknownChannel}}
+	gw.EXPECT().DeletePost("thread-9").Return(gone).Once()
+	repo.EXPECT().RecreatePost(mock.Anything, cid).Return(nil).Once()
 
 	f := newFeature(t, repo, gw, mocks.NewMockForumConfig(t))
 	require.NoError(t, handlerFor(t, f, "contracts.thread.refresh")(context.Background(), payload(t, cid, "", "")))

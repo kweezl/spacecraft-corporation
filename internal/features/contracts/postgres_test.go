@@ -447,8 +447,9 @@ func (s *contractsSuite) TestRepublishAndClearThread() {
 	require.NoError(t, err)
 	assert.Equal(t, RepublishRefreshing, act)
 
-	// Clear the thread (post deleted) -> republish recreates.
-	require.NoError(t, repo.ClearThreadID(ctx, cid))
+	// Simulate the post being deleted (thread cleared) -> republish recreates.
+	_, err = s.Pool.Exec(ctx, `UPDATE contracts SET thread_id = NULL WHERE id = $1`, cid)
+	require.NoError(t, err)
 	p, err := repo.ProgressByIDScoped(ctx, g, cid)
 	require.NoError(t, err)
 	assert.Empty(t, p.ThreadID)

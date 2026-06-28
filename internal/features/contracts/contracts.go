@@ -312,12 +312,13 @@ type Repository interface {
 
 	// SetThreadID records the forum thread the worker created for a contract.
 	SetThreadID(ctx context.Context, contractID uuid.UUID, threadID string) error
-	// ClearThreadID unsets a contract's thread id (the post was deleted; Republish
-	// will recreate it).
-	ClearThreadID(ctx context.Context, contractID uuid.UUID) error
-	// RequeueCreate enqueues a fresh create-thread task for a contract (used to
-	// recreate a deleted post). No interaction token travels with it.
-	RequeueCreate(ctx context.Context, contractID uuid.UUID) error
+	// RecreatePost atomically clears a contract's thread id and enqueues a fresh
+	// create-thread task in one transaction — recovering a deleted post or
+	// migrating a stale-format one. The single transaction is the safety property:
+	// a crash can never leave the contract with its thread cleared but no queued
+	// create (which would orphan it with no post). No interaction token travels
+	// with the create.
+	RecreatePost(ctx context.Context, contractID uuid.UUID) error
 	// Republish enqueues the appropriate repair task (create if no thread,
 	// refresh/close if it exists) in its own tx and reports which it did.
 	Republish(ctx context.Context, serverID, contractID uuid.UUID) (RepublishAction, error)

@@ -125,53 +125,6 @@ func (_c *MockRepository_CancelByID_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
-// ClearThreadID provides a mock function with given fields: ctx, contractID
-func (_m *MockRepository) ClearThreadID(ctx context.Context, contractID uuid.UUID) error {
-	ret := _m.Called(ctx, contractID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ClearThreadID")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
-		r0 = rf(ctx, contractID)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockRepository_ClearThreadID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearThreadID'
-type MockRepository_ClearThreadID_Call struct {
-	*mock.Call
-}
-
-// ClearThreadID is a helper method to define mock.On call
-//   - ctx context.Context
-//   - contractID uuid.UUID
-func (_e *MockRepository_Expecter) ClearThreadID(ctx interface{}, contractID interface{}) *MockRepository_ClearThreadID_Call {
-	return &MockRepository_ClearThreadID_Call{Call: _e.mock.On("ClearThreadID", ctx, contractID)}
-}
-
-func (_c *MockRepository_ClearThreadID_Call) Run(run func(ctx context.Context, contractID uuid.UUID)) *MockRepository_ClearThreadID_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID))
-	})
-	return _c
-}
-
-func (_c *MockRepository_ClearThreadID_Call) Return(_a0 error) *MockRepository_ClearThreadID_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockRepository_ClearThreadID_Call) RunAndReturn(run func(context.Context, uuid.UUID) error) *MockRepository_ClearThreadID_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Counts provides a mock function with given fields: ctx, serverID
 func (_m *MockRepository) Counts(ctx context.Context, serverID uuid.UUID) (contracts.Counts, error) {
 	ret := _m.Called(ctx, serverID)
@@ -1243,6 +1196,53 @@ func (_c *MockRepository_ProgressByItemScoped_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// RecreatePost provides a mock function with given fields: ctx, contractID
+func (_m *MockRepository) RecreatePost(ctx context.Context, contractID uuid.UUID) error {
+	ret := _m.Called(ctx, contractID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RecreatePost")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = rf(ctx, contractID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_RecreatePost_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecreatePost'
+type MockRepository_RecreatePost_Call struct {
+	*mock.Call
+}
+
+// RecreatePost is a helper method to define mock.On call
+//   - ctx context.Context
+//   - contractID uuid.UUID
+func (_e *MockRepository_Expecter) RecreatePost(ctx interface{}, contractID interface{}) *MockRepository_RecreatePost_Call {
+	return &MockRepository_RecreatePost_Call{Call: _e.mock.On("RecreatePost", ctx, contractID)}
+}
+
+func (_c *MockRepository_RecreatePost_Call) Run(run func(ctx context.Context, contractID uuid.UUID)) *MockRepository_RecreatePost_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID))
+	})
+	return _c
+}
+
+func (_c *MockRepository_RecreatePost_Call) Return(_a0 error) *MockRepository_RecreatePost_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_RecreatePost_Call) RunAndReturn(run func(context.Context, uuid.UUID) error) *MockRepository_RecreatePost_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Release provides a mock function with given fields: ctx, serverID, threadID, itemName, targetUserID, qty, actor
 func (_m *MockRepository) Release(ctx context.Context, serverID uuid.UUID, threadID string, itemName string, targetUserID string, qty int, actor string) error {
 	ret := _m.Called(ctx, serverID, threadID, itemName, targetUserID, qty, actor)
@@ -1479,53 +1479,6 @@ func (_c *MockRepository_Republish_Call) Return(_a0 contracts.RepublishAction, _
 }
 
 func (_c *MockRepository_Republish_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID) (contracts.RepublishAction, error)) *MockRepository_Republish_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// RequeueCreate provides a mock function with given fields: ctx, contractID
-func (_m *MockRepository) RequeueCreate(ctx context.Context, contractID uuid.UUID) error {
-	ret := _m.Called(ctx, contractID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RequeueCreate")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
-		r0 = rf(ctx, contractID)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockRepository_RequeueCreate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RequeueCreate'
-type MockRepository_RequeueCreate_Call struct {
-	*mock.Call
-}
-
-// RequeueCreate is a helper method to define mock.On call
-//   - ctx context.Context
-//   - contractID uuid.UUID
-func (_e *MockRepository_Expecter) RequeueCreate(ctx interface{}, contractID interface{}) *MockRepository_RequeueCreate_Call {
-	return &MockRepository_RequeueCreate_Call{Call: _e.mock.On("RequeueCreate", ctx, contractID)}
-}
-
-func (_c *MockRepository_RequeueCreate_Call) Run(run func(ctx context.Context, contractID uuid.UUID)) *MockRepository_RequeueCreate_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID))
-	})
-	return _c
-}
-
-func (_c *MockRepository_RequeueCreate_Call) Return(_a0 error) *MockRepository_RequeueCreate_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockRepository_RequeueCreate_Call) RunAndReturn(run func(context.Context, uuid.UUID) error) *MockRepository_RequeueCreate_Call {
 	_c.Call.Return(run)
 	return _c
 }

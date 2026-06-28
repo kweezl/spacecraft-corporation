@@ -109,21 +109,11 @@ func (h *Feature) taskRefresh(ctx context.Context, t outbox.Task) error {
 	}
 	err = h.gw.EditPost(prog.ThreadID, h.postComponents(ctx, prog.ServerID, prog, true))
 	if isDeletedPost(err) {
-		// The forum post was deleted out from under us — recreate it (the stale
-		// thread id is cleared and a create re-enqueued; nothing to delete).
-		return h.recreatePost(ctx, p.ContractID)
+		// The forum post was deleted out from under us — recreate it (clears the
+		// stale thread id and re-enqueues a create atomically; nothing to delete).
+		return h.repo.RecreatePost(ctx, p.ContractID)
 	}
 	return permanentIfDiscord(err)
-}
-
-// recreatePost responds to a deleted forum post by clearing the stale thread id
-// and enqueuing a fresh create-thread task; taskCreateThread's empty-thread guard
-// then re-posts. Errors are transient so the worker retries.
-func (h *Feature) recreatePost(ctx context.Context, id uuid.UUID) error {
-	if err := h.repo.ClearThreadID(ctx, id); err != nil {
-		return err
-	}
-	return h.repo.RequeueCreate(ctx, id)
 }
 
 // taskClose writes the final embed and locks/archives the thread.
@@ -155,16 +145,16 @@ func (h *Feature) taskClose(ctx context.Context, t outbox.Task) error {
 }
 
 // migratePost replaces a stale-format forum post (one below CurrentPostVersion):
-// it deletes the old post and re-enqueues a create, so the contract is reposted
-// in the current format instead of left un-editable or duplicated. recreatePost
-// clears the thread id and requeues the create; SetThreadID then stamps the new
-// post CurrentPostVersion, so it is not migrated again. Idempotent: a re-run
-// whose post is already gone skips the delete.
+// it deletes the old post, then RecreatePost atomically clears the thread id and
+// enqueues a fresh create, so the contract is reposted in the current format
+// instead of left un-editable or duplicated; SetThreadID then stamps the new post
+// CurrentPostVersion, so it is not migrated again. Idempotent: a re-run whose post
+// is already gone treats the delete as a no-op (isDeletedPost) and still recreates.
 func (h *Feature) migratePost(ctx context.Context, id uuid.UUID, threadID string) error {
 	if err := h.gw.DeletePost(threadID); err != nil && !isDeletedPost(err) {
 		return err
 	}
-	return h.recreatePost(ctx, id)
+	return h.repo.RecreatePost(ctx, id)
 }
 
 // taskNotify posts the one-shot "closing soon" comment. It pings only members who

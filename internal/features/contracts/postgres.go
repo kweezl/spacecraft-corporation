@@ -871,22 +871,22 @@ func (r *pgRepository) SetThreadID(ctx context.Context, contractID uuid.UUID, th
 	return err
 }
 
-// ClearThreadID unsets a contract's thread id — used when the forum post was
-// deleted, so Republish (or a worker recreate) re-creates it.
-func (r *pgRepository) ClearThreadID(ctx context.Context, contractID uuid.UUID) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE contracts SET thread_id = NULL, updated_at = $1 WHERE id = $2`, time.Now(), contractID)
-	return err
-}
-
-// RequeueCreate enqueues a fresh create-thread task (no interaction token), used
-// to recreate a deleted post.
-func (r *pgRepository) RequeueCreate(ctx context.Context, contractID uuid.UUID) error {
+// RecreatePost clears a contract's thread id AND enqueues a fresh create-thread
+// task in a single transaction — recovering a deleted post or migrating a
+// stale-format one. Doing both atomically is the safety property: a crash can't
+// leave thread_id cleared with no queued create (orphaning the contract with no
+// post). The worker's empty-thread guard then re-posts. No interaction token
+// travels with the create.
+func (r *pgRepository) RecreatePost(ctx context.Context, contractID uuid.UUID) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx,
+		`UPDATE contracts SET thread_id = NULL, updated_at = $1 WHERE id = $2`, time.Now(), contractID); err != nil {
+		return err
+	}
 	if err := r.enq.Enqueue(ctx, tx, outbox.Request{
 		Kind: taskCreateThread, Payload: taskPayload{ContractID: contractID}, ChronometricID: contractID,
 	}); err != nil {
