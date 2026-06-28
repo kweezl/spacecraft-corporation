@@ -2,6 +2,7 @@ package outbox
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -117,7 +118,7 @@ func (w *Worker) execute(ctx context.Context, t Task) {
 	}
 
 	hctx, cancel := context.WithTimeout(ctx, taskTimeout)
-	err := h(hctx, t)
+	err := w.runHandler(hctx, h, t)
 	cancel()
 	if err == nil {
 		if e := w.store.markDone(ctx, t.ID); e != nil {
@@ -140,6 +141,23 @@ func (w *Worker) execute(ctx context.Context, t Task) {
 	if e := w.store.markRetry(ctx, t.ID, attempts, err.Error(), time.Now().Add(backoff(attempts))); e != nil {
 		w.log.Error("outbox: mark retry", zap.String("task_id", t.ID.String()), zap.Error(e))
 	}
+}
+
+// runHandler invokes a task handler, recovering a panic into an error. Without
+// this a single panicking handler would crash the worker goroutine, silently
+// stopping ALL future outbox effects (creates, refreshes, closes) until the
+// process restarts. The panicking task is retried/abandoned like any other
+// failure, and the stack is logged so the root cause is findable.
+func (w *Worker) runHandler(ctx context.Context, h Handler, t Task) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			w.log.Error("outbox: handler panic recovered",
+				zap.String("task_id", t.ID.String()), zap.String("kind", t.Kind),
+				zap.Any("panic", r), zap.Stack("stack"))
+			err = fmt.Errorf("outbox: handler panic: %v", r)
+		}
+	}()
+	return h(ctx, t)
 }
 
 func (w *Worker) fail(ctx context.Context, t Task, attempts int, msg string) {

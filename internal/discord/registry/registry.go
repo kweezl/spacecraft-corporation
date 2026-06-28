@@ -31,6 +31,11 @@ type Responder interface {
 	// RespondEmbedComponents replies with an embed plus attached message
 	// components (e.g. pagination buttons).
 	RespondEmbedComponents(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
+	// RespondEmbedComponentsEphemeral is RespondEmbedComponents but ephemeral
+	// (private to the invoker) — used by the /contracts officer console, an
+	// in-place control each officer drives privately. Its components are later
+	// edited in place with UpdateMessage (which works on ephemeral messages).
+	RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
 	// UpdateMessage edits in place the message a component interaction is
 	// attached to (e.g. flipping a pagination page without posting anew).
 	UpdateMessage(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
@@ -98,6 +103,24 @@ type Command struct {
 	// still applies to the whole command. Off by default: top-level-only gating,
 	// unchanged for existing commands.
 	SubcommandGated bool
+	// ExtraAccessKeys are additional gateable keys this command's handlers
+	// authorize against that don't correspond to a slash (sub)command path —
+	// e.g. a button panel attached to a public message. They are surfaced by
+	// CommandPaths so /permissions can grant them, even though no subcommand
+	// carries the name. Example: the /contracts console authorizes its officer
+	// actions against the extra key "contracts.use" (the public reserve/deliver
+	// panel) and the per-kind console keys, while the command itself is
+	// DiscordManaged (access to running it is configured in Discord, not granted
+	// here).
+	ExtraAccessKeys []string
+	// DiscordManaged opts the command's own access out of the bot's grantable
+	// permission catalog: its name (or subcommand paths) is omitted from
+	// CommandPaths, so /permissions does not offer it. Who may run the command is
+	// then governed solely by Discord's native command permissions (Server
+	// Settings → Integrations). Its ExtraAccessKeys are still offered — only the
+	// command path itself is suppressed. Pair with DefaultDeny:false so the bot
+	// doesn't also gate it.
+	DiscordManaged bool
 }
 
 // Registry maps command names to handlers and exposes the definitions to
@@ -108,6 +131,8 @@ type Registry struct {
 	components    map[string]ComponentHandler // CustomID prefix -> handler
 	policies      map[string]bool             // command name -> DefaultDeny
 	subGated      map[string]bool             // command name -> SubcommandGated
+	managed       map[string]bool             // command name -> DiscordManaged (omit from CommandPaths)
+	extraKeys     []string                    // non-command gateable keys (e.g. "contracts.use")
 	defs          []*discordgo.ApplicationCommand
 	counter       *prometheus.CounterVec
 	duration      *prometheus.HistogramVec
@@ -144,6 +169,7 @@ func New(p Params) *Registry {
 		components:    make(map[string]ComponentHandler),
 		policies:      make(map[string]bool),
 		subGated:      make(map[string]bool),
+		managed:       make(map[string]bool),
 		counter:       counter,
 		duration:      duration,
 	}
@@ -154,6 +180,8 @@ func New(p Params) *Registry {
 		r.handlers[c.Def.Name] = c.Handler
 		r.policies[c.Def.Name] = c.DefaultDeny
 		r.subGated[c.Def.Name] = c.SubcommandGated
+		r.managed[c.Def.Name] = c.DiscordManaged
+		r.extraKeys = append(r.extraKeys, c.ExtraAccessKeys...)
 		if c.Autocomplete != nil {
 			r.autocompletes[c.Def.Name] = c.Autocomplete
 		}
@@ -228,18 +256,24 @@ func (r *Registry) AccessKey(i *discordgo.InteractionCreate) string {
 }
 
 // CommandPaths returns every gateable key across all registered commands: the
-// bare name for top-level-gated commands, and one entry per leaf subcommand path
-// for SubcommandGated commands. Used to offer valid grant targets (e.g. as
-// /permissions autocomplete). Sorted for stable output.
+// bare name for top-level commands, and one entry per leaf subcommand path for
+// SubcommandGated commands. DiscordManaged commands are omitted (their access is
+// configured in Discord, not granted here), but their ExtraAccessKeys are still
+// included. Used to offer valid grant targets (e.g. the /permissions panel rows).
+// Sorted for stable output.
 func (r *Registry) CommandPaths() []string {
 	var out []string
 	for _, def := range r.defs {
+		if r.managed[def.Name] {
+			continue
+		}
 		if !r.subGated[def.Name] {
 			out = append(out, def.Name)
 			continue
 		}
 		out = append(out, leafPaths(def.Name, def.Options)...)
 	}
+	out = append(out, r.extraKeys...)
 	sort.Strings(out)
 	return out
 }

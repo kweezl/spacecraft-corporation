@@ -165,8 +165,7 @@ func (p *panel) view(ctx context.Context, serverID uuid.UUID, page int) ([]disco
 	for _, command := range paths[start:end] {
 		roles := rolesByCommand[command]
 		comps = append(comps,
-			discordgo.TextDisplay{Content: p.loc.Render(ctx, serverID, "permissions.panel.command",
-				map[string]any{"Command": command})},
+			discordgo.TextDisplay{Content: p.describe(ctx, serverID, command)},
 			discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 				roleSelect(command, page, roles, placeholder),
 			}},
@@ -176,6 +175,20 @@ func (p *panel) view(ctx context.Context, serverID uuid.UUID, page int) ([]disco
 		comps = append(comps, p.navRow(ctx, serverID, page, pages))
 	}
 	return comps, nil
+}
+
+// describe renders a permission's localized description. Each grantable key may
+// have a specific entry "permissions.command.<key>" (prose that names the real
+// command, e.g. "Create & edit custom contracts (`/contracts`)"); when absent it
+// falls back to the localized generic line "permissions.panel.command", which
+// just shows the command path. The Translator returns the requested key verbatim
+// when it has no entry, so an unchanged result signals "no specific description".
+func (p *panel) describe(ctx context.Context, serverID uuid.UUID, command string) string {
+	key := "permissions.command." + command
+	if desc := p.loc.Render(ctx, serverID, key, map[string]any{"Command": command}); desc != key {
+		return desc
+	}
+	return p.loc.Render(ctx, serverID, "permissions.panel.command", map[string]any{"Command": command})
 }
 
 // roleSelect builds a native role-picker for a command, prefilled with the roles

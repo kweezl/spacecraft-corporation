@@ -80,6 +80,9 @@ func (f *fakeDiscord) RespondEmbedComponents(_ *discordgo.Interaction, embed *di
 	}
 	return nil
 }
+func (f *fakeDiscord) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, c []discordgo.MessageComponent) error {
+	return f.RespondEmbedComponents(i, embed, c)
+}
 func (f *fakeDiscord) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
 	if embed != nil {
 		f.lastReply = embed.Title
@@ -109,6 +112,9 @@ func (f *fakeDiscord) ChannelMessageSendComplex(_ string, _ *discordgo.MessageSe
 	return &discordgo.Message{}, nil
 }
 func (f *fakeDiscord) ChannelEditComplex(_ string, _ *discordgo.ChannelEdit) (*discordgo.Channel, error) {
+	return &discordgo.Channel{}, nil
+}
+func (f *fakeDiscord) ChannelDelete(_ string) (*discordgo.Channel, error) {
 	return &discordgo.Channel{}, nil
 }
 func (f *fakeDiscord) InteractionResponseEdit(_ *discordgo.Interaction, _ *discordgo.WebhookEdit) (*discordgo.Message, error) {

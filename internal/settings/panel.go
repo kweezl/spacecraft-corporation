@@ -33,10 +33,13 @@ type panel struct {
 	// access gates panel mutations; it is provided by the permissions feature and
 	// is nil when that feature is disabled (role control off entirely).
 	access session.CommandAccess
+	// sections are feature-contributed extra settings (e.g. the contracts forum
+	// channel), appended after theme/language. Empty when no feature contributes.
+	sections []Section
 }
 
-func newPanel(store *Store, tr *i18n.Translator, loc *i18n.Localizer, access session.CommandAccess) *panel {
-	return &panel{store: store, tr: tr, loc: loc, access: access}
+func newPanel(store *Store, tr *i18n.Translator, loc *i18n.Localizer, access session.CommandAccess, sections []Section) *panel {
+	return &panel{store: store, tr: tr, loc: loc, access: access, sections: sections}
 }
 
 // command is the /settings slash command: it just opens the panel. It is
@@ -79,6 +82,14 @@ func (p *panel) handleComponent(ctx context.Context, r registry.Responder, i *di
 	}
 
 	id := i.MessageComponentData().CustomID
+	// Feature-contributed sections claim their own CustomIDs (e.g. "settings:forum").
+	// They run behind the same authorize gate above; each persists its change and
+	// re-renders the whole panel.
+	for _, s := range p.sections {
+		if s.Owns(id) {
+			return s.Handle(ctx, r, i, serverID, func() []discordgo.MessageComponent { return p.view(ctx, serverID) })
+		}
+	}
 	kind, ok := parseCustomID(id)
 	if !ok {
 		return fmt.Errorf("settings: bad component id %q", id)
@@ -149,7 +160,7 @@ func (p *panel) view(ctx context.Context, serverID uuid.UUID) []discordgo.Messag
 // viewFrom builds the Components V2 view for the given theme/language: a header
 // showing them, then a theme select and a language select, each prefilled.
 func (p *panel) viewFrom(ctx context.Context, serverID uuid.UUID, theme, lang string) []discordgo.MessageComponent {
-	return []discordgo.MessageComponent{
+	out := []discordgo.MessageComponent{
 		discordgo.TextDisplay{Content: p.loc.Render(ctx, serverID, "settings.panel.header",
 			map[string]any{"Theme": theme, "Language": lang})},
 		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
@@ -161,6 +172,12 @@ func (p *panel) viewFrom(ctx context.Context, serverID uuid.UUID, theme, lang st
 				p.loc.Render(ctx, serverID, "settings.panel.language_placeholder", nil)),
 		}},
 	}
+	// Feature-contributed sections (e.g. the contracts forum channel) render after
+	// the built-in theme/language rows.
+	for _, s := range p.sections {
+		out = append(out, s.Rows(ctx, serverID)...)
+	}
+	return out
 }
 
 // valueSelect builds a single-choice string-select over values, with current

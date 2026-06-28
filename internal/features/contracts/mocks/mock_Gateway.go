@@ -20,17 +20,17 @@ func (_m *MockGateway) EXPECT() *MockGateway_Expecter {
 	return &MockGateway_Expecter{mock: &_m.Mock}
 }
 
-// ClosePost provides a mock function with given fields: threadID, embed
-func (_m *MockGateway) ClosePost(threadID string, embed *discordgo.MessageEmbed) error {
-	ret := _m.Called(threadID, embed)
+// ClosePost provides a mock function with given fields: threadID, components
+func (_m *MockGateway) ClosePost(threadID string, components []discordgo.MessageComponent) error {
+	ret := _m.Called(threadID, components)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ClosePost")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, *discordgo.MessageEmbed) error); ok {
-		r0 = rf(threadID, embed)
+	if rf, ok := ret.Get(0).(func(string, []discordgo.MessageComponent) error); ok {
+		r0 = rf(threadID, components)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -45,14 +45,14 @@ type MockGateway_ClosePost_Call struct {
 
 // ClosePost is a helper method to define mock.On call
 //   - threadID string
-//   - embed *discordgo.MessageEmbed
-func (_e *MockGateway_Expecter) ClosePost(threadID interface{}, embed interface{}) *MockGateway_ClosePost_Call {
-	return &MockGateway_ClosePost_Call{Call: _e.mock.On("ClosePost", threadID, embed)}
+//   - components []discordgo.MessageComponent
+func (_e *MockGateway_Expecter) ClosePost(threadID interface{}, components interface{}) *MockGateway_ClosePost_Call {
+	return &MockGateway_ClosePost_Call{Call: _e.mock.On("ClosePost", threadID, components)}
 }
 
-func (_c *MockGateway_ClosePost_Call) Run(run func(threadID string, embed *discordgo.MessageEmbed)) *MockGateway_ClosePost_Call {
+func (_c *MockGateway_ClosePost_Call) Run(run func(threadID string, components []discordgo.MessageComponent)) *MockGateway_ClosePost_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(*discordgo.MessageEmbed))
+		run(args[0].(string), args[1].([]discordgo.MessageComponent))
 	})
 	return _c
 }
@@ -62,7 +62,7 @@ func (_c *MockGateway_ClosePost_Call) Return(_a0 error) *MockGateway_ClosePost_C
 	return _c
 }
 
-func (_c *MockGateway_ClosePost_Call) RunAndReturn(run func(string, *discordgo.MessageEmbed) error) *MockGateway_ClosePost_Call {
+func (_c *MockGateway_ClosePost_Call) RunAndReturn(run func(string, []discordgo.MessageComponent) error) *MockGateway_ClosePost_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -115,9 +115,9 @@ func (_c *MockGateway_CommentPost_Call) RunAndReturn(run func(string, string, []
 	return _c
 }
 
-// CreateForumPost provides a mock function with given fields: channelID, name, embed, components
-func (_m *MockGateway) CreateForumPost(channelID string, name string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) (string, error) {
-	ret := _m.Called(channelID, name, embed, components)
+// CreateForumPost provides a mock function with given fields: channelID, name, components
+func (_m *MockGateway) CreateForumPost(channelID string, name string, components []discordgo.MessageComponent) (string, error) {
+	ret := _m.Called(channelID, name, components)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateForumPost")
@@ -125,17 +125,17 @@ func (_m *MockGateway) CreateForumPost(channelID string, name string, embed *dis
 
 	var r0 string
 	var r1 error
-	if rf, ok := ret.Get(0).(func(string, string, *discordgo.MessageEmbed, []discordgo.MessageComponent) (string, error)); ok {
-		return rf(channelID, name, embed, components)
+	if rf, ok := ret.Get(0).(func(string, string, []discordgo.MessageComponent) (string, error)); ok {
+		return rf(channelID, name, components)
 	}
-	if rf, ok := ret.Get(0).(func(string, string, *discordgo.MessageEmbed, []discordgo.MessageComponent) string); ok {
-		r0 = rf(channelID, name, embed, components)
+	if rf, ok := ret.Get(0).(func(string, string, []discordgo.MessageComponent) string); ok {
+		r0 = rf(channelID, name, components)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 
-	if rf, ok := ret.Get(1).(func(string, string, *discordgo.MessageEmbed, []discordgo.MessageComponent) error); ok {
-		r1 = rf(channelID, name, embed, components)
+	if rf, ok := ret.Get(1).(func(string, string, []discordgo.MessageComponent) error); ok {
+		r1 = rf(channelID, name, components)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -151,15 +151,14 @@ type MockGateway_CreateForumPost_Call struct {
 // CreateForumPost is a helper method to define mock.On call
 //   - channelID string
 //   - name string
-//   - embed *discordgo.MessageEmbed
 //   - components []discordgo.MessageComponent
-func (_e *MockGateway_Expecter) CreateForumPost(channelID interface{}, name interface{}, embed interface{}, components interface{}) *MockGateway_CreateForumPost_Call {
-	return &MockGateway_CreateForumPost_Call{Call: _e.mock.On("CreateForumPost", channelID, name, embed, components)}
+func (_e *MockGateway_Expecter) CreateForumPost(channelID interface{}, name interface{}, components interface{}) *MockGateway_CreateForumPost_Call {
+	return &MockGateway_CreateForumPost_Call{Call: _e.mock.On("CreateForumPost", channelID, name, components)}
 }
 
-func (_c *MockGateway_CreateForumPost_Call) Run(run func(channelID string, name string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent)) *MockGateway_CreateForumPost_Call {
+func (_c *MockGateway_CreateForumPost_Call) Run(run func(channelID string, name string, components []discordgo.MessageComponent)) *MockGateway_CreateForumPost_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(string), args[2].(*discordgo.MessageEmbed), args[3].([]discordgo.MessageComponent))
+		run(args[0].(string), args[1].(string), args[2].([]discordgo.MessageComponent))
 	})
 	return _c
 }
@@ -169,7 +168,53 @@ func (_c *MockGateway_CreateForumPost_Call) Return(threadID string, err error) *
 	return _c
 }
 
-func (_c *MockGateway_CreateForumPost_Call) RunAndReturn(run func(string, string, *discordgo.MessageEmbed, []discordgo.MessageComponent) (string, error)) *MockGateway_CreateForumPost_Call {
+func (_c *MockGateway_CreateForumPost_Call) RunAndReturn(run func(string, string, []discordgo.MessageComponent) (string, error)) *MockGateway_CreateForumPost_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeletePost provides a mock function with given fields: threadID
+func (_m *MockGateway) DeletePost(threadID string) error {
+	ret := _m.Called(threadID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeletePost")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string) error); ok {
+		r0 = rf(threadID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockGateway_DeletePost_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeletePost'
+type MockGateway_DeletePost_Call struct {
+	*mock.Call
+}
+
+// DeletePost is a helper method to define mock.On call
+//   - threadID string
+func (_e *MockGateway_Expecter) DeletePost(threadID interface{}) *MockGateway_DeletePost_Call {
+	return &MockGateway_DeletePost_Call{Call: _e.mock.On("DeletePost", threadID)}
+}
+
+func (_c *MockGateway_DeletePost_Call) Run(run func(threadID string)) *MockGateway_DeletePost_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string))
+	})
+	return _c
+}
+
+func (_c *MockGateway_DeletePost_Call) Return(_a0 error) *MockGateway_DeletePost_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockGateway_DeletePost_Call) RunAndReturn(run func(string) error) *MockGateway_DeletePost_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -222,17 +267,17 @@ func (_c *MockGateway_EditOriginalResponse_Call) RunAndReturn(run func(string, s
 	return _c
 }
 
-// EditPost provides a mock function with given fields: threadID, embed, components
-func (_m *MockGateway) EditPost(threadID string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
-	ret := _m.Called(threadID, embed, components)
+// EditPost provides a mock function with given fields: threadID, components
+func (_m *MockGateway) EditPost(threadID string, components []discordgo.MessageComponent) error {
+	ret := _m.Called(threadID, components)
 
 	if len(ret) == 0 {
 		panic("no return value specified for EditPost")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, *discordgo.MessageEmbed, []discordgo.MessageComponent) error); ok {
-		r0 = rf(threadID, embed, components)
+	if rf, ok := ret.Get(0).(func(string, []discordgo.MessageComponent) error); ok {
+		r0 = rf(threadID, components)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -247,15 +292,14 @@ type MockGateway_EditPost_Call struct {
 
 // EditPost is a helper method to define mock.On call
 //   - threadID string
-//   - embed *discordgo.MessageEmbed
 //   - components []discordgo.MessageComponent
-func (_e *MockGateway_Expecter) EditPost(threadID interface{}, embed interface{}, components interface{}) *MockGateway_EditPost_Call {
-	return &MockGateway_EditPost_Call{Call: _e.mock.On("EditPost", threadID, embed, components)}
+func (_e *MockGateway_Expecter) EditPost(threadID interface{}, components interface{}) *MockGateway_EditPost_Call {
+	return &MockGateway_EditPost_Call{Call: _e.mock.On("EditPost", threadID, components)}
 }
 
-func (_c *MockGateway_EditPost_Call) Run(run func(threadID string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent)) *MockGateway_EditPost_Call {
+func (_c *MockGateway_EditPost_Call) Run(run func(threadID string, components []discordgo.MessageComponent)) *MockGateway_EditPost_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(*discordgo.MessageEmbed), args[2].([]discordgo.MessageComponent))
+		run(args[0].(string), args[1].([]discordgo.MessageComponent))
 	})
 	return _c
 }
@@ -265,7 +309,7 @@ func (_c *MockGateway_EditPost_Call) Return(_a0 error) *MockGateway_EditPost_Cal
 	return _c
 }
 
-func (_c *MockGateway_EditPost_Call) RunAndReturn(run func(string, *discordgo.MessageEmbed, []discordgo.MessageComponent) error) *MockGateway_EditPost_Call {
+func (_c *MockGateway_EditPost_Call) RunAndReturn(run func(string, []discordgo.MessageComponent) error) *MockGateway_EditPost_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -42,6 +42,10 @@ func (f *fakeResponder) RespondAutocomplete(_ *discordgo.Interaction, choices []
 	return nil
 }
 
+func (f *fakeResponder) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+	return f.RespondEmbedComponents(i, embed, components)
+}
+
 func (f *fakeResponder) RespondEmbedComponents(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
 	if embed != nil {
 		f.last = embed.Title
@@ -134,6 +138,22 @@ func TestRegistry_CommandPaths(t *testing.T) {
 	}})
 
 	assert.Equal(t, []string{"base list", "base own register", "ping"}, reg.CommandPaths())
+}
+
+func TestRegistry_CommandPaths_DiscordManagedOmitted(t *testing.T) {
+	reg := New(Params{Commands: []*Command{
+		{Def: &discordgo.ApplicationCommand{Name: "ping"}},
+		// A Discord-managed command: its own name is omitted, but its extra keys
+		// stay grantable.
+		{
+			Def:             &discordgo.ApplicationCommand{Name: "contracts"},
+			DiscordManaged:  true,
+			ExtraAccessKeys: []string{"contracts.custom", "contracts.use"},
+		},
+	}})
+
+	assert.Equal(t, []string{"contracts.custom", "contracts.use", "ping"}, reg.CommandPaths(),
+		"the Discord-managed command name is omitted; its extra keys remain")
 }
 
 func TestRegistry_DispatchAutocomplete(t *testing.T) {

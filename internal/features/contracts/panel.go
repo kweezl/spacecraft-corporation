@@ -46,6 +46,18 @@ const (
 	segPanel = "panel"
 	segQty   = "qty"
 
+	// opParticipate/opDeliver/opRelease are the public panel's three actions; they
+	// ride in the panel button + modal CustomIDs (contract:panel:<op> / contract:qty:<op>).
+	opParticipate = "participate"
+	opDeliver     = "deliver"
+	opRelease     = "release"
+
+	// panelAccessKey is the grantable permission key the public panel authorizes
+	// against — distinct from the console's coarse "contracts" key, so members can
+	// be granted self-service without the officer console. Surfaced to /permissions
+	// via the console command's ExtraAccessKeys.
+	panelAccessKey = "contracts.use"
+
 	// modalItemInput / modalQtyInput are the CustomIDs of the two inputs inside
 	// the modal: the item select and the quantity text field.
 	modalItemInput = "item"
@@ -57,6 +69,19 @@ const (
 	// modalTitleMax is Discord's modal-title length cap.
 	modalTitleMax = 45
 )
+
+// threadOf is the channel the interaction landed in — for the public panel this
+// is the contract's forum thread, the key the repository resolves the contract by.
+func threadOf(i *discordgo.InteractionCreate) string { return i.ChannelID }
+
+// invokerID returns the Discord user ID of the interacting member. Interactions
+// are guild-only (the session ignores DMs), so Member is set.
+func invokerID(i *discordgo.InteractionCreate) string {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID
+	}
+	return ""
+}
 
 // errBadQty is the local parse error for the quantity modal input (not a
 // repository sentinel; rendered directly as contracts.panel.bad_qty).
@@ -85,24 +110,6 @@ func (h *Feature) panelComponents(ctx context.Context, serverID uuid.UUID) []dis
 	}}}
 }
 
-// handleComponent is the entry point for every "contract:" component and modal
-// interaction; it routes by interaction type (modal submit) then by the action
-// segment of the CustomID.
-func (h *Feature) handleComponent(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
-	if i.Type == discordgo.InteractionModalSubmit {
-		return h.handleQtyModal(ctx, r, i, serverID)
-	}
-	id := i.MessageComponentData().CustomID
-	switch segmentOf(id) {
-	case "list":
-		return h.handleListComponent(ctx, r, i, serverID)
-	case segPanel:
-		return h.handlePanelButton(ctx, r, i, serverID)
-	default:
-		return fmt.Errorf("contracts: unknown component id %q", id)
-	}
-}
-
 // handlePanelButton handles a Participate/Deliver/Release button on the public
 // post: it re-authorizes the member against the same per-leaf policy as the slash
 // leaf, works out what that op allows (items the contract still needs for
@@ -121,7 +128,7 @@ func (h *Feature) handlePanelButton(ctx context.Context, r registry.Responder, i
 	}
 	if !allowed {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "session.denied",
-			map[string]any{"Command": commandName + " " + op}))
+			map[string]any{"Command": panelAccessKey}))
 	}
 
 	items, err := h.eligibleItems(ctx, serverID, threadOf(i), invokerID(i), op)
@@ -318,7 +325,7 @@ func (h *Feature) handleQtyModal(ctx context.Context, r registry.Responder, i *d
 	}
 	if !allowed {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "session.denied",
-			map[string]any{"Command": commandName + " " + op}))
+			map[string]any{"Command": panelAccessKey}))
 	}
 
 	item := normalizeItem(modalSelectValue(data, modalItemInput))
@@ -384,13 +391,13 @@ func (h *Feature) applyOp(ctx context.Context, serverID uuid.UUID, p pendingOp, 
 	return "", fmt.Errorf("contracts: unknown pending op %q", p.op)
 }
 
-// authorized re-checks the interacting member against the per-leaf policy for the
-// op ("contract participate" / "contract deliver" / "contract release"), mirroring
-// the slash gate:
-// administrators bypass; otherwise the member needs a role granted that leaf
-// (the leaves are DefaultDeny, matching the command policy). With the permissions
-// feature absent (access nil) gating is off entirely, like the session's gate.
-func (h *Feature) authorized(ctx context.Context, i *discordgo.InteractionCreate, serverID uuid.UUID, op string) (bool, error) {
+// authorized re-checks the interacting member against the public panel's
+// grantable key (panelAccessKey = "contracts.use"): administrators bypass;
+// otherwise the member needs a role granted that key (DefaultDeny). With the
+// permissions feature absent (access nil) gating is off entirely, like the
+// session's gate. op is unused for the check (one coarse panel key) but kept for
+// symmetry with the call sites.
+func (h *Feature) authorized(ctx context.Context, i *discordgo.InteractionCreate, serverID uuid.UUID, _ string) (bool, error) {
 	if i.Member != nil && i.Member.Permissions&discordgo.PermissionAdministrator != 0 {
 		return true, nil
 	}
@@ -403,7 +410,7 @@ func (h *Feature) authorized(ctx context.Context, i *discordgo.InteractionCreate
 	}
 	return h.access.IsAllowed(ctx, session.AccessRequest{
 		ServerID:    serverID,
-		Command:     commandName + " " + op,
+		Command:     panelAccessKey,
 		UserRoles:   roles,
 		DefaultDeny: true,
 	})
@@ -422,16 +429,6 @@ type pendingOp struct {
 
 func panelCustomID(op string) string { return fmt.Sprintf("%s:%s:%s", componentPrefix, segPanel, op) }
 func qtyCustomID(op string) string   { return fmt.Sprintf("%s:%s:%s", componentPrefix, segQty, op) }
-
-// segmentOf returns the action segment (between the 1st and 2nd ':') of a
-// CustomID, e.g. "panel" in "contract:panel:participate".
-func segmentOf(customID string) string {
-	parts := strings.SplitN(customID, ":", 3)
-	if len(parts) < 2 {
-		return ""
-	}
-	return parts[1]
-}
 
 // opOf returns the op segment (the 3rd field) of a panel CustomID.
 func opOf(customID string) string {
