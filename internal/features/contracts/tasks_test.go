@@ -104,6 +104,40 @@ func TestTaskRefresh_EditsEmbed(t *testing.T) {
 	require.NoError(t, handlerFor(t, f, "contracts.thread.refresh")(context.Background(), payload(t, cid, "", "")))
 }
 
+// A post that predates the Components V2 card can't be edited into V2, so refresh
+// confirms it is non-V2, deletes it and recreates — no duplicate left behind.
+func TestTaskRefresh_MigratesLegacyPost(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(openProgress(cid, "thread-9"), nil).Once()
+	badForm := &discordgo.RESTError{Message: &discordgo.APIErrorMessage{Code: discordgo.ErrCodeInvalidFormBody}}
+	gw.EXPECT().EditPost("thread-9", mock.Anything).Return(badForm).Once()
+	gw.EXPECT().PostIsComponentsV2("thread-9").Return(false, nil).Once()
+	gw.EXPECT().DeletePost("thread-9").Return(nil).Once()
+	repo.EXPECT().ClearThreadID(mock.Anything, cid).Return(nil).Once()
+	repo.EXPECT().RequeueCreate(mock.Anything, cid).Return(nil).Once()
+
+	f := newFeature(t, repo, gw, mocks.NewMockForumConfig(t))
+	require.NoError(t, handlerFor(t, f, "contracts.thread.refresh")(context.Background(), payload(t, cid, "", "")))
+}
+
+// A genuine V2 post rejected for some other reason must NOT be deleted (that would
+// lose a good post); the task fails permanently instead.
+func TestTaskRefresh_V2RejectionDoesNotDelete(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(openProgress(cid, "thread-9"), nil).Once()
+	badForm := &discordgo.RESTError{Message: &discordgo.APIErrorMessage{Code: discordgo.ErrCodeInvalidFormBody}}
+	gw.EXPECT().EditPost("thread-9", mock.Anything).Return(badForm).Once()
+	gw.EXPECT().PostIsComponentsV2("thread-9").Return(true, nil).Once()
+	// No DeletePost / ClearThreadID / RequeueCreate expected.
+
+	f := newFeature(t, repo, gw, mocks.NewMockForumConfig(t))
+	require.Error(t, handlerFor(t, f, "contracts.thread.refresh")(context.Background(), payload(t, cid, "", "")))
+}
+
 func TestTaskRefresh_TerminalNoOp(t *testing.T) {
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)

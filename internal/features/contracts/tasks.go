@@ -103,11 +103,13 @@ func (h *Feature) taskRefresh(ctx context.Context, t outbox.Task) error {
 		return nil
 	}
 	err = h.gw.EditPost(prog.ThreadID, h.postComponents(ctx, prog.ServerID, prog, true))
-	if isDeletedPost(err) || isFormatRejected(err) {
-		// The forum post was deleted out from under us, or it predates the
-		// Components V2 migration and can't be edited into V2 (the flag is immutable)
-		// — recreate it: drop the stale thread id and re-enqueue a create.
+	if isDeletedPost(err) {
+		// The forum post was deleted out from under us — recreate it (the stale
+		// thread id is cleared and a create re-enqueued; nothing to delete).
 		return h.recreatePost(ctx, p.ContractID)
+	}
+	if isFormatRejected(err) {
+		return h.migrateLegacyPost(ctx, p.ContractID, prog.ThreadID, err)
 	}
 	return permanentIfDiscord(err)
 }
@@ -143,10 +145,34 @@ func (h *Feature) taskClose(ctx context.Context, t outbox.Task) error {
 		return nil // the post is already gone — nothing left to close
 	}
 	if isFormatRejected(err) {
-		// A pre-V2 post can't be edited into V2; recreate it as the final card.
-		return h.recreatePost(ctx, p.ContractID)
+		return h.migrateLegacyPost(ctx, p.ContractID, prog.ThreadID, err)
 	}
 	return permanentIfDiscord(err)
+}
+
+// migrateLegacyPost handles a forum post that predates the Components V2 card and
+// so can't be edited into V2 (the IsComponentsV2 flag is immutable). It confirms
+// the post really is pre-V2 first — a genuine V2 post rejected for another reason
+// (a malformed payload) must NOT be deleted — then deletes the stale post and
+// re-enqueues a create, so the migration replaces it rather than leaving a
+// duplicate alongside the new V2 card.
+func (h *Feature) migrateLegacyPost(ctx context.Context, id uuid.UUID, threadID string, editErr error) error {
+	v2, err := h.gw.PostIsComponentsV2(threadID)
+	if isDeletedPost(err) {
+		return h.recreatePost(ctx, id) // already gone — just recreate
+	}
+	if err != nil {
+		return err // transient: retry
+	}
+	if v2 {
+		// A V2 post was rejected for some other reason; deleting it would lose a good
+		// post, so abandon the task instead of looping.
+		return outbox.Permanent(editErr)
+	}
+	if err := h.gw.DeletePost(threadID); err != nil && !isDeletedPost(err) {
+		return err
+	}
+	return h.recreatePost(ctx, id)
 }
 
 // taskNotify posts the one-shot "closing soon" comment. It pings only members who

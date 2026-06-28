@@ -114,6 +114,12 @@ func (f *fakeDiscord) ChannelMessageSendComplex(_ string, _ *discordgo.MessageSe
 func (f *fakeDiscord) ChannelEditComplex(_ string, _ *discordgo.ChannelEdit) (*discordgo.Channel, error) {
 	return &discordgo.Channel{}, nil
 }
+func (f *fakeDiscord) ChannelDelete(_ string) (*discordgo.Channel, error) {
+	return &discordgo.Channel{}, nil
+}
+func (f *fakeDiscord) ChannelMessage(_, _ string) (*discordgo.Message, error) {
+	return &discordgo.Message{}, nil
+}
 func (f *fakeDiscord) InteractionResponseEdit(_ *discordgo.Interaction, _ *discordgo.WebhookEdit) (*discordgo.Message, error) {
 	return &discordgo.Message{}, nil
 }

@@ -409,6 +409,15 @@ type Gateway interface {
 	EditPost(threadID string, components []discordgo.MessageComponent) error
 	// ClosePost writes the final card (no action buttons) then archives + locks.
 	ClosePost(threadID string, components []discordgo.MessageComponent) error
+	// DeletePost deletes a contract's forum thread (and its starter message). Used
+	// to remove a stale pre-V2 post before recreating it as a Components V2 card,
+	// so the migration doesn't leave a duplicate.
+	DeletePost(threadID string) error
+	// PostIsComponentsV2 reports whether the thread's starter message was created
+	// with the Components V2 flag (immutable after creation). A post made before
+	// the V2 migration returns false; the migration path keys on this so it never
+	// deletes a genuine V2 post that was merely rejected for another reason.
+	PostIsComponentsV2(threadID string) (bool, error)
 	// CommentPost posts a plain message in the contract thread, mentioning
 	// mentionUserIDs (passed through AllowedMentions so they actually ping). Used
 	// for the pre-expiry "closing soon" notice.

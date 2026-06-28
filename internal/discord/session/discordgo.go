@@ -172,6 +172,14 @@ func (d *discordSession) ChannelEditComplex(channelID string, data *discordgo.Ch
 	return d.s.ChannelEditComplex(channelID, data)
 }
 
+func (d *discordSession) ChannelDelete(channelID string) (*discordgo.Channel, error) {
+	return d.s.ChannelDelete(channelID)
+}
+
+func (d *discordSession) ChannelMessage(channelID, messageID string) (*discordgo.Message, error) {
+	return d.s.ChannelMessage(channelID, messageID)
+}
+
 func (d *discordSession) InteractionResponseEdit(i *discordgo.Interaction, edit *discordgo.WebhookEdit) (*discordgo.Message, error) {
 	return d.s.InteractionResponseEdit(i, edit)
 }

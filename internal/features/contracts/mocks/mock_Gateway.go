@@ -173,6 +173,52 @@ func (_c *MockGateway_CreateForumPost_Call) RunAndReturn(run func(string, string
 	return _c
 }
 
+// DeletePost provides a mock function with given fields: threadID
+func (_m *MockGateway) DeletePost(threadID string) error {
+	ret := _m.Called(threadID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeletePost")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string) error); ok {
+		r0 = rf(threadID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockGateway_DeletePost_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeletePost'
+type MockGateway_DeletePost_Call struct {
+	*mock.Call
+}
+
+// DeletePost is a helper method to define mock.On call
+//   - threadID string
+func (_e *MockGateway_Expecter) DeletePost(threadID interface{}) *MockGateway_DeletePost_Call {
+	return &MockGateway_DeletePost_Call{Call: _e.mock.On("DeletePost", threadID)}
+}
+
+func (_c *MockGateway_DeletePost_Call) Run(run func(threadID string)) *MockGateway_DeletePost_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string))
+	})
+	return _c
+}
+
+func (_c *MockGateway_DeletePost_Call) Return(_a0 error) *MockGateway_DeletePost_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockGateway_DeletePost_Call) RunAndReturn(run func(string) error) *MockGateway_DeletePost_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // EditOriginalResponse provides a mock function with given fields: appID, token, content
 func (_m *MockGateway) EditOriginalResponse(appID string, token string, content string) error {
 	ret := _m.Called(appID, token, content)
@@ -264,6 +310,62 @@ func (_c *MockGateway_EditPost_Call) Return(_a0 error) *MockGateway_EditPost_Cal
 }
 
 func (_c *MockGateway_EditPost_Call) RunAndReturn(run func(string, []discordgo.MessageComponent) error) *MockGateway_EditPost_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PostIsComponentsV2 provides a mock function with given fields: threadID
+func (_m *MockGateway) PostIsComponentsV2(threadID string) (bool, error) {
+	ret := _m.Called(threadID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PostIsComponentsV2")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string) (bool, error)); ok {
+		return rf(threadID)
+	}
+	if rf, ok := ret.Get(0).(func(string) bool); ok {
+		r0 = rf(threadID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(string) error); ok {
+		r1 = rf(threadID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockGateway_PostIsComponentsV2_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PostIsComponentsV2'
+type MockGateway_PostIsComponentsV2_Call struct {
+	*mock.Call
+}
+
+// PostIsComponentsV2 is a helper method to define mock.On call
+//   - threadID string
+func (_e *MockGateway_Expecter) PostIsComponentsV2(threadID interface{}) *MockGateway_PostIsComponentsV2_Call {
+	return &MockGateway_PostIsComponentsV2_Call{Call: _e.mock.On("PostIsComponentsV2", threadID)}
+}
+
+func (_c *MockGateway_PostIsComponentsV2_Call) Run(run func(threadID string)) *MockGateway_PostIsComponentsV2_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string))
+	})
+	return _c
+}
+
+func (_c *MockGateway_PostIsComponentsV2_Call) Return(_a0 bool, _a1 error) *MockGateway_PostIsComponentsV2_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockGateway_PostIsComponentsV2_Call) RunAndReturn(run func(string) (bool, error)) *MockGateway_PostIsComponentsV2_Call {
 	_c.Call.Return(run)
 	return _c
 }
