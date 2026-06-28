@@ -152,6 +152,13 @@ func (h *Feature) taskClose(ctx context.Context, t outbox.Task) error {
 // is already gone treats the delete as a no-op (isDeletedPost) and still recreates.
 func (h *Feature) migratePost(ctx context.Context, id uuid.UUID, threadID string) error {
 	if err := h.gw.DeletePost(threadID); err != nil && !isDeletedPost(err) {
+		if isMissingPermissions(err) {
+			// Deleting a forum thread that has replies needs Manage Threads; without
+			// it the migration can't proceed. Make the cause actionable rather than a
+			// bare 50013 in the outbox (the task retries, so it heals once granted).
+			h.log.Warn("contracts: cannot migrate forum post — grant the bot Manage Threads on the contracts forum to delete and repost it (or delete the post's comments)",
+				zap.String("contract_id", id.String()), zap.String("thread_id", threadID), zap.Error(err))
+		}
 		return err
 	}
 	return h.repo.RecreatePost(ctx, id)
@@ -267,6 +274,14 @@ func isDeletedPost(err error) bool {
 	var re *discordgo.RESTError
 	return errors.As(err, &re) && re.Message != nil &&
 		(re.Message.Code == discordgo.ErrCodeUnknownMessage || re.Message.Code == discordgo.ErrCodeUnknownChannel)
+}
+
+// isMissingPermissions reports a Discord "missing permissions" (50013) — e.g.
+// deleting a forum thread that has replies, or locking a thread on close, needs
+// the Manage Threads permission.
+func isMissingPermissions(err error) bool {
+	var re *discordgo.RESTError
+	return errors.As(err, &re) && re.Message != nil && re.Message.Code == discordgo.ErrCodeMissingPermissions
 }
 
 // permanentIfDiscord marks a permanent Discord error so the worker abandons the

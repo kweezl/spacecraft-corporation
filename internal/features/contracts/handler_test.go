@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
@@ -32,6 +34,16 @@ func newFeatureAccess(t *testing.T, repo contracts.Repository, gw contracts.Gate
 	require.NoError(t, err)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
 	return contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, access, zap.NewNop())
+}
+
+// newFeatureObserved is newFeature with a log observer, for asserting warnings.
+func newFeatureObserved(t *testing.T, repo contracts.Repository, gw contracts.Gateway, forum contracts.ForumConfig) (*contracts.Feature, *observer.ObservedLogs) {
+	t.Helper()
+	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
+	require.NoError(t, err)
+	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
+	core, logs := observer.New(zapcore.WarnLevel)
+	return contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, nil, zap.New(core)), logs
 }
 
 // fakeAccess grants exactly the keys in its set; everything else is denied. It

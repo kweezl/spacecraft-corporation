@@ -123,6 +123,26 @@ func TestTaskRefresh_MigratesStalePost(t *testing.T) {
 	require.NoError(t, handlerFor(t, f, "contracts.thread.refresh")(context.Background(), payload(t, cid, "", "")))
 }
 
+// When the bot lacks Manage Threads, deleting a commented thread is forbidden
+// (50013): migration can't proceed, the task retries (not permanent), and an
+// actionable hint is logged rather than a bare error code.
+func TestTaskRefresh_MigrateForbiddenLogsHint(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	prog := openProgress(cid, "thread-9")
+	prog.PostVersion = contracts.CurrentPostVersion - 1
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(prog, nil).Once()
+	forbidden := &discordgo.RESTError{Message: &discordgo.APIErrorMessage{Code: discordgo.ErrCodeMissingPermissions}}
+	gw.EXPECT().DeletePost("thread-9").Return(forbidden).Once()
+	// No RecreatePost — the delete was forbidden, so migration can't proceed.
+
+	f, logs := newFeatureObserved(t, repo, gw, mocks.NewMockForumConfig(t))
+	err := handlerFor(t, f, "contracts.thread.refresh")(context.Background(), payload(t, cid, "", ""))
+	require.Error(t, err, "a forbidden delete retries (not permanent)")
+	assert.Equal(t, 1, logs.FilterMessageSnippet("Manage Threads").Len(), "logs an actionable Manage Threads hint")
+}
+
 // On retry after a crash that already deleted the post, the re-delete returns
 // "unknown channel"; migratePost treats that as success and still recreates — so
 // a half-done migration converges rather than getting stuck.
