@@ -105,7 +105,7 @@ func TestBuildIDParseID(t *testing.T) {
 	}{
 		{segView, []string{cid}},
 		{segListPage, []string{"7", "2"}},
-		{segPRel, []string{cid, user}},
+		{segPEdit, []string{cid, user}},
 		{segCBack, nil},
 	}
 	for _, c := range cases {

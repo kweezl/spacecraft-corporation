@@ -59,8 +59,12 @@ func (h *Feature) modalTitle(ctx context.Context, serverID uuid.UUID, key string
 // --- create ---
 
 func (h *Feature) openCreateModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
+	// Custom create captures all up-front fields (name, description, deadline);
+	// items are added afterward from the contract view. The future template path
+	// will instead pick a template and prompt only for the deadline.
 	comps := append([]discordgo.MessageComponent{
 		h.labelInput(ctx, serverID, "contracts.console.lbl_name", inName, discordgo.TextInputShort, "", true, titleMaxLen),
+		h.labelInput(ctx, serverID, "contracts.console.lbl_description", inDesc, discordgo.TextInputParagraph, "", false, descriptionMaxLen),
 	}, h.dhmInputs(ctx, serverID, "", "", "")...)
 	return r.RespondModal(i.Interaction, buildID(segMCreate), h.modalTitle(ctx, serverID, "contracts.console.modal_create_title"), comps)
 }
@@ -81,7 +85,8 @@ func (h *Feature) submitCreate(ctx context.Context, r registry.Responder, i *dis
 	// No AppID/Token: the console navigates to the new contract itself, so the
 	// worker must NOT edit this interaction's response (it would clobber the view).
 	cid, err := h.repo.Create(ctx, CreateInput{
-		ServerID: serverID, Title: title, Deadline: deadline, CreatedByUserID: invokerID(i),
+		ServerID: serverID, Kind: KindCustom, Title: title, Description: strings.TrimSpace(modalTextValue(data, inDesc)),
+		Deadline: deadline, CreatedByUserID: invokerID(i),
 	})
 	if err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
@@ -89,44 +94,9 @@ func (h *Feature) submitCreate(ctx context.Context, r registry.Responder, i *dis
 	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
 }
 
-// --- edit details (name + description) ---
+// --- edit (name + description + deadline; template: deadline only) ---
 
-func (h *Feature) openRenameModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
-	cid, ok := argUUID(parts, 0)
-	if !ok {
-		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
-	}
-	prog, err := h.repo.ProgressByIDScoped(ctx, serverID, cid)
-	if err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
-	comps := []discordgo.MessageComponent{
-		h.labelInput(ctx, serverID, "contracts.console.lbl_name", inName, discordgo.TextInputShort, prog.Title, true, titleMaxLen),
-		h.labelInput(ctx, serverID, "contracts.console.lbl_description", inDesc, discordgo.TextInputParagraph, prog.Description, false, descriptionMaxLen),
-	}
-	return r.RespondModal(i.Interaction, buildID(segMCName, cid.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_edit_title"), comps)
-}
-
-func (h *Feature) submitRename(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
-	cid, ok := argUUID(parts, 0)
-	if !ok {
-		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
-	}
-	data := i.ModalSubmitData()
-	title := normalizeItem(modalTextValue(data, inName))
-	if title == "" {
-		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_name", nil))
-	}
-	desc := strings.TrimSpace(modalTextValue(data, inDesc))
-	if err := h.repo.UpdateDetails(ctx, serverID, cid, title, desc, invokerID(i)); err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
-	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
-}
-
-// --- deadline ---
-
-func (h *Feature) openDeadlineModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+func (h *Feature) openEditModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	cid, ok := argUUID(parts, 0)
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
@@ -140,19 +110,44 @@ func (h *Feature) openDeadlineModal(ctx context.Context, r registry.Responder, i
 		dd, hrs, mins := splitDHM(time.Until(*prog.Deadline))
 		d, hh, m = strconv.Itoa(dd), strconv.Itoa(hrs), strconv.Itoa(mins)
 	}
-	return r.RespondModal(i.Interaction, buildID(segMCDead, cid.String()),
-		h.modalTitle(ctx, serverID, "contracts.console.modal_deadline_title"), h.dhmInputs(ctx, serverID, d, hh, m))
+	// A template contract's items are fixed, so its edit form is the deadline only;
+	// a custom contract edits name + description + deadline in one form.
+	var comps []discordgo.MessageComponent
+	if prog.Kind == KindCustom {
+		comps = append(comps,
+			h.labelInput(ctx, serverID, "contracts.console.lbl_name", inName, discordgo.TextInputShort, prog.Title, true, titleMaxLen),
+			h.labelInput(ctx, serverID, "contracts.console.lbl_description", inDesc, discordgo.TextInputParagraph, prog.Description, false, descriptionMaxLen),
+		)
+	}
+	comps = append(comps, h.dhmInputs(ctx, serverID, d, hh, m)...)
+	return r.RespondModal(i.Interaction, buildID(segMCEdit, cid.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_edit_title"), comps)
 }
 
-func (h *Feature) submitDeadline(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+func (h *Feature) submitEdit(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	cid, ok := argUUID(parts, 0)
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
 	}
-	data := i.ModalSubmitData()
-	deadline, err := parseDHM(modalTextValue(data, inDays), modalTextValue(data, inHours), modalTextValue(data, inMinutes))
+	kind, err := h.repo.KindByID(ctx, serverID, cid)
 	if err != nil {
+		return h.consoleErr(ctx, r, i, serverID, err)
+	}
+	data := i.ModalSubmitData()
+	deadline, derr := parseDHM(modalTextValue(data, inDays), modalTextValue(data, inHours), modalTextValue(data, inMinutes))
+	if derr != nil {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_deadline", nil))
+	}
+	// Custom contracts also rewrite title + description; template contracts have
+	// only a deadline to set.
+	if kind == KindCustom {
+		title := normalizeItem(modalTextValue(data, inName))
+		if title == "" {
+			return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_name", nil))
+		}
+		desc := strings.TrimSpace(modalTextValue(data, inDesc))
+		if err := h.repo.UpdateDetails(ctx, serverID, cid, title, desc, invokerID(i)); err != nil {
+			return h.consoleErr(ctx, r, i, serverID, err)
+		}
 	}
 	if err := h.repo.SetDeadline(ctx, serverID, cid, deadline, invokerID(i)); err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
@@ -195,9 +190,9 @@ func (h *Feature) submitAddItem(ctx context.Context, r registry.Responder, i *di
 	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
 }
 
-// --- item rename ---
+// --- item edit (name + quantity) ---
 
-func (h *Feature) openItemRenameModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+func (h *Feature) openItemEditModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	itemID, ok := argUUID(parts, 0)
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
@@ -206,80 +201,38 @@ func (h *Feature) openItemRenameModal(ctx context.Context, r registry.Responder,
 	if err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
-	current := ""
+	name, qty := "", ""
 	for _, it := range prog.Items {
 		if it.ID == itemID {
-			current = it.Name
+			name, qty = it.Name, strconv.Itoa(it.RequiredQty)
 			break
 		}
 	}
 	comps := []discordgo.MessageComponent{
-		h.labelInput(ctx, serverID, "contracts.console.lbl_item_name", inName, discordgo.TextInputShort, current, true, 100),
+		h.labelInput(ctx, serverID, "contracts.console.lbl_item_name", inName, discordgo.TextInputShort, name, true, 100),
+		h.labelInput(ctx, serverID, "contracts.console.lbl_qty", inQty, discordgo.TextInputShort, qty, true, 12),
 	}
-	return r.RespondModal(i.Interaction, buildID(segMIName, itemID.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_item_rename_title"), comps)
+	return r.RespondModal(i.Interaction, buildID(segMIEdit, itemID.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_item_edit_title"), comps)
 }
 
-func (h *Feature) submitItemRename(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+func (h *Feature) submitItemEdit(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	itemID, ok := argUUID(parts, 0)
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
 	}
-	name := normalizeItem(modalTextValue(i.ModalSubmitData(), inName))
-	if name == "" {
-		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_name", nil))
+	data := i.ModalSubmitData()
+	name := normalizeItem(modalTextValue(data, inName))
+	qty, qerr := parseQty(modalTextValue(data, inQty))
+	if name == "" || qerr != nil {
+		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_item", nil))
 	}
-	if _, err := h.repo.UpdateItemName(ctx, serverID, itemID, name, invokerID(i)); err != nil {
+	if _, err := h.repo.UpdateItem(ctx, serverID, itemID, name, qty, invokerID(i)); err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
 	return h.renderItemView(ctx, r, i, serverID, itemID, 0, true)
 }
 
-// --- release (participant) ---
-
-func (h *Feature) openReleaseModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
-	itemID, ok := argUUID(parts, 0)
-	if !ok || len(parts) < 2 {
-		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
-	}
-	userID := parts[1]
-	prog, err := h.repo.ProgressByItemScoped(ctx, serverID, itemID)
-	if err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
-	prefill := ""
-	for _, it := range prog.Items {
-		if it.ID != itemID {
-			continue
-		}
-		for _, p := range it.Participants {
-			if p.UserID == userID && p.Outstanding() > 0 {
-				prefill = strconv.Itoa(p.Outstanding())
-			}
-		}
-	}
-	comps := []discordgo.MessageComponent{
-		h.labelInput(ctx, serverID, "contracts.console.lbl_qty", inQty, discordgo.TextInputShort, prefill, true, 12),
-	}
-	return r.RespondModal(i.Interaction, buildID(segMPRel, itemID.String(), userID), h.modalTitle(ctx, serverID, "contracts.console.modal_release_title"), comps)
-}
-
-func (h *Feature) submitRelease(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
-	itemID, ok := argUUID(parts, 0)
-	if !ok || len(parts) < 2 {
-		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
-	}
-	userID := parts[1]
-	qty, qerr := parseQty(modalTextValue(i.ModalSubmitData(), inQty))
-	if qerr != nil {
-		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_qty", nil))
-	}
-	if _, err := h.repo.ReleaseByItem(ctx, serverID, itemID, userID, qty, invokerID(i)); err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
-	return h.renderItemView(ctx, r, i, serverID, itemID, 0, true)
-}
-
-// --- destructive confirmations (cancel / remove item / remove participant) ---
+// --- destructive confirmations (cancel contract / remove item) ---
 
 // confirmInput is the single confirmation field shared by the destructive modals:
 // the member must type the confirm word.
@@ -349,28 +302,4 @@ func (h *Feature) submitRemoveItem(ctx context.Context, r registry.Responder, i 
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
 	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
-}
-
-func (h *Feature) openRemoveParticipantModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
-	itemID, ok := argUUID(parts, 0)
-	if !ok || len(parts) < 2 {
-		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
-	}
-	return r.RespondModal(i.Interaction, buildID(segMPRem, itemID.String(), parts[1]),
-		h.modalTitle(ctx, serverID, "contracts.console.modal_remove_participant_title"),
-		[]discordgo.MessageComponent{h.confirmInput(ctx, serverID)})
-}
-
-func (h *Feature) submitRemoveParticipant(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
-	itemID, ok := argUUID(parts, 0)
-	if !ok || len(parts) < 2 {
-		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
-	}
-	if !h.confirmed(ctx, serverID, i.ModalSubmitData()) {
-		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.confirm_mismatch", nil))
-	}
-	if _, err := h.repo.RemoveReservation(ctx, serverID, itemID, parts[1], invokerID(i)); err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
-	return h.renderItemView(ctx, r, i, serverID, itemID, 0, true)
 }

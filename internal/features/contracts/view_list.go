@@ -9,11 +9,12 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 )
 
-// renderListView renders (or updates) the console list as a Components V2
-// message: a Container in which each contract is a Section (its details plus an
-// "Open" accessory button on the same row), followed by a status-filter
-// multi-select and a [Prev][Next][Create] row. Cancel lives inside the opened
-// contract view, not here.
+// renderListView renders (or updates) the console list as a single Components V2
+// Container (one consistent "card"): a title, the status-filter multi-select, then
+// each contract as a Section (its details plus an "Open" accessory button on the
+// same row), and a trailing [Back][Prev][Next] row — all inside the container so
+// the controls share its background. Creation lives on the dashboard (the Back
+// button), Cancel inside the opened contract view.
 func (h *Feature) renderListView(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, mask, page int, update bool) error {
 	entries, total, err := h.repo.List(ctx, serverID, statusesFromMask(mask), consolePageSize, page*consolePageSize)
 	if err != nil {
@@ -26,9 +27,10 @@ func (h *Feature) renderListView(ctx context.Context, r registry.Responder, i *d
 
 	inner := []discordgo.MessageComponent{
 		discordgo.TextDisplay{Content: "## " + h.loc.Render(ctx, serverID, "contracts.console.list_title", nil)},
+		h.filterRow(ctx, serverID, mask),
 	}
 	if total == 0 {
-		inner = append(inner, discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.console.list_empty", nil)})
+		inner = append(inner, divider(), discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.console.list_empty", nil)})
 	} else {
 		for _, e := range entries {
 			inner = append(inner, divider(), h.contractSection(ctx, serverID, e))
@@ -36,12 +38,9 @@ func (h *Feature) renderListView(ctx context.Context, r registry.Responder, i *d
 		inner = append(inner, divider(), discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.console.list_footer",
 			map[string]any{"Page": page + 1, "Pages": totalPages, "Total": total})})
 	}
+	inner = append(inner, divider(), h.listNavRow(ctx, serverID, mask, page, totalPages))
 
-	components := []discordgo.MessageComponent{
-		discordgo.Container{Components: inner},
-		h.filterRow(ctx, serverID, mask),
-		h.listNavRow(ctx, serverID, mask, page, totalPages),
-	}
+	components := []discordgo.MessageComponent{discordgo.Container{Components: inner}}
 	return h.respondView(i, r, components, update)
 }
 
@@ -95,9 +94,16 @@ func (h *Feature) filterRow(ctx context.Context, serverID uuid.UUID, mask int) d
 	}}}
 }
 
-// listNavRow is the prev/next (only when paged) + create row.
+// listNavRow is the back-to-dashboard button followed by prev/next (only when
+// paged).
 func (h *Feature) listNavRow(ctx context.Context, serverID uuid.UUID, mask, page, totalPages int) discordgo.MessageComponent {
-	var btns []discordgo.MessageComponent
+	btns := []discordgo.MessageComponent{
+		discordgo.Button{
+			Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_back", nil),
+			Style:    discordgo.SecondaryButton,
+			CustomID: buildID(segHome),
+		},
+	}
 	if totalPages > 1 {
 		btns = append(btns,
 			discordgo.Button{
@@ -113,11 +119,6 @@ func (h *Feature) listNavRow(ctx context.Context, serverID uuid.UUID, mask, page
 				Disabled: page >= totalPages-1,
 			})
 	}
-	btns = append(btns, discordgo.Button{
-		Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_create", nil),
-		Style:    discordgo.SuccessButton,
-		CustomID: buildID(segCreate),
-	})
 	return discordgo.ActionsRow{Components: btns}
 }
 

@@ -190,23 +190,55 @@ func (s *contractsSuite) TestRelease_FloorAtDelivered() {
 
 // --- console (id-keyed) repository methods ---
 
-func (s *contractsSuite) TestReleaseByItem_ByOfficer() {
+func (s *contractsSuite) TestDeliverByItem_BoundsAndCompletion() {
 	t := s.T()
 	repo, ctx, g := s.seed()
 	s.newContract(ctx, g, thread)
 	require.NoError(t, s.addItem(ctx, g, thread, "Steel", 100, 25, mgr))
 	require.NoError(t, repo.Participate(ctx, g, thread, "Steel", u1, 100))
-	require.ErrorIs(t, repo.Participate(ctx, g, thread, "Steel", u2, 1), ErrOverCap)
-
 	itemID := s.itemID(ctx, g, thread, "Steel")
-	cid, err := repo.ReleaseByItem(ctx, g, itemID, u1, 100, mgr)
+
+	// Can't deliver more than reserved-minus-delivered.
+	_, _, err := repo.DeliverByItem(ctx, g, itemID, u1, 101, mgr)
+	require.ErrorIs(t, err, ErrOverReserved)
+
+	// Delivering the full requirement of the only item completes the contract.
+	cid, complete, err := repo.DeliverByItem(ctx, g, itemID, u1, 100, mgr)
 	require.NoError(t, err)
 	assert.NotEqual(t, uuid.Nil, cid)
-
-	out, err := repo.MemberOutstanding(ctx, g, thread, u1)
+	assert.True(t, complete)
+	p, err := repo.ProgressByIDScoped(ctx, g, cid)
 	require.NoError(t, err)
-	assert.Empty(t, out)
-	require.NoError(t, repo.Participate(ctx, g, thread, "Steel", u2, 100))
+	assert.Equal(t, StatusCompleted, p.Status)
+}
+
+func (s *contractsSuite) TestSetReservationByItem_FloorAndCap() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	s.newContract(ctx, g, thread)
+	require.NoError(t, s.addItem(ctx, g, thread, "Steel", 100, 25, mgr))
+	require.NoError(t, repo.Participate(ctx, g, thread, "Steel", u1, 40))
+	_, err := repo.Deliver(ctx, g, thread, "Steel", u1, 10)
+	require.NoError(t, err)
+	itemID := s.itemID(ctx, g, thread, "Steel")
+
+	// Raise within the item's capacity.
+	_, err = repo.SetReservationByItem(ctx, g, itemID, u1, 80, mgr)
+	require.NoError(t, err)
+	assert.Equal(t, 80, s.byName(ctx, g, thread, "Steel").ReservedQty)
+
+	// Can't drop below what's already delivered, nor exceed capacity.
+	_, err = repo.SetReservationByItem(ctx, g, itemID, u1, 5, mgr)
+	require.ErrorIs(t, err, ErrBelowDelivered)
+	_, err = repo.SetReservationByItem(ctx, g, itemID, u1, 120, mgr)
+	require.ErrorIs(t, err, ErrOverCap)
+
+	// Setting to the delivered amount keeps the delivered, drops the rest.
+	_, err = repo.SetReservationByItem(ctx, g, itemID, u1, 10, mgr)
+	require.NoError(t, err)
+	it := s.byName(ctx, g, thread, "Steel")
+	assert.Equal(t, 10, it.ReservedQty)
+	assert.Equal(t, 10, it.DeliveredQty)
 }
 
 func (s *contractsSuite) TestRemoveReservation() {
@@ -249,7 +281,7 @@ func (s *contractsSuite) TestRemoveItemByID_CascadesReservations() {
 	assert.Empty(t, p.Items)
 }
 
-func (s *contractsSuite) TestUpdateItemName_Collision() {
+func (s *contractsSuite) TestUpdateItem_NameQtyCollisionAndReserved() {
 	t := s.T()
 	repo, ctx, g := s.seed()
 	s.newContract(ctx, g, thread)
@@ -257,11 +289,19 @@ func (s *contractsSuite) TestUpdateItemName_Collision() {
 	require.NoError(t, s.addItem(ctx, g, thread, "Iron", 100, 25, mgr))
 
 	steel := s.itemID(ctx, g, thread, "Steel")
-	_, err := repo.UpdateItemName(ctx, g, steel, "iron", mgr)
+	// A colliding name is rejected.
+	_, err := repo.UpdateItem(ctx, g, steel, "iron", 100, mgr)
 	require.ErrorIs(t, err, ErrItemExists)
-	_, err = repo.UpdateItemName(ctx, g, steel, "Titanium", mgr)
+	// Rename + re-quantify together.
+	_, err = repo.UpdateItem(ctx, g, steel, "Titanium", 250, mgr)
 	require.NoError(t, err)
-	assert.Equal(t, "Titanium", s.byName(ctx, g, thread, "Titanium").Name)
+	ti := s.byName(ctx, g, thread, "Titanium")
+	assert.Equal(t, "Titanium", ti.Name)
+	assert.Equal(t, 250, ti.RequiredQty)
+	// A quantity below what is already reserved is refused.
+	require.NoError(t, repo.Participate(ctx, g, thread, "Titanium", u1, 80))
+	_, err = repo.UpdateItem(ctx, g, steel, "Titanium", 50, mgr)
+	require.ErrorIs(t, err, ErrQtyBelowReserved)
 }
 
 func (s *contractsSuite) byName(ctx context.Context, g uuid.UUID, threadID, name string) Item {
@@ -358,7 +398,7 @@ func (s *contractsSuite) TestNoDeadline_NotExpired() {
 	t := s.T()
 	_, ctx, g := s.seed()
 	// Create with no deadline; console mutations are allowed (never "expired").
-	id, err := s.repo.Create(ctx, CreateInput{ServerID: g, Title: "Endless", CreatedByUserID: mgr})
+	id, err := s.repo.Create(ctx, CreateInput{ServerID: g, Kind: KindCustom, Title: "Endless", CreatedByUserID: mgr})
 	require.NoError(t, err)
 	require.NoError(t, s.repo.SetThreadID(ctx, id, thread))
 	require.NoError(t, s.addItem(ctx, g, thread, "Steel", 1, 25, mgr))
@@ -410,7 +450,7 @@ func (s *contractsSuite) TestList_MultiStatusAndCounts() {
 	s.newContract(ctx, g, "t-x")
 	require.NoError(t, s.cancel(ctx, g, "t-x", mgr))
 	// A deadline-less contract sorts last but is still listed.
-	endless, err := repo.Create(ctx, CreateInput{ServerID: g, Title: "Endless", CreatedByUserID: mgr})
+	endless, err := repo.Create(ctx, CreateInput{ServerID: g, Kind: KindCustom, Title: "Endless", CreatedByUserID: mgr})
 	require.NoError(t, err)
 	require.NoError(t, repo.SetThreadID(ctx, endless, "t-endless"))
 
@@ -442,6 +482,32 @@ func (s *contractsSuite) TestList_MultiStatusAndCounts() {
 	assert.Equal(t, 40, ta.TotalReserved)
 	assert.Equal(t, 25, ta.TotalDelivered)
 	assert.Equal(t, 100, ta.TotalRequired)
+}
+
+func (s *contractsSuite) TestCounts_ByLifecycleState() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+
+	// Two published open contracts (a thread → active).
+	s.newContract(ctx, g, "t-a")
+	s.newContract(ctx, g, "t-b")
+	// One open contract with no thread yet (the worker hasn't posted it) → unpublished.
+	_, err := repo.Create(ctx, CreateInput{ServerID: g, Kind: KindCustom, Title: "Pending", CreatedByUserID: mgr})
+	require.NoError(t, err)
+	// One cancelled (declined).
+	s.newContract(ctx, g, "t-x")
+	require.NoError(t, s.cancel(ctx, g, "t-x", mgr))
+	// One driven to completion (finished) by delivering everything required.
+	s.newContract(ctx, g, "t-done")
+	require.NoError(t, s.addItem(ctx, g, "t-done", "Steel", 10, 25, mgr))
+	require.NoError(t, repo.Participate(ctx, g, "t-done", "Steel", u1, 10))
+	complete, err := repo.Deliver(ctx, g, "t-done", "Steel", u1, 10)
+	require.NoError(t, err)
+	require.True(t, complete)
+
+	c, err := repo.Counts(ctx, g)
+	require.NoError(t, err)
+	assert.Equal(t, Counts{Active: 2, Unpublished: 1, Completed: 1, Cancelled: 1}, c)
 }
 
 func (s *contractsSuite) TestServerIsolation() {

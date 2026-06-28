@@ -63,6 +63,21 @@ const (
 	StatusCancelled Status = "cancelled"
 )
 
+// Kind is how a contract was authored, which governs its allowed console actions
+// and the permission key that gates them. A KindCustom contract was filled in
+// field-by-field and allows the full action set (under the custom permission); a
+// KindTemplate contract was instantiated from a server template and allows only
+// deadline changes and cancellation (under the template permission) — its items
+// are fixed.
+type Kind string
+
+// Contract kinds. KindCustom is the only kind today (template creation is WIP);
+// every pre-templates row is backfilled to it.
+const (
+	KindCustom   Kind = "custom"
+	KindTemplate Kind = "template"
+)
+
 // Outbox task kinds (registered with the outbox worker). Every Discord REST side
 // effect is enqueued under one of these in the same transaction as the domain
 // write, then performed asynchronously by the worker.
@@ -110,6 +125,9 @@ var (
 	ErrBelowDelivered = errors.New("contracts: release below delivered")
 	// ErrBadDuration: the duration string could not be parsed.
 	ErrBadDuration = errors.New("contracts: bad duration")
+	// ErrQtyBelowReserved: an item's new required quantity is below what members
+	// have already reserved on it.
+	ErrQtyBelowReserved = errors.New("contracts: required below reserved")
 )
 
 // Contract is one supply contract.
@@ -120,6 +138,9 @@ type Contract struct {
 	Title       string
 	Description string
 	Status      Status
+	// Kind is whether the contract is custom or template (defaults to custom for
+	// every pre-templates row via the backfill migration).
+	Kind Kind
 	// Deadline is when the contract auto-expires, or nil for a deadline-less
 	// contract (never auto-expires, never gets a closing-soon notice).
 	Deadline        *time.Time
@@ -207,12 +228,27 @@ type ListEntry struct {
 	ParticipantCount int
 }
 
+// Counts is a server's contract tally by lifecycle state, for the console
+// dashboard. Unpublished and Active are both open contracts, partitioned by
+// whether their forum thread exists yet: an Unpublished one has not been posted
+// (often because a Discord access error blocked the create-thread task — tap
+// Republish to retry), an Active one is live in the forum. Completed and
+// Cancelled are terminal ("finished" / "declined").
+type Counts struct {
+	Unpublished int
+	Active      int
+	Completed   int
+	Cancelled   int
+}
+
 // CreateInput is a new contract to persist (no thread or items yet). AppID/Token
 // are the invoking interaction's identifiers, stored on the create-thread task so
 // the worker can edit the original reply with the result; they are opaque to the
 // repository.
 type CreateInput struct {
-	ServerID    uuid.UUID
+	ServerID uuid.UUID
+	// Kind is the contract kind to persist (custom or template).
+	Kind        Kind
 	Title       string
 	Description string
 	// Deadline is the contract's expiry, or nil for a deadline-less contract.
@@ -277,9 +313,11 @@ type Repository interface {
 	// RemoveItemByID deletes an item (resolved by id) and cascades its
 	// reservations, returning the parent contract id and how many were cleared.
 	RemoveItemByID(ctx context.Context, serverID, itemID uuid.UUID, actor string) (cid uuid.UUID, cleared int, err error)
-	// UpdateItemName renames an item (resolved by id), enforcing case-insensitive
-	// uniqueness within the contract; returns the parent contract id.
-	UpdateItemName(ctx context.Context, serverID, itemID uuid.UUID, newName, actor string) (cid uuid.UUID, err error)
+	// UpdateItem renames an item (resolved by id) and sets its required quantity,
+	// enforcing case-insensitive name uniqueness within the contract; the new
+	// quantity must be at least what is already reserved (else ErrQtyBelowReserved).
+	// Returns the parent contract id.
+	UpdateItem(ctx context.Context, serverID, itemID uuid.UUID, newName string, newQty int, actor string) (cid uuid.UUID, err error)
 
 	// UpdateDetails edits an open contract's title and description (console).
 	UpdateDetails(ctx context.Context, serverID, contractID uuid.UUID, title, description, actor string) error
@@ -299,9 +337,18 @@ type Repository interface {
 	// Release reduces a member's reservation by qty, floored at what they already
 	// delivered, resolved by thread + item name (public panel, self-scoped).
 	Release(ctx context.Context, serverID uuid.UUID, threadID, itemName, targetUserID string, qty int, actor string) error
-	// ReleaseByItem is Release keyed by item id + target user (the console officer
-	// release); returns the parent contract id.
-	ReleaseByItem(ctx context.Context, serverID, itemID uuid.UUID, targetUserID string, qty int, actor string) (cid uuid.UUID, err error)
+	// DeliverByItem records qty delivered by a participant on an item (officer,
+	// keyed by item id + target user), bounded by their outstanding
+	// (reserved−delivered); it flips the contract to completed in the same
+	// transaction when every item is fully delivered. Returns the parent contract
+	// id and whether it is now complete.
+	DeliverByItem(ctx context.Context, serverID, itemID uuid.UUID, targetUserID string, qty int, actor string) (cid uuid.UUID, complete bool, err error)
+	// SetReservationByItem sets a participant's reservation on an item (officer) to
+	// an absolute quantity, floored at what they have already delivered
+	// (ErrBelowDelivered) and capped at the item's remaining capacity (ErrOverCap);
+	// a value that leaves the row 0 reserved / 0 delivered deletes it. Returns the
+	// parent contract id.
+	SetReservationByItem(ctx context.Context, serverID, itemID uuid.UUID, targetUserID string, newReserved int, actor string) (cid uuid.UUID, err error)
 	// RemoveReservation hard-deletes a participant's reservation on an item
 	// (reserved + delivered both gone); returns the parent contract id (console).
 	RemoveReservation(ctx context.Context, serverID, itemID uuid.UUID, targetUserID, actor string) (cid uuid.UUID, err error)
@@ -313,6 +360,19 @@ type Repository interface {
 	// List returns one page of a server's contracts filtered to a set of statuses
 	// (empty = open), plus the total match count.
 	List(ctx context.Context, serverID uuid.UUID, statuses []Status, limit, offset int) (page []ListEntry, total int, err error)
+
+	// Counts tallies a server's contracts by lifecycle state for the console
+	// dashboard (open split into unpublished/active by forum-thread presence).
+	Counts(ctx context.Context, serverID uuid.UUID) (Counts, error)
+
+	// KindByID returns a contract's kind, scoped to the server (the console gate
+	// resolves which permission a contract-keyed mutation needs). A forged or
+	// cross-server id yields ErrNotFound.
+	KindByID(ctx context.Context, serverID, contractID uuid.UUID) (Kind, error)
+	// KindByItem returns the kind of the contract owning an item, scoped to the
+	// server (the gate for item-keyed mutations). A forged/cross-server item
+	// yields ErrNotFound.
+	KindByItem(ctx context.Context, serverID, itemID uuid.UUID) (Kind, error)
 
 	// DueContracts returns the ids of open contracts whose deadline is at or
 	// before now, across all servers (for the global sweeper, which only needs the
@@ -342,9 +402,13 @@ type Repository interface {
 // by session.Live (split out from the session Manager so the contracts wiring,
 // which the registry depends on, doesn't form a dependency cycle through it).
 type Gateway interface {
-	CreateForumPost(channelID, name string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) (threadID string, err error)
-	EditPost(threadID string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error
-	ClosePost(threadID string, embed *discordgo.MessageEmbed) error
+	// CreateForumPost opens a forum thread whose starter message is a Components V2
+	// card (no embed); components is the single Container built by postComponents.
+	CreateForumPost(channelID, name string, components []discordgo.MessageComponent) (threadID string, err error)
+	// EditPost replaces the starter message's Components V2 card in place.
+	EditPost(threadID string, components []discordgo.MessageComponent) error
+	// ClosePost writes the final card (no action buttons) then archives + locks.
+	ClosePost(threadID string, components []discordgo.MessageComponent) error
 	// CommentPost posts a plain message in the contract thread, mentioning
 	// mentionUserIDs (passed through AllowedMentions so they actually ping). Used
 	// for the pre-expiry "closing soon" notice.

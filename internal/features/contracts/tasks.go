@@ -64,8 +64,7 @@ func (h *Feature) taskCreateThread(ctx context.Context, t outbox.Task) error {
 		return outbox.Permanent(errors.New("contracts: no forum configured"))
 	}
 
-	embed := h.renderEmbed(ctx, prog.ServerID, prog)
-	threadID, err := h.gw.CreateForumPost(forumCh, truncate(prog.Title, 100), embed, h.panelComponents(ctx, prog.ServerID))
+	threadID, err := h.gw.CreateForumPost(forumCh, truncate(prog.Title, 100), h.postComponents(ctx, prog.ServerID, prog, true))
 	if err != nil {
 		if isPermanentDiscordError(err) {
 			h.notify(ctx, p, prog.ServerID, "contracts.create.failed_perms", nil)
@@ -103,10 +102,11 @@ func (h *Feature) taskRefresh(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" || prog.Status != StatusOpen {
 		return nil
 	}
-	err = h.gw.EditPost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog), h.panelComponents(ctx, prog.ServerID))
-	if isDeletedPost(err) {
-		// The forum post was deleted out from under us — recreate it (the retry
-		// fix): drop the stale thread id and re-enqueue a create.
+	err = h.gw.EditPost(prog.ThreadID, h.postComponents(ctx, prog.ServerID, prog, true))
+	if isDeletedPost(err) || isFormatRejected(err) {
+		// The forum post was deleted out from under us, or it predates the
+		// Components V2 migration and can't be edited into V2 (the flag is immutable)
+		// — recreate it: drop the stale thread id and re-enqueue a create.
 		return h.recreatePost(ctx, p.ContractID)
 	}
 	return permanentIfDiscord(err)
@@ -138,9 +138,13 @@ func (h *Feature) taskClose(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" {
 		return nil
 	}
-	err = h.gw.ClosePost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog))
+	err = h.gw.ClosePost(prog.ThreadID, h.postComponents(ctx, prog.ServerID, prog, false))
 	if isDeletedPost(err) {
 		return nil // the post is already gone — nothing left to close
+	}
+	if isFormatRejected(err) {
+		// A pre-V2 post can't be edited into V2; recreate it as the final card.
+		return h.recreatePost(ctx, p.ContractID)
 	}
 	return permanentIfDiscord(err)
 }
@@ -255,6 +259,15 @@ func isDeletedPost(err error) bool {
 	var re *discordgo.RESTError
 	return errors.As(err, &re) && re.Message != nil &&
 		(re.Message.Code == discordgo.ErrCodeUnknownMessage || re.Message.Code == discordgo.ErrCodeUnknownChannel)
+}
+
+// isFormatRejected reports a Discord "invalid form body" (50035), which an edit
+// hits when the target message predates the Components V2 migration: the
+// IsComponentsV2 flag is fixed at creation and can't be added on edit. Callers
+// recover by recreating the post as a V2 card rather than abandoning the task.
+func isFormatRejected(err error) bool {
+	var re *discordgo.RESTError
+	return errors.As(err, &re) && re.Message != nil && re.Message.Code == discordgo.ErrCodeInvalidFormBody
 }
 
 // permanentIfDiscord marks a permanent Discord error so the worker abandons the

@@ -13,7 +13,7 @@ import (
 // expiry/notice scans.
 func (s *contractsSuite) newContractDeadline(ctx context.Context, g uuid.UUID, threadID string, deadline time.Time) uuid.UUID {
 	id, err := s.repo.Create(ctx, CreateInput{
-		ServerID: g, Title: "Steel Run", Deadline: ptrTime(deadline), CreatedByUserID: mgr,
+		ServerID: g, Kind: KindCustom, Title: "Steel Run", Deadline: ptrTime(deadline), CreatedByUserID: mgr,
 	})
 	require.NoError(s.T(), err)
 	require.NoError(s.T(), s.repo.SetThreadID(ctx, id, threadID))

@@ -283,6 +283,22 @@ func TestPanel_Opens(t *testing.T) {
 	assert.Empty(t, selects["permissions:set:0:permissions"].DefaultValues)
 }
 
+// TestPanel_LocalizesDescriptions renders a prose description for a key that has
+// one (contracts.custom) and falls back to the bare command path for one that
+// doesn't (ping).
+func TestPanel_LocalizesDescriptions(t *testing.T) {
+	repo := mocks.NewMockRepository(t)
+	repo.EXPECT().List(mock.Anything, g1).Return(nil, nil).Maybe()
+
+	resp := &fakeResponder{}
+	cmd := permissions.NewPanelCommand(newStore(t, repo), testLoc(t), []string{"contracts.custom", "ping"})
+	require.NoError(t, cmd.Handler(context.Background(), resp, cmdInteraction(), g1))
+
+	text := textOf(resp.components)
+	assert.Contains(t, text, "Create & edit custom contracts", "a key with a description shows localized prose")
+	assert.Contains(t, text, "`/ping`", "a key without one falls back to its command path")
+}
+
 // TestPanel_SetRoles applies a role-picker change to the named command and
 // re-renders the panel in place.
 func TestPanel_SetRoles(t *testing.T) {

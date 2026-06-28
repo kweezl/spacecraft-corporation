@@ -3,50 +3,63 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"time"
 	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
 )
 
-// renderEmbed builds the contract's progress embed — the starter message of its
-// forum thread, re-rendered after every change. Open contracts show their
+// postItemsMax bounds how many item blocks the forum-post card renders; the rest
+// collapse into a localized "+N more". It keeps the message within Discord's
+// Components V2 component cap (and matches the old embed's effective 25-field
+// ceiling). Contracts cap their items at BASES-style limits well under this.
+const postItemsMax = 25
+
+// postComponents builds the contract's progress card — the Components V2 starter
+// message of its forum thread, re-rendered after every change as a single
+// Container: a header (title + status + description), one text block per item, a
+// "last updated" line, and (for open contracts) the reserve/deliver/release
+// action row, all sharing the card's background. Open contracts show their
 // deadline as Discord timestamp markdown (absolute date + live relative
-// countdown, kept current client-side); closed ones show their end state.
-func (h *Feature) renderEmbed(ctx context.Context, serverID uuid.UUID, p Progress) *discordgo.MessageEmbed {
-	desc := ""
+// countdown, kept current client-side); closed ones show their end state and drop
+// the buttons.
+func (h *Feature) postComponents(ctx context.Context, serverID uuid.UUID, p Progress, withButtons bool) []discordgo.MessageComponent {
+	header := "## " + h.loc.Render(ctx, serverID, "contracts.embed.title", map[string]any{"Title": p.Title}) +
+		"\n" + h.statusLine(ctx, serverID, p)
 	if p.Description != "" {
-		desc = p.Description + "\n\n"
+		header += "\n\n" + p.Description
 	}
-	desc += h.statusLine(ctx, serverID, p)
+	inner := []discordgo.MessageComponent{discordgo.TextDisplay{Content: truncate(header, embedDescMax)}}
 
-	fields := make([]*discordgo.MessageEmbedField, 0, len(p.Items))
-	for _, it := range p.Items {
-		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:   truncate(it.Name, 256),
-			Value:  h.itemFieldValue(ctx, serverID, it),
-			Inline: false,
-		})
-	}
-	if len(fields) == 0 {
-		desc += "\n\n" + h.loc.Render(ctx, serverID, "contracts.embed.no_items", nil)
+	if len(p.Items) == 0 {
+		inner = append(inner, divider(), discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.embed.no_items", nil)})
+	} else {
+		inner = append(inner, divider())
+		shown, overflow := p.Items, 0
+		if len(shown) > postItemsMax {
+			overflow = len(shown) - postItemsMax
+			shown = shown[:postItemsMax]
+		}
+		for _, it := range shown {
+			block := "**" + truncate(it.Name, embedTitleMax) + "**\n" + h.itemFieldValue(ctx, serverID, it)
+			inner = append(inner, discordgo.TextDisplay{Content: truncate(block, embedDescMax)})
+		}
+		if overflow > 0 {
+			inner = append(inner, discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.embed.items_more", map[string]any{"Count": overflow})})
+		}
 	}
 
-	// Defensive clamp to Discord's embed limits, so a long title/description can
-	// never make the forum-post create/edit fail with an opaque REST error (input
-	// is already capped via the option MaxLength; this guards every other path).
-	return &discordgo.MessageEmbed{
-		Title:       truncate(h.loc.Render(ctx, serverID, "contracts.embed.title", map[string]any{"Title": p.Title}), embedTitleMax),
-		Description: truncate(desc, embedDescMax),
-		Fields:      fields,
-		// Native "last updated" stamp: Discord renders it in the footer, localized
-		// to each viewer's own timezone. Sourced from last_refreshed_at, which every
-		// mutation advances — so it reflects when the contract was last changed
-		// (RFC3339 carries the configured-zone offset asLocal stamped on the value).
-		Timestamp: p.LastRefreshedAt.Format(time.RFC3339),
-		Footer:    &discordgo.MessageEmbedFooter{Text: h.loc.Render(ctx, serverID, "contracts.embed.updated_footer", nil)},
+	// "Last updated" as Discord timestamp markdown: <t:…:R> renders the relative
+	// time in each viewer's own timezone and stays current client-side, replacing
+	// the embed's native footer timestamp.
+	footer := h.loc.Render(ctx, serverID, "contracts.embed.updated_footer", nil) + " " + fmt.Sprintf("<t:%d:R>", p.LastRefreshedAt.Unix())
+	inner = append(inner, divider(), discordgo.TextDisplay{Content: footer})
+
+	if withButtons {
+		inner = append(inner, divider())
+		inner = append(inner, h.panelComponents(ctx, serverID)...)
 	}
+	return []discordgo.MessageComponent{discordgo.Container{Components: inner}}
 }
 
 // Discord embed field limits.

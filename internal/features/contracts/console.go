@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
-	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 )
 
 // The /contracts console is a single ephemeral, in-place control that navigates
@@ -28,17 +27,20 @@ import (
 //
 // CustomID grammar (namespace "contract:", routed to handleComponent):
 //
+//	contract:home                     open the dashboard (stats + new/list buttons)
+//	contract:golist                   dashboard → list view (default filter)
+//	contract:tmpl                     new-from-template (WIP placeholder)
 //	contract:cfilter                  list status filter (multi-select)
 //	contract:list:<mask>:<page>       list prev/next
 //	contract:view:<cid>               open a contract
 //	contract:cancel:<cid>             cancel a contract (→ confirm modal)
-//	contract:create                   create a contract (→ modal)
-//	contract:cname|cdead|cadd|crepub:<cid>  contract-view actions
+//	contract:create                   create a custom contract (→ modal)
+//	contract:cedit|cadd|crepub|cancel:<cid>  contract-view actions
 //	contract:cback                    back to list
-//	contract:irow|idel|iname:<itemid> item actions
+//	contract:irow|idel|iedit:<itemid> item actions
 //	contract:ipage:<cid>:<page>       item-row pagination
 //	contract:iback:<cid>              item view → contract view
-//	contract:prel|prem:<itemid>:<userid>  participant release/remove
+//	contract:pedit:<itemid>:<userid>  participant manage (→ modal: action + qty)
 //	contract:ppage:<itemid>:<page>    participant pagination
 //
 // Modal submits reuse the prefix with an "m_"-prefixed segment carrying the same
@@ -58,36 +60,35 @@ const (
 
 // Console component segments.
 const (
+	segHome     = "home"
+	segList     = "golist"
+	segTemplate = "tmpl"
 	segFilter   = "cfilter"
 	segListPage = "list"
 	segView     = "view"
 	segCancel   = "cancel"
 	segCreate   = "create"
-	segCName    = "cname"
-	segCDead    = "cdead"
+	segCEdit    = "cedit" // contract edit (name + description + deadline; template: deadline only)
 	segCAdd     = "cadd"
 	segRepub    = "crepub"
 	segCBack    = "cback"
 	segIRow     = "irow"
 	segIDel     = "idel"
 	segIPage    = "ipage"
-	segIName    = "iname"
+	segIEdit    = "iedit" // item edit (name + quantity)
 	segIBack    = "iback"
-	segPRel     = "prel"
-	segPRem     = "prem"
+	segPEdit    = "pedit" // participant manage (modal: action + quantity)
 	segPPage    = "ppage"
 )
 
 // Console modal-submit segments (carry the same ids as the opening button).
 const (
 	segMCreate = "m_create"
-	segMCName  = "m_cname"
-	segMCDead  = "m_cdead"
+	segMCEdit  = "m_cedit"
 	segMCAdd   = "m_cadd"
 	segMIDel   = "m_idel"
-	segMIName  = "m_iname"
-	segMPRel   = "m_prel"
-	segMPRem   = "m_prem"
+	segMIEdit  = "m_iedit"
+	segMPEdit  = "m_pedit"
 	segMCancel = "m_cancel"
 )
 
@@ -191,9 +192,11 @@ func argInt(parts []string, idx int) int {
 	return n
 }
 
-// Command builds the /contracts console command: a single DefaultDeny command
-// (admins bypass; one "contracts" grant unlocks the whole console). It also
-// declares the public panel's grantable key so /permissions can grant it.
+// Command builds the /contracts console command. Who may run it (and thus open
+// and view the console) is governed by Discord's native command permissions
+// (DiscordManaged) — not a bot grant. What a member may then CREATE or EDIT is
+// gated by the per-kind/republish keys (gateMutation). It also declares the
+// public reserve/deliver panel's key so /permissions can grant it.
 func (h *Feature) Command() *registry.Command {
 	return &registry.Command{
 		Def: &discordgo.ApplicationCommand{
@@ -201,8 +204,8 @@ func (h *Feature) Command() *registry.Command {
 			Description: "Manage corporation supply contracts",
 		},
 		Handler:         h.handleConsole,
-		DefaultDeny:     true,
-		ExtraAccessKeys: []string{panelAccessKey},
+		DiscordManaged:  true,
+		ExtraAccessKeys: []string{panelAccessKey, keyCustom, keyTemplate, keyRepublish, keyManage},
 	}
 }
 
@@ -212,14 +215,18 @@ func (h *Feature) Component() *registry.Component {
 	return &registry.Component{Prefix: componentPrefix, Handler: h.handleComponent}
 }
 
-// handleConsole opens the console at the list view (default active filter). The
-// command dispatch was already access-gated by the registry (DefaultDeny).
+// handleConsole opens the console at the dashboard (stats + new/list buttons).
+// Who can run /contracts is governed by Discord (DiscordManaged); the console is
+// ephemeral, so only the invoker drives it. Create/edit actions are re-checked
+// against the bot keys in gateMutation.
 func (h *Feature) handleConsole(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
-	return h.renderListView(ctx, r, i, serverID, defaultMask, 0, false)
+	return h.renderHomeView(ctx, r, i, serverID, false)
 }
 
 // handleComponent routes every "contract:" interaction: modal submits first, then
-// the public panel buttons, then the console (coarse-gated).
+// the public panel buttons, then the console. The console itself isn't coarse-
+// gated (Discord controls who opened it; the message is ephemeral) — only its
+// mutations are, per-action, inside routeConsoleComponent (gateMutation).
 func (h *Feature) handleComponent(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
 	if i.Type == discordgo.InteractionModalSubmit {
 		return h.handleModalSubmit(ctx, r, i, serverID)
@@ -231,16 +238,11 @@ func (h *Feature) handleComponent(ctx context.Context, r registry.Responder, i *
 	if seg == segPanel {
 		return h.handlePanelButton(ctx, r, i, serverID)
 	}
-	if ok, err := h.consoleAuthorized(ctx, i, serverID); err != nil {
-		return fmt.Errorf("contracts: authorize console: %w", err)
-	} else if !ok {
-		return h.denyConsole(ctx, r, i, serverID)
-	}
 	return h.routeConsoleComponent(ctx, r, i, serverID, seg, parts)
 }
 
 // handleModalSubmit routes a "contract:" modal submit: the public panel's qty
-// modal, else a coarse-gated console modal.
+// modal, else a console modal (mutations re-checked in routeConsoleModal).
 func (h *Feature) handleModalSubmit(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
 	seg, parts, ok := parseID(i.ModalSubmitData().CustomID)
 	if !ok {
@@ -249,16 +251,20 @@ func (h *Feature) handleModalSubmit(ctx context.Context, r registry.Responder, i
 	if seg == segQty {
 		return h.handleQtyModal(ctx, r, i, serverID)
 	}
-	if ok, err := h.consoleAuthorized(ctx, i, serverID); err != nil {
-		return fmt.Errorf("contracts: authorize console: %w", err)
-	} else if !ok {
-		return h.denyConsole(ctx, r, i, serverID)
-	}
 	return h.routeConsoleModal(ctx, r, i, serverID, seg, parts)
 }
 
 func (h *Feature) routeConsoleComponent(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, seg string, parts []string) error {
+	if proceed, err := h.gateMutation(ctx, r, i, serverID, seg, parts); !proceed {
+		return err
+	}
 	switch seg {
+	case segHome:
+		return h.renderHomeView(ctx, r, i, serverID, true)
+	case segList:
+		return h.renderListView(ctx, r, i, serverID, defaultMask, 0, true)
+	case segTemplate:
+		return h.handleTemplateWIP(ctx, r, i, serverID)
 	case segFilter:
 		return h.handleFilter(ctx, r, i, serverID)
 	case segListPage:
@@ -269,10 +275,8 @@ func (h *Feature) routeConsoleComponent(ctx context.Context, r registry.Responde
 		return h.openCreateModal(ctx, r, i, serverID)
 	case segCancel:
 		return h.openCancelModal(ctx, r, i, serverID, parts)
-	case segCName:
-		return h.openRenameModal(ctx, r, i, serverID, parts)
-	case segCDead:
-		return h.openDeadlineModal(ctx, r, i, serverID, parts)
+	case segCEdit:
+		return h.openEditModal(ctx, r, i, serverID, parts)
 	case segCAdd:
 		return h.openAddItemModal(ctx, r, i, serverID, parts)
 	case segRepub:
@@ -285,12 +289,10 @@ func (h *Feature) routeConsoleComponent(ctx context.Context, r registry.Responde
 		return h.openRemoveItemModal(ctx, r, i, serverID, parts)
 	case segIPage:
 		return h.handleItemPage(ctx, r, i, serverID, parts)
-	case segIName:
-		return h.openItemRenameModal(ctx, r, i, serverID, parts)
-	case segPRel:
-		return h.openReleaseModal(ctx, r, i, serverID, parts)
-	case segPRem:
-		return h.openRemoveParticipantModal(ctx, r, i, serverID, parts)
+	case segIEdit:
+		return h.openItemEditModal(ctx, r, i, serverID, parts)
+	case segPEdit:
+		return h.openParticipantModal(ctx, r, i, serverID, parts)
 	case segPPage:
 		return h.handleParticipantPage(ctx, r, i, serverID, parts)
 	default:
@@ -299,56 +301,27 @@ func (h *Feature) routeConsoleComponent(ctx context.Context, r registry.Responde
 }
 
 func (h *Feature) routeConsoleModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, seg string, parts []string) error {
+	if proceed, err := h.gateMutation(ctx, r, i, serverID, seg, parts); !proceed {
+		return err
+	}
 	switch seg {
 	case segMCreate:
 		return h.submitCreate(ctx, r, i, serverID)
-	case segMCName:
-		return h.submitRename(ctx, r, i, serverID, parts)
-	case segMCDead:
-		return h.submitDeadline(ctx, r, i, serverID, parts)
+	case segMCEdit:
+		return h.submitEdit(ctx, r, i, serverID, parts)
 	case segMCAdd:
 		return h.submitAddItem(ctx, r, i, serverID, parts)
 	case segMIDel:
 		return h.submitRemoveItem(ctx, r, i, serverID, parts)
-	case segMIName:
-		return h.submitItemRename(ctx, r, i, serverID, parts)
-	case segMPRel:
-		return h.submitRelease(ctx, r, i, serverID, parts)
-	case segMPRem:
-		return h.submitRemoveParticipant(ctx, r, i, serverID, parts)
+	case segMIEdit:
+		return h.submitItemEdit(ctx, r, i, serverID, parts)
+	case segMPEdit:
+		return h.submitParticipant(ctx, r, i, serverID, parts)
 	case segMCancel:
 		return h.submitCancel(ctx, r, i, serverID, parts)
 	default:
 		return fmt.Errorf("contracts: unknown console modal seg %q", seg)
 	}
-}
-
-// consoleAuthorized re-checks the interacting member against the coarse
-// "contracts" key: administrators bypass; otherwise a role must be granted it
-// (DefaultDeny). With the permissions feature absent (access nil) gating is off.
-func (h *Feature) consoleAuthorized(ctx context.Context, i *discordgo.InteractionCreate, serverID uuid.UUID) (bool, error) {
-	if i.Member != nil && i.Member.Permissions&discordgo.PermissionAdministrator != 0 {
-		return true, nil
-	}
-	if h.access == nil {
-		return true, nil
-	}
-	var roles []string
-	if i.Member != nil {
-		roles = i.Member.Roles
-	}
-	return h.access.IsAllowed(ctx, session.AccessRequest{
-		ServerID:    serverID,
-		Command:     commandName,
-		UserRoles:   roles,
-		DefaultDeny: true,
-	})
-}
-
-// denyConsole replies that the member may not use the console.
-func (h *Feature) denyConsole(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
-	return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "session.denied",
-		map[string]any{"Command": commandName}))
 }
 
 // respondView renders a console view as a Components V2 message: the first
@@ -394,6 +367,12 @@ func consoleErrorKey(err error) (string, bool) {
 		return "contracts.console.no_reservation", true
 	case errors.Is(err, ErrBelowDelivered):
 		return "contracts.console.below_delivered", true
+	case errors.Is(err, ErrOverReserved):
+		return "contracts.console.over_reserved", true
+	case errors.Is(err, ErrOverCap):
+		return "contracts.console.over_cap", true
+	case errors.Is(err, ErrQtyBelowReserved):
+		return "contracts.console.qty_below_reserved", true
 	default:
 		return "", false
 	}

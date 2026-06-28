@@ -172,6 +172,63 @@ func (_c *MockRepository_ClearThreadID_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// Counts provides a mock function with given fields: ctx, serverID
+func (_m *MockRepository) Counts(ctx context.Context, serverID uuid.UUID) (contracts.Counts, error) {
+	ret := _m.Called(ctx, serverID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Counts")
+	}
+
+	var r0 contracts.Counts
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) (contracts.Counts, error)); ok {
+		return rf(ctx, serverID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID) contracts.Counts); ok {
+		r0 = rf(ctx, serverID)
+	} else {
+		r0 = ret.Get(0).(contracts.Counts)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = rf(ctx, serverID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRepository_Counts_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Counts'
+type MockRepository_Counts_Call struct {
+	*mock.Call
+}
+
+// Counts is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+func (_e *MockRepository_Expecter) Counts(ctx interface{}, serverID interface{}) *MockRepository_Counts_Call {
+	return &MockRepository_Counts_Call{Call: _e.mock.On("Counts", ctx, serverID)}
+}
+
+func (_c *MockRepository_Counts_Call) Run(run func(ctx context.Context, serverID uuid.UUID)) *MockRepository_Counts_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID))
+	})
+	return _c
+}
+
+func (_c *MockRepository_Counts_Call) Return(_a0 contracts.Counts, _a1 error) *MockRepository_Counts_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRepository_Counts_Call) RunAndReturn(run func(context.Context, uuid.UUID) (contracts.Counts, error)) *MockRepository_Counts_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Create provides a mock function with given fields: ctx, in
 func (_m *MockRepository) Create(ctx context.Context, in contracts.CreateInput) (uuid.UUID, error) {
 	ret := _m.Called(ctx, in)
@@ -292,6 +349,76 @@ func (_c *MockRepository_Deliver_Call) RunAndReturn(run func(context.Context, uu
 	return _c
 }
 
+// DeliverByItem provides a mock function with given fields: ctx, serverID, itemID, targetUserID, qty, actor
+func (_m *MockRepository) DeliverByItem(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, targetUserID string, qty int, actor string) (uuid.UUID, bool, error) {
+	ret := _m.Called(ctx, serverID, itemID, targetUserID, qty, actor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeliverByItem")
+	}
+
+	var r0 uuid.UUID
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, bool, error)); ok {
+		return rf(ctx, serverID, itemID, targetUserID, qty, actor)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) uuid.UUID); ok {
+		r0 = rf(ctx, serverID, itemID, targetUserID, qty, actor)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(uuid.UUID)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) bool); ok {
+		r1 = rf(ctx, serverID, itemID, targetUserID, qty, actor)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) error); ok {
+		r2 = rf(ctx, serverID, itemID, targetUserID, qty, actor)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// MockRepository_DeliverByItem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeliverByItem'
+type MockRepository_DeliverByItem_Call struct {
+	*mock.Call
+}
+
+// DeliverByItem is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - itemID uuid.UUID
+//   - targetUserID string
+//   - qty int
+//   - actor string
+func (_e *MockRepository_Expecter) DeliverByItem(ctx interface{}, serverID interface{}, itemID interface{}, targetUserID interface{}, qty interface{}, actor interface{}) *MockRepository_DeliverByItem_Call {
+	return &MockRepository_DeliverByItem_Call{Call: _e.mock.On("DeliverByItem", ctx, serverID, itemID, targetUserID, qty, actor)}
+}
+
+func (_c *MockRepository_DeliverByItem_Call) Run(run func(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, targetUserID string, qty int, actor string)) *MockRepository_DeliverByItem_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(int), args[5].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_DeliverByItem_Call) Return(cid uuid.UUID, complete bool, err error) *MockRepository_DeliverByItem_Call {
+	_c.Call.Return(cid, complete, err)
+	return _c
+}
+
+func (_c *MockRepository_DeliverByItem_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, bool, error)) *MockRepository_DeliverByItem_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DueContracts provides a mock function with given fields: ctx, now, limit
 func (_m *MockRepository) DueContracts(ctx context.Context, now time.Time, limit int) ([]uuid.UUID, error) {
 	ret := _m.Called(ctx, now, limit)
@@ -348,6 +475,122 @@ func (_c *MockRepository_DueContracts_Call) Return(_a0 []uuid.UUID, _a1 error) *
 }
 
 func (_c *MockRepository_DueContracts_Call) RunAndReturn(run func(context.Context, time.Time, int) ([]uuid.UUID, error)) *MockRepository_DueContracts_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// KindByID provides a mock function with given fields: ctx, serverID, contractID
+func (_m *MockRepository) KindByID(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID) (contracts.Kind, error) {
+	ret := _m.Called(ctx, serverID, contractID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for KindByID")
+	}
+
+	var r0 contracts.Kind
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID) (contracts.Kind, error)); ok {
+		return rf(ctx, serverID, contractID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID) contracts.Kind); ok {
+		r0 = rf(ctx, serverID, contractID)
+	} else {
+		r0 = ret.Get(0).(contracts.Kind)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID) error); ok {
+		r1 = rf(ctx, serverID, contractID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRepository_KindByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'KindByID'
+type MockRepository_KindByID_Call struct {
+	*mock.Call
+}
+
+// KindByID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - contractID uuid.UUID
+func (_e *MockRepository_Expecter) KindByID(ctx interface{}, serverID interface{}, contractID interface{}) *MockRepository_KindByID_Call {
+	return &MockRepository_KindByID_Call{Call: _e.mock.On("KindByID", ctx, serverID, contractID)}
+}
+
+func (_c *MockRepository_KindByID_Call) Run(run func(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID)) *MockRepository_KindByID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID))
+	})
+	return _c
+}
+
+func (_c *MockRepository_KindByID_Call) Return(_a0 contracts.Kind, _a1 error) *MockRepository_KindByID_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRepository_KindByID_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID) (contracts.Kind, error)) *MockRepository_KindByID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// KindByItem provides a mock function with given fields: ctx, serverID, itemID
+func (_m *MockRepository) KindByItem(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID) (contracts.Kind, error) {
+	ret := _m.Called(ctx, serverID, itemID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for KindByItem")
+	}
+
+	var r0 contracts.Kind
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID) (contracts.Kind, error)); ok {
+		return rf(ctx, serverID, itemID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID) contracts.Kind); ok {
+		r0 = rf(ctx, serverID, itemID)
+	} else {
+		r0 = ret.Get(0).(contracts.Kind)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID) error); ok {
+		r1 = rf(ctx, serverID, itemID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRepository_KindByItem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'KindByItem'
+type MockRepository_KindByItem_Call struct {
+	*mock.Call
+}
+
+// KindByItem is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - itemID uuid.UUID
+func (_e *MockRepository_Expecter) KindByItem(ctx interface{}, serverID interface{}, itemID interface{}) *MockRepository_KindByItem_Call {
+	return &MockRepository_KindByItem_Call{Call: _e.mock.On("KindByItem", ctx, serverID, itemID)}
+}
+
+func (_c *MockRepository_KindByItem_Call) Run(run func(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID)) *MockRepository_KindByItem_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID))
+	})
+	return _c
+}
+
+func (_c *MockRepository_KindByItem_Call) Return(_a0 contracts.Kind, _a1 error) *MockRepository_KindByItem_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockRepository_KindByItem_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID) (contracts.Kind, error)) *MockRepository_KindByItem_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1052,69 +1295,6 @@ func (_c *MockRepository_Release_Call) RunAndReturn(run func(context.Context, uu
 	return _c
 }
 
-// ReleaseByItem provides a mock function with given fields: ctx, serverID, itemID, targetUserID, qty, actor
-func (_m *MockRepository) ReleaseByItem(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, targetUserID string, qty int, actor string) (uuid.UUID, error) {
-	ret := _m.Called(ctx, serverID, itemID, targetUserID, qty, actor)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ReleaseByItem")
-	}
-
-	var r0 uuid.UUID
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, error)); ok {
-		return rf(ctx, serverID, itemID, targetUserID, qty, actor)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) uuid.UUID); ok {
-		r0 = rf(ctx, serverID, itemID, targetUserID, qty, actor)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(uuid.UUID)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) error); ok {
-		r1 = rf(ctx, serverID, itemID, targetUserID, qty, actor)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockRepository_ReleaseByItem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReleaseByItem'
-type MockRepository_ReleaseByItem_Call struct {
-	*mock.Call
-}
-
-// ReleaseByItem is a helper method to define mock.On call
-//   - ctx context.Context
-//   - serverID uuid.UUID
-//   - itemID uuid.UUID
-//   - targetUserID string
-//   - qty int
-//   - actor string
-func (_e *MockRepository_Expecter) ReleaseByItem(ctx interface{}, serverID interface{}, itemID interface{}, targetUserID interface{}, qty interface{}, actor interface{}) *MockRepository_ReleaseByItem_Call {
-	return &MockRepository_ReleaseByItem_Call{Call: _e.mock.On("ReleaseByItem", ctx, serverID, itemID, targetUserID, qty, actor)}
-}
-
-func (_c *MockRepository_ReleaseByItem_Call) Run(run func(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, targetUserID string, qty int, actor string)) *MockRepository_ReleaseByItem_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(int), args[5].(string))
-	})
-	return _c
-}
-
-func (_c *MockRepository_ReleaseByItem_Call) Return(cid uuid.UUID, err error) *MockRepository_ReleaseByItem_Call {
-	_c.Call.Return(cid, err)
-	return _c
-}
-
-func (_c *MockRepository_ReleaseByItem_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, error)) *MockRepository_ReleaseByItem_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // RemoveItemByID provides a mock function with given fields: ctx, serverID, itemID, actor
 func (_m *MockRepository) RemoveItemByID(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, actor string) (uuid.UUID, int, error) {
 	ret := _m.Called(ctx, serverID, itemID, actor)
@@ -1400,6 +1580,69 @@ func (_c *MockRepository_SetDeadline_Call) RunAndReturn(run func(context.Context
 	return _c
 }
 
+// SetReservationByItem provides a mock function with given fields: ctx, serverID, itemID, targetUserID, newReserved, actor
+func (_m *MockRepository) SetReservationByItem(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, targetUserID string, newReserved int, actor string) (uuid.UUID, error) {
+	ret := _m.Called(ctx, serverID, itemID, targetUserID, newReserved, actor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetReservationByItem")
+	}
+
+	var r0 uuid.UUID
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, error)); ok {
+		return rf(ctx, serverID, itemID, targetUserID, newReserved, actor)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) uuid.UUID); ok {
+		r0 = rf(ctx, serverID, itemID, targetUserID, newReserved, actor)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(uuid.UUID)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) error); ok {
+		r1 = rf(ctx, serverID, itemID, targetUserID, newReserved, actor)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRepository_SetReservationByItem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetReservationByItem'
+type MockRepository_SetReservationByItem_Call struct {
+	*mock.Call
+}
+
+// SetReservationByItem is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - itemID uuid.UUID
+//   - targetUserID string
+//   - newReserved int
+//   - actor string
+func (_e *MockRepository_Expecter) SetReservationByItem(ctx interface{}, serverID interface{}, itemID interface{}, targetUserID interface{}, newReserved interface{}, actor interface{}) *MockRepository_SetReservationByItem_Call {
+	return &MockRepository_SetReservationByItem_Call{Call: _e.mock.On("SetReservationByItem", ctx, serverID, itemID, targetUserID, newReserved, actor)}
+}
+
+func (_c *MockRepository_SetReservationByItem_Call) Run(run func(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, targetUserID string, newReserved int, actor string)) *MockRepository_SetReservationByItem_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(int), args[5].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetReservationByItem_Call) Return(cid uuid.UUID, err error) *MockRepository_SetReservationByItem_Call {
+	_c.Call.Return(cid, err)
+	return _c
+}
+
+func (_c *MockRepository_SetReservationByItem_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, error)) *MockRepository_SetReservationByItem_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetThreadID provides a mock function with given fields: ctx, contractID, threadID
 func (_m *MockRepository) SetThreadID(ctx context.Context, contractID uuid.UUID, threadID string) error {
 	ret := _m.Called(ctx, contractID, threadID)
@@ -1499,29 +1742,29 @@ func (_c *MockRepository_UpdateDetails_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
-// UpdateItemName provides a mock function with given fields: ctx, serverID, itemID, newName, actor
-func (_m *MockRepository) UpdateItemName(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, newName string, actor string) (uuid.UUID, error) {
-	ret := _m.Called(ctx, serverID, itemID, newName, actor)
+// UpdateItem provides a mock function with given fields: ctx, serverID, itemID, newName, newQty, actor
+func (_m *MockRepository) UpdateItem(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, newName string, newQty int, actor string) (uuid.UUID, error) {
+	ret := _m.Called(ctx, serverID, itemID, newName, newQty, actor)
 
 	if len(ret) == 0 {
-		panic("no return value specified for UpdateItemName")
+		panic("no return value specified for UpdateItem")
 	}
 
 	var r0 uuid.UUID
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, string) (uuid.UUID, error)); ok {
-		return rf(ctx, serverID, itemID, newName, actor)
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, error)); ok {
+		return rf(ctx, serverID, itemID, newName, newQty, actor)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, string) uuid.UUID); ok {
-		r0 = rf(ctx, serverID, itemID, newName, actor)
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) uuid.UUID); ok {
+		r0 = rf(ctx, serverID, itemID, newName, newQty, actor)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(uuid.UUID)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID, string, string) error); ok {
-		r1 = rf(ctx, serverID, itemID, newName, actor)
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID, string, int, string) error); ok {
+		r1 = rf(ctx, serverID, itemID, newName, newQty, actor)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1529,34 +1772,35 @@ func (_m *MockRepository) UpdateItemName(ctx context.Context, serverID uuid.UUID
 	return r0, r1
 }
 
-// MockRepository_UpdateItemName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateItemName'
-type MockRepository_UpdateItemName_Call struct {
+// MockRepository_UpdateItem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateItem'
+type MockRepository_UpdateItem_Call struct {
 	*mock.Call
 }
 
-// UpdateItemName is a helper method to define mock.On call
+// UpdateItem is a helper method to define mock.On call
 //   - ctx context.Context
 //   - serverID uuid.UUID
 //   - itemID uuid.UUID
 //   - newName string
+//   - newQty int
 //   - actor string
-func (_e *MockRepository_Expecter) UpdateItemName(ctx interface{}, serverID interface{}, itemID interface{}, newName interface{}, actor interface{}) *MockRepository_UpdateItemName_Call {
-	return &MockRepository_UpdateItemName_Call{Call: _e.mock.On("UpdateItemName", ctx, serverID, itemID, newName, actor)}
+func (_e *MockRepository_Expecter) UpdateItem(ctx interface{}, serverID interface{}, itemID interface{}, newName interface{}, newQty interface{}, actor interface{}) *MockRepository_UpdateItem_Call {
+	return &MockRepository_UpdateItem_Call{Call: _e.mock.On("UpdateItem", ctx, serverID, itemID, newName, newQty, actor)}
 }
 
-func (_c *MockRepository_UpdateItemName_Call) Run(run func(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, newName string, actor string)) *MockRepository_UpdateItemName_Call {
+func (_c *MockRepository_UpdateItem_Call) Run(run func(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, newName string, newQty int, actor string)) *MockRepository_UpdateItem_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(int), args[5].(string))
 	})
 	return _c
 }
 
-func (_c *MockRepository_UpdateItemName_Call) Return(cid uuid.UUID, err error) *MockRepository_UpdateItemName_Call {
+func (_c *MockRepository_UpdateItem_Call) Return(cid uuid.UUID, err error) *MockRepository_UpdateItem_Call {
 	_c.Call.Return(cid, err)
 	return _c
 }
 
-func (_c *MockRepository_UpdateItemName_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, string) (uuid.UUID, error)) *MockRepository_UpdateItemName_Call {
+func (_c *MockRepository_UpdateItem_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, error)) *MockRepository_UpdateItem_Call {
 	_c.Call.Return(run)
 	return _c
 }

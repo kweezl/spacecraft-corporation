@@ -52,54 +52,46 @@ func (l *Live) Connected() bool {
 	return s != nil && s.Connected()
 }
 
-// CreateForumPost opens a new forum thread in channelID with title name and an
-// initial embed as its starter message. It returns the thread id, which for a
-// forum thread is also the starter message id (used by EditPost/ClosePost to
-// edit the live progress embed).
-func (l *Live) CreateForumPost(channelID, name string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) (string, error) {
+// CreateForumPost opens a new forum thread in channelID with title name and a
+// Components V2 card as its starter message (the IsComponentsV2 flag means the
+// body is components-only — no content/embeds). It returns the thread id, which
+// for a forum thread is also the starter message id (used by EditPost/ClosePost).
+func (l *Live) CreateForumPost(channelID, name string, components []discordgo.MessageComponent) (string, error) {
 	s := l.get()
 	if s == nil {
 		return "", ErrNotConnected
 	}
 	th, err := s.ForumThreadStartComplex(channelID,
 		&discordgo.ThreadStart{Name: name, AutoArchiveDuration: forumAutoArchiveMax},
-		&discordgo.MessageSend{Embeds: []*discordgo.MessageEmbed{embed}, Components: components})
+		&discordgo.MessageSend{Components: components, Flags: discordgo.MessageFlagsIsComponentsV2})
 	if err != nil {
 		return "", err
 	}
 	return th.ID, nil
 }
 
-// EditPost replaces the starter message embed (and its attached components, e.g.
-// the participate/deliver buttons) of a contract thread (threadID is both the
-// thread and starter-message id). Passing nil components clears them — used when
-// the contract closes and the action buttons should disappear.
-func (l *Live) EditPost(threadID string, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+// EditPost replaces the starter message's Components V2 card of a contract thread
+// (threadID is both the thread and starter-message id). The IsComponentsV2 flag
+// must be set on the edit too (it is immutable, set at creation); a message first
+// posted before the V2 migration can't be edited this way and returns
+// ErrCodeInvalidFormBody — callers treat that like a deleted post and recreate.
+func (l *Live) EditPost(threadID string, components []discordgo.MessageComponent) error {
 	s := l.get()
 	if s == nil {
 		return ErrNotConnected
 	}
 	edit := discordgo.NewMessageEdit(threadID, threadID)
-	edit.Embeds = &[]*discordgo.MessageEmbed{embed}
-	// Always send Components so a close edit removes stale buttons. Discord clears
-	// components only on an empty array []; a nil slice would marshal as
-	// "components": null (the field's omitempty omits a nil *pointer*, not a nil
-	// slice behind a live one), which Discord does not treat as a clear. Normalize
-	// nil to a non-nil empty slice so the close path actually drops the buttons.
-	if components == nil {
-		components = []discordgo.MessageComponent{}
-	}
+	edit.Flags = discordgo.MessageFlagsIsComponentsV2
 	edit.Components = &components
 	_, err := s.ChannelMessageEditComplex(edit)
 	return err
 }
 
-// ClosePost writes a final embed to the contract thread and then archives and
+// ClosePost writes the final card to the contract thread and then archives and
 // locks it, so no further messages or commands land on a completed/expired
 // contract. The edit happens while the thread is still open.
-func (l *Live) ClosePost(threadID string, embed *discordgo.MessageEmbed) error {
-	// nil components: a closed contract drops its participate/deliver buttons.
-	if err := l.EditPost(threadID, embed, nil); err != nil {
+func (l *Live) ClosePost(threadID string, components []discordgo.MessageComponent) error {
+	if err := l.EditPost(threadID, components); err != nil {
 		return err
 	}
 	s := l.get()
