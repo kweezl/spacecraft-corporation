@@ -122,8 +122,9 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   usable in every server). On start the `Syncer` runs in the background: it waits
   for the gateway READY (the application id comes from the session's own user,
   like `session.OverwriteCommands`), lists the application emojis, and populates
-  the `Store` — a mutex-guarded `name → message-token` map whose `Format(name)`
-  returns the ready-to-send `<:name:id>` (or `<a:…>` for animated), or `""` for an
+  the `Store` — a mutex-guarded `name → message-token` map whose
+  `Format(name) (token, ok)` returns the ready-to-send `<:name:id>` (or `<a:…>`
+  for animated) in one locked lookup; `ok` is false and `token` is `""` for an
   unknown name. **`EMOJI_UPLOAD`** (default off) is the master switch for managing
   emojis from the repo: when off the bot is **read-only** (it just exposes whatever
   is on the application, including admin-uploaded emojis); when on it reconciles

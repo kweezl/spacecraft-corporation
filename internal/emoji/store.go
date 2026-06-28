@@ -29,18 +29,12 @@ func (s *Store) replace(byName map[string]string) {
 	s.byName = byName
 }
 
-// Format returns the message token for the named emoji, or "" if the bot has no
-// emoji by that name (so an unknown name renders as nothing rather than failing).
-func (s *Store) Format(name string) string {
+// Format returns the message token for the named emoji and whether the bot has
+// an emoji by that name. The token is "" when ok is false, so callers that don't
+// care about presence can ignore ok and render the empty string.
+func (s *Store) Format(name string) (token string, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.byName[name]
-}
-
-// Has reports whether an emoji with the given name is available.
-func (s *Store) Has(name string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	_, ok := s.byName[name]
-	return ok
+	token, ok = s.byName[name]
+	return token, ok
 }

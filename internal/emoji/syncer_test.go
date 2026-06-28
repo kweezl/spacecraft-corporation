@@ -70,7 +70,7 @@ func TestSyncUploadDisabledListsOnly(t *testing.T) {
 
 	require.NoError(t, s.sync(context.Background()))
 
-	assert.Equal(t, "<:credits:1>", store.Format("credits"))
+	assert.Equal(t, "<:credits:1>", formatted(store, "credits"))
 	assert.Empty(t, api.created, "nothing is uploaded when upload is disabled")
 }
 
@@ -86,8 +86,8 @@ func TestSyncUploadsMissingSkipsExisting(t *testing.T) {
 	require.NoError(t, s.sync(context.Background()))
 
 	assert.Equal(t, []string{"iron_bar"}, api.created, "only the missing emoji is uploaded")
-	assert.Equal(t, "<:credits:1>", store.Format("credits"), "existing emoji kept as-is")
-	assert.Equal(t, "<:iron_bar:100iron_bar>", store.Format("iron_bar"), "uploaded emoji added")
+	assert.Equal(t, "<:credits:1>", formatted(store, "credits"), "existing emoji kept as-is")
+	assert.Equal(t, "<:iron_bar:100iron_bar>", formatted(store, "iron_bar"), "uploaded emoji added")
 }
 
 func TestSyncListErrorIsReturned(t *testing.T) {
@@ -97,7 +97,7 @@ func TestSyncListErrorIsReturned(t *testing.T) {
 
 	err := s.sync(context.Background())
 	require.Error(t, err)
-	assert.False(t, store.Has("anything"), "store untouched on list failure")
+	assert.False(t, present(store, "anything"), "store untouched on list failure")
 }
 
 func TestSyncUploadErrorIsBestEffort(t *testing.T) {
@@ -109,8 +109,8 @@ func TestSyncUploadErrorIsBestEffort(t *testing.T) {
 	})
 
 	require.NoError(t, s.sync(context.Background()), "a single upload failure does not fail the sync")
-	assert.False(t, store.Has("bad"), "failed upload is skipped")
-	assert.True(t, store.Has("good"), "other uploads still succeed")
+	assert.False(t, present(store, "bad"), "failed upload is skipped")
+	assert.True(t, present(store, "good"), "other uploads still succeed")
 }
 
 func TestSyncPrunesEmojiNotInRepo(t *testing.T) {
@@ -125,8 +125,8 @@ func TestSyncPrunesEmojiNotInRepo(t *testing.T) {
 	require.NoError(t, s.sync(context.Background()))
 
 	assert.Equal(t, []string{"9"}, api.deleted, "the emoji absent from the repo is pruned")
-	assert.True(t, store.Has("credits"))
-	assert.False(t, store.Has("stale"), "pruned emoji is dropped from the store")
+	assert.True(t, present(store, "credits"))
+	assert.False(t, present(store, "stale"), "pruned emoji is dropped from the store")
 }
 
 func TestSyncKeepsExtraWhenPruneDisabled(t *testing.T) {
@@ -141,7 +141,7 @@ func TestSyncKeepsExtraWhenPruneDisabled(t *testing.T) {
 	require.NoError(t, s.sync(context.Background()))
 
 	assert.Empty(t, api.deleted, "nothing is deleted when prune is off")
-	assert.Equal(t, "<:stale:9>", store.Format("stale"), "unmanaged emoji stays available")
+	assert.Equal(t, "<:stale:9>", formatted(store, "stale"), "unmanaged emoji stays available")
 }
 
 func TestSyncReadOnlyNeverDeletes(t *testing.T) {
@@ -158,8 +158,8 @@ func TestSyncReadOnlyNeverDeletes(t *testing.T) {
 	require.NoError(t, s.sync(context.Background()))
 
 	assert.Empty(t, api.deleted, "read-only mode never deletes")
-	assert.True(t, store.Has("credits"))
-	assert.True(t, store.Has("admin_added"), "admin-uploaded emoji is exposed read-only")
+	assert.True(t, present(store, "credits"))
+	assert.True(t, present(store, "admin_added"), "admin-uploaded emoji is exposed read-only")
 }
 
 func TestSyncReplaceRecreatesExisting(t *testing.T) {
@@ -172,7 +172,7 @@ func TestSyncReplaceRecreatesExisting(t *testing.T) {
 
 	assert.Equal(t, []string{"1"}, api.deleted, "old emoji deleted before recreate")
 	assert.Equal(t, []string{"credits"}, api.created, "emoji recreated")
-	assert.Equal(t, "<:credits:100credits>", store.Format("credits"), "store points at the new id")
+	assert.Equal(t, "<:credits:100credits>", formatted(store, "credits"), "store points at the new id")
 }
 
 func TestSyncReplaceKeepsOldOnDeleteFailure(t *testing.T) {
@@ -187,7 +187,7 @@ func TestSyncReplaceKeepsOldOnDeleteFailure(t *testing.T) {
 	require.NoError(t, s.sync(context.Background()))
 
 	assert.Empty(t, api.created, "no recreate when the delete failed")
-	assert.Equal(t, "<:credits:1>", store.Format("credits"), "the old emoji is kept on delete failure")
+	assert.Equal(t, "<:credits:1>", formatted(store, "credits"), "the old emoji is kept on delete failure")
 }
 
 func TestRunWaitsForConnectionThenBecomesReady(t *testing.T) {
@@ -202,5 +202,5 @@ func TestRunWaitsForConnectionThenBecomesReady(t *testing.T) {
 
 	api.connected.Store(true)
 	require.Eventually(t, s.Ready, 2*time.Second, 10*time.Millisecond, "ready after sync completes")
-	assert.Equal(t, "<:credits:1>", store.Format("credits"))
+	assert.Equal(t, "<:credits:1>", formatted(store, "credits"))
 }
