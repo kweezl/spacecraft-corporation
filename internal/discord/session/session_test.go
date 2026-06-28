@@ -120,6 +120,11 @@ func (f *fakeDiscord) ChannelDelete(_ string) (*discordgo.Channel, error) {
 func (f *fakeDiscord) InteractionResponseEdit(_ *discordgo.Interaction, _ *discordgo.WebhookEdit) (*discordgo.Message, error) {
 	return &discordgo.Message{}, nil
 }
+func (f *fakeDiscord) ApplicationEmojis() ([]*discordgo.Emoji, error) { return nil, nil }
+func (f *fakeDiscord) ApplicationEmojiCreate(_, _ string) (*discordgo.Emoji, error) {
+	return &discordgo.Emoji{}, nil
+}
+func (f *fakeDiscord) ApplicationEmojiDelete(string) error { return nil }
 
 // fireGuildCreate invokes every registered GuildCreate handler, mimicking
 // discordgo delivering the event.

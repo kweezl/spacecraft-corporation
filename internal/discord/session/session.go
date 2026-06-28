@@ -118,6 +118,14 @@ type Discord interface {
 	// webhook identified by the interaction's app id + token (used to deliver an
 	// async outcome after the initial ack).
 	InteractionResponseEdit(i *discordgo.Interaction, edit *discordgo.WebhookEdit) (*discordgo.Message, error)
+
+	// Application emoji operations (used by the emoji module's startup sync).
+	// Application emojis belong to the bot's application, not a guild, so they
+	// work in every server; all resolve the application id from the session's
+	// own user, exactly like OverwriteCommands.
+	ApplicationEmojis() ([]*discordgo.Emoji, error)
+	ApplicationEmojiCreate(name, image string) (*discordgo.Emoji, error)
+	ApplicationEmojiDelete(id string) error
 }
 
 // Factory builds a Discord session for a bot token.

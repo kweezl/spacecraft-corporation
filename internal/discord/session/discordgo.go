@@ -179,3 +179,21 @@ func (d *discordSession) ChannelDelete(channelID string) (*discordgo.Channel, er
 func (d *discordSession) InteractionResponseEdit(i *discordgo.Interaction, edit *discordgo.WebhookEdit) (*discordgo.Message, error) {
 	return d.s.InteractionResponseEdit(i, edit)
 }
+
+// ApplicationEmojis lists the application's emojis. The bot user's id is the
+// application id (same identity discordgo uses for ApplicationCommandBulkOverwrite).
+func (d *discordSession) ApplicationEmojis() ([]*discordgo.Emoji, error) {
+	return d.s.ApplicationEmojis(d.s.State.User.ID)
+}
+
+// ApplicationEmojiCreate uploads a new application emoji. image is a base64
+// data URI (e.g. "data:image/png;base64,...").
+func (d *discordSession) ApplicationEmojiCreate(name, image string) (*discordgo.Emoji, error) {
+	return d.s.ApplicationEmojiCreate(d.s.State.User.ID, &discordgo.EmojiParams{Name: name, Image: image})
+}
+
+// ApplicationEmojiDelete removes an application emoji by id. An emoji's image
+// cannot be edited, so replacing one means deleting then recreating it.
+func (d *discordSession) ApplicationEmojiDelete(id string) error {
+	return d.s.ApplicationEmojiDelete(d.s.State.User.ID, id)
+}
