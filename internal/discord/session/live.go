@@ -130,6 +130,36 @@ func (l *Live) CommentPost(threadID, content string, mentionUserIDs []string) er
 	return err
 }
 
+// ApplicationEmojis lists the bot application's emojis. Returns ErrNotConnected
+// before the gateway session exists.
+func (l *Live) ApplicationEmojis() ([]*discordgo.Emoji, error) {
+	s := l.get()
+	if s == nil {
+		return nil, ErrNotConnected
+	}
+	return s.ApplicationEmojis()
+}
+
+// ApplicationEmojiCreate uploads a new application emoji from a base64 data URI.
+// Returns ErrNotConnected before the gateway session exists.
+func (l *Live) ApplicationEmojiCreate(name, image string) (*discordgo.Emoji, error) {
+	s := l.get()
+	if s == nil {
+		return nil, ErrNotConnected
+	}
+	return s.ApplicationEmojiCreate(name, image)
+}
+
+// ApplicationEmojiDelete removes an application emoji by id. Returns
+// ErrNotConnected before the gateway session exists.
+func (l *Live) ApplicationEmojiDelete(id string) error {
+	s := l.get()
+	if s == nil {
+		return ErrNotConnected
+	}
+	return s.ApplicationEmojiDelete(id)
+}
+
 // EditOriginalResponse edits the original reply of an interaction identified by
 // its app id and token (the async create outcome). The token is valid ~15 min;
 // past that this fails and the caller logs it as best-effort.

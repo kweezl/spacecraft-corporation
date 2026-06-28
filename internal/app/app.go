@@ -14,6 +14,7 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/servers"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
+	"github.com/kweezl/spacecraft-corporation/internal/emoji"
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
 	"github.com/kweezl/spacecraft-corporation/internal/features/bases"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
@@ -58,6 +59,9 @@ func coreModules() []fx.Option {
 		// session injects (fx resolves order, this is just for readability).
 		servers.Module(),
 		session.Module(),
+		// emoji: name-keyed access to the bot's application emojis, synced at
+		// startup (depends on session's Live for the gateway).
+		emoji.Module(),
 	}
 }
 

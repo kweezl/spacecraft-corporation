@@ -71,7 +71,8 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   not a startup flag: subsystems contribute named `ReadinessCheck` probes into
   the `readiness_checks` fx group (`db` pings the pool → `postgres`; `session`
   verifies the gateway is connected — discordgo's `DataReady`, which `Open()`
-  returns *before* — → `discord`). `/readyz` runs every probe per request and
+  returns *before* — → `discord`; `emoji` reports whether the startup emoji sync
+  has completed → `emoji`). `/readyz` runs every probe per request and
   returns 200 only when all pass, so it reflects **live** dependency health
   (goes red again if the DB or gateway later drops), not just "startup finished".
   The package is split one-concern-per-file: `server.go` (HTTP server +
@@ -115,6 +116,32 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   the **`/settings`** command (`theme` / `language` / `show`, `DefaultDeny` so
   it is owner/admin-gated, with theme/language **choices** sourced from the
   Translator catalog).
+- **`emoji`** (`internal/emoji`) — **core** module giving every feature fast,
+  name-keyed access to the bot's custom emojis. The bot's emojis are **application
+  emojis** (owned by the bot's application, not a guild, so one upload makes them
+  usable in every server). On start the `Syncer` runs in the background: it waits
+  for the gateway READY (the application id comes from the session's own user,
+  like `session.OverwriteCommands`), lists the application emojis, and populates
+  the `Store` — a mutex-guarded `name → message-token` map whose `Format(name)`
+  returns the ready-to-send `<:name:id>` (or `<a:…>` for animated), or `""` for an
+  unknown name. **`EMOJI_UPLOAD`** (default off) is the master switch for managing
+  emojis from the repo: when off the bot is **read-only** (it just exposes whatever
+  is on the application, including admin-uploaded emojis); when on it reconciles
+  the application to the images embedded from `internal/emoji/assets/*` (filename =
+  emoji name) — uploading missing ones (idempotent), and applying two sub-toggles
+  that act **only** in managed mode: **`EMOJI_PRUNE`** (default on) deletes
+  application emojis the repo no longer defines, and **`EMOJI_REPLACE`** (default
+  off) force-replaces every embedded emoji on each start. There is no change
+  detection (Discord exposes no content hash, and admins can upload via the web,
+  so a stored hash would be stale) and an emoji's image **cannot be edited**, so a
+  replace is a **delete + recreate** that mints a new id — hence default-off and
+  meant for a one-shot deploy. Per-emoji create/delete failures are best-effort
+  (logged, skipped); a failed delete keeps the existing emoji in the `Store`. The
+  sync is non-blocking (never stalls fx startup) and the module contributes an
+  **`emoji` readiness probe** so `/readyz` stays red until the first sync
+  completes. It depends on the session's `Live` for the gateway, so it needs no
+  startup-order coupling; the `Discord` interface gains `ApplicationEmojis` /
+  `ApplicationEmojiCreate` / `ApplicationEmojiDelete` (wrapped on `Live`) for it.
 - **`commandregistry`** (`internal/discord/registry`) — collects `Command`s and
   `Component`s from feature modules via fx groups, builds the route maps, and
   dispatches three interaction kinds: slash commands (by name), **autocomplete**
@@ -173,6 +200,7 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
 | `servers` | `APPROVED_SERVER_ID` (comma-separated allowlist of auto-approved server IDs; may be empty; promote-only) |
 | `instrumentation` | `INSTRUMENTATION_ADDR` (default `:9464`) |
 | `i18n` | `APP_THEME` (default `standard`); `APP_LANGUAGE` (default `en`) — app-wide fallback wording theme + language; must match an embedded bundle. `settings` has no env of its own (per-server overrides; defaults from `i18n`) |
+| `emoji` | `EMOJI_UPLOAD` (default `false`) — master switch: when true, manage application emojis from the images under `internal/emoji/assets/` (upload missing, idempotent). `EMOJI_PRUNE` (default `true`) — delete emojis the repo no longer defines; `EMOJI_REPLACE` (default `false`) — force delete+recreate every embedded emoji each start (no change detection). Both sub-toggles act only when `EMOJI_UPLOAD=true`. Listing existing emojis to populate the `Store` happens regardless |
 | `bases` | `BASES_MEMBER_LIMIT` (default `3`), `BASES_CORP_LIMIT` (default `6`) — live bases per member / per corp; `BASES_EXTRACTOR_LIMIT` (default `4`), `BASES_PRODUCTION_LIMIT` (default `30`) — equipment per base; `BASES_LIST_PAGE_SIZE` (default `8`). Only read when the `bases` feature is enabled |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `APP_TIMEZONE` (IANA name, default `UTC`, pins `time.Local`); `APP_OWNER_DISCORD_ID` (optional bot-owner Discord ID for the unapproved-server reply); `Version` injected via build-time ldflags |
@@ -411,6 +439,7 @@ internal/instrumentation/    # liveness/readiness probes + /metrics
 internal/discord/session/    # single-session manager + discordgo wrapper
 internal/discord/registry/   # command/component registry + router + Command type
 internal/discord/servers/    # server tracking + approval gate + event log
+internal/emoji/              # application-emoji store + startup sync (+ assets/)
 internal/features/ping/
 internal/features/bases/     # /base: registry + command tree + list pagination
 .mockery.yaml         # mock generation config
