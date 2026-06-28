@@ -104,7 +104,7 @@ func (l *Live) ClosePost(threadID string, components []discordgo.MessageComponen
 }
 
 // DeletePost deletes a contract's forum thread (and its starter message). Used to
-// drop a stale pre-V2 post before recreating it as a Components V2 card.
+// drop a stale-format post before recreating it in the current format.
 func (l *Live) DeletePost(threadID string) error {
 	s := l.get()
 	if s == nil {
@@ -112,21 +112,6 @@ func (l *Live) DeletePost(threadID string) error {
 	}
 	_, err := s.ChannelDelete(threadID)
 	return err
-}
-
-// PostIsComponentsV2 reports whether a forum post's starter message carries the
-// IsComponentsV2 flag. For a forum thread the starter message id equals the thread
-// id. A post created before the V2 migration returns false.
-func (l *Live) PostIsComponentsV2(threadID string) (bool, error) {
-	s := l.get()
-	if s == nil {
-		return false, ErrNotConnected
-	}
-	msg, err := s.ChannelMessage(threadID, threadID)
-	if err != nil {
-		return false, err
-	}
-	return msg.Flags&discordgo.MessageFlagsIsComponentsV2 != 0, nil
 }
 
 // CommentPost posts a plain message into a contract thread, mentioning

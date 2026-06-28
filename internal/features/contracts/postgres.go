@@ -196,13 +196,14 @@ func (r *pgRepository) Create(ctx context.Context, in CreateInput) (uuid.UUID, e
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// thread_id is NULL until the worker creates the forum thread.
+	// thread_id is NULL until the worker creates the forum thread; post_version is
+	// the format the worker will post in (stamped again by SetThreadID).
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO contracts
-			(id, servers_id, thread_id, title, description, status, kind, deadline,
+			(id, servers_id, thread_id, title, description, status, kind, post_version, deadline,
 			 created_by_user_id, updated_by_user_id, created_at, updated_at, last_refreshed_at)
-		VALUES ($1, $2, NULL, $3, $4, 'open', $5, $6, $7, $7, $8, $8, $8)`,
-		id, in.ServerID, in.Title, in.Description, string(in.Kind), in.Deadline, in.CreatedByUserID, now); err != nil {
+		VALUES ($1, $2, NULL, $3, $4, 'open', $5, $6, $7, $8, $8, $9, $9, $9)`,
+		id, in.ServerID, in.Title, in.Description, string(in.Kind), CurrentPostVersion, in.Deadline, in.CreatedByUserID, now); err != nil {
 		return uuid.Nil, err
 	}
 	// Same transaction: enqueue the thread creation so it can't be lost and runs
@@ -789,14 +790,14 @@ func (r *pgRepository) CancelByID(ctx context.Context, serverID, contractID uuid
 // it is NULL until the worker creates the thread; deadline stays nullable (a
 // deadline-less contract). contractColsC is the same list qualified with the "c"
 // alias for queries that join.
-const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, kind, deadline, created_by_user_id, last_refreshed_at`
-const contractColsC = `c.id, c.servers_id, COALESCE(c.thread_id, ''), c.title, c.description, c.status, c.kind, c.deadline, c.created_by_user_id, c.last_refreshed_at`
+const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, kind, post_version, deadline, created_by_user_id, last_refreshed_at`
+const contractColsC = `c.id, c.servers_id, COALESCE(c.thread_id, ''), c.title, c.description, c.status, c.kind, c.post_version, c.deadline, c.created_by_user_id, c.last_refreshed_at`
 
 func scanContract(row pgx.Row) (Progress, error) {
 	var p Progress
 	var status, kind string
 	var deadline *time.Time
-	err := row.Scan(&p.ID, &p.ServerID, &p.ThreadID, &p.Title, &p.Description, &status, &kind, &deadline, &p.CreatedByUserID, &p.LastRefreshedAt)
+	err := row.Scan(&p.ID, &p.ServerID, &p.ThreadID, &p.Title, &p.Description, &status, &kind, &p.PostVersion, &deadline, &p.CreatedByUserID, &p.LastRefreshedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Progress{}, ErrNotFound
 	}
@@ -859,9 +860,14 @@ func (r *pgRepository) ProgressByItemScoped(ctx context.Context, serverID, itemI
 	return p, nil
 }
 
+// SetThreadID records the forum thread the worker created and stamps the post's
+// format version to the current one — so recreating a stale-format post (which
+// clears the thread, then re-creates) lands at CurrentPostVersion and won't be
+// re-migrated.
 func (r *pgRepository) SetThreadID(ctx context.Context, contractID uuid.UUID, threadID string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE contracts SET thread_id = $1, updated_at = $2 WHERE id = $3`, threadID, time.Now(), contractID)
+		`UPDATE contracts SET thread_id = $1, post_version = $2, updated_at = $3 WHERE id = $4`,
+		threadID, CurrentPostVersion, time.Now(), contractID)
 	return err
 }
 

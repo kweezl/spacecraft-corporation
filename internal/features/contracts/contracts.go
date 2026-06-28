@@ -78,6 +78,16 @@ const (
 	KindTemplate Kind = "template"
 )
 
+// CurrentPostVersion is the format version of the forum-post starter message the
+// bot writes today. A post whose recorded post_version is below this can't be
+// edited into the current format (e.g. the Components V2 flag is immutable), so
+// it is migrated by deleting and recreating it. Bump this when the post format
+// changes again (v3, v4, …); existing posts then re-render on their next update.
+//
+//	1 = embed post (pre-V2)
+//	2 = Components V2 card
+const CurrentPostVersion = 2
+
 // Outbox task kinds (registered with the outbox worker). Every Discord REST side
 // effect is enqueued under one of these in the same transaction as the domain
 // write, then performed asynchronously by the worker.
@@ -141,6 +151,10 @@ type Contract struct {
 	// Kind is whether the contract is custom or template (defaults to custom for
 	// every pre-templates row via the backfill migration).
 	Kind Kind
+	// PostVersion is the format version of the live forum-post starter message
+	// (see CurrentPostVersion). Stamped when the post is (re)created; a value below
+	// CurrentPostVersion marks a stale-format post to migrate.
+	PostVersion int
 	// Deadline is when the contract auto-expires, or nil for a deadline-less
 	// contract (never auto-expires, never gets a closing-soon notice).
 	Deadline        *time.Time
@@ -410,14 +424,9 @@ type Gateway interface {
 	// ClosePost writes the final card (no action buttons) then archives + locks.
 	ClosePost(threadID string, components []discordgo.MessageComponent) error
 	// DeletePost deletes a contract's forum thread (and its starter message). Used
-	// to remove a stale pre-V2 post before recreating it as a Components V2 card,
-	// so the migration doesn't leave a duplicate.
+	// to remove a stale-format post before recreating it in the current format, so
+	// the migration doesn't leave a duplicate.
 	DeletePost(threadID string) error
-	// PostIsComponentsV2 reports whether the thread's starter message was created
-	// with the Components V2 flag (immutable after creation). A post made before
-	// the V2 migration returns false; the migration path keys on this so it never
-	// deletes a genuine V2 post that was merely rejected for another reason.
-	PostIsComponentsV2(threadID string) (bool, error)
 	// CommentPost posts a plain message in the contract thread, mentioning
 	// mentionUserIDs (passed through AllowedMentions so they actually ping). Used
 	// for the pre-expiry "closing soon" notice.

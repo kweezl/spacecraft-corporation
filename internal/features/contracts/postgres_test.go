@@ -92,6 +92,23 @@ func (s *contractsSuite) TestCreateAndProgress() {
 	assert.Equal(t, 500, p.Items[0].RequiredQty)
 }
 
+func (s *contractsSuite) TestPostVersion_StampedOnCreateAndSetThread() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	id, err := repo.Create(ctx, CreateInput{ServerID: g, Kind: KindCustom, Title: "X", CreatedByUserID: mgr})
+	require.NoError(t, err)
+	p, err := repo.ProgressByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, CurrentPostVersion, p.PostVersion, "create stamps the current post version")
+
+	// SetThreadID re-stamps the current version, so a recreated post (which clears
+	// the thread then re-creates) lands at CurrentPostVersion and isn't re-migrated.
+	require.NoError(t, repo.SetThreadID(ctx, id, "thread-x"))
+	p, err = repo.ProgressByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, CurrentPostVersion, p.PostVersion)
+}
+
 func (s *contractsSuite) TestProgress_Participants() {
 	t := s.T()
 	repo, ctx, g := s.seed()

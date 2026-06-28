@@ -111,11 +111,9 @@ type Discord interface {
 	ChannelMessageEditComplex(m *discordgo.MessageEdit) (*discordgo.Message, error)
 	ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend) (*discordgo.Message, error)
 	ChannelEditComplex(channelID string, data *discordgo.ChannelEdit) (*discordgo.Channel, error)
-	// ChannelDelete removes a channel/thread (used to drop a stale pre-V2 forum
-	// post before recreating it). ChannelMessage fetches a single message (used to
-	// read a starter message's flags and tell a pre-V2 post from a V2 one).
+	// ChannelDelete removes a channel/thread (used to drop a stale-format forum
+	// post before recreating it in the current format).
 	ChannelDelete(channelID string) (*discordgo.Channel, error)
-	ChannelMessage(channelID, messageID string) (*discordgo.Message, error)
 	// InteractionResponseEdit edits an interaction's original reply via the
 	// webhook identified by the interaction's app id + token (used to deliver an
 	// async outcome after the initial ack).

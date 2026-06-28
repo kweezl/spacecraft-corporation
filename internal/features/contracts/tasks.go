@@ -102,14 +102,16 @@ func (h *Feature) taskRefresh(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" || prog.Status != StatusOpen {
 		return nil
 	}
+	if prog.PostVersion < CurrentPostVersion {
+		// The live post is a stale format that can't be edited into the current one
+		// (e.g. the immutable Components V2 flag) — replace it rather than edit.
+		return h.migratePost(ctx, p.ContractID, prog.ThreadID)
+	}
 	err = h.gw.EditPost(prog.ThreadID, h.postComponents(ctx, prog.ServerID, prog, true))
 	if isDeletedPost(err) {
 		// The forum post was deleted out from under us — recreate it (the stale
 		// thread id is cleared and a create re-enqueued; nothing to delete).
 		return h.recreatePost(ctx, p.ContractID)
-	}
-	if isFormatRejected(err) {
-		return h.migrateLegacyPost(ctx, p.ContractID, prog.ThreadID, err)
 	}
 	return permanentIfDiscord(err)
 }
@@ -140,35 +142,25 @@ func (h *Feature) taskClose(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" {
 		return nil
 	}
+	if prog.PostVersion < CurrentPostVersion {
+		// A stale-format post can't be edited into the current format; replace it
+		// with the final card (the recreated post reflects the terminal state).
+		return h.migratePost(ctx, p.ContractID, prog.ThreadID)
+	}
 	err = h.gw.ClosePost(prog.ThreadID, h.postComponents(ctx, prog.ServerID, prog, false))
 	if isDeletedPost(err) {
 		return nil // the post is already gone — nothing left to close
 	}
-	if isFormatRejected(err) {
-		return h.migrateLegacyPost(ctx, p.ContractID, prog.ThreadID, err)
-	}
 	return permanentIfDiscord(err)
 }
 
-// migrateLegacyPost handles a forum post that predates the Components V2 card and
-// so can't be edited into V2 (the IsComponentsV2 flag is immutable). It confirms
-// the post really is pre-V2 first — a genuine V2 post rejected for another reason
-// (a malformed payload) must NOT be deleted — then deletes the stale post and
-// re-enqueues a create, so the migration replaces it rather than leaving a
-// duplicate alongside the new V2 card.
-func (h *Feature) migrateLegacyPost(ctx context.Context, id uuid.UUID, threadID string, editErr error) error {
-	v2, err := h.gw.PostIsComponentsV2(threadID)
-	if isDeletedPost(err) {
-		return h.recreatePost(ctx, id) // already gone — just recreate
-	}
-	if err != nil {
-		return err // transient: retry
-	}
-	if v2 {
-		// A V2 post was rejected for some other reason; deleting it would lose a good
-		// post, so abandon the task instead of looping.
-		return outbox.Permanent(editErr)
-	}
+// migratePost replaces a stale-format forum post (one below CurrentPostVersion):
+// it deletes the old post and re-enqueues a create, so the contract is reposted
+// in the current format instead of left un-editable or duplicated. recreatePost
+// clears the thread id and requeues the create; SetThreadID then stamps the new
+// post CurrentPostVersion, so it is not migrated again. Idempotent: a re-run
+// whose post is already gone skips the delete.
+func (h *Feature) migratePost(ctx context.Context, id uuid.UUID, threadID string) error {
 	if err := h.gw.DeletePost(threadID); err != nil && !isDeletedPost(err) {
 		return err
 	}
@@ -285,15 +277,6 @@ func isDeletedPost(err error) bool {
 	var re *discordgo.RESTError
 	return errors.As(err, &re) && re.Message != nil &&
 		(re.Message.Code == discordgo.ErrCodeUnknownMessage || re.Message.Code == discordgo.ErrCodeUnknownChannel)
-}
-
-// isFormatRejected reports a Discord "invalid form body" (50035), which an edit
-// hits when the target message predates the Components V2 migration: the
-// IsComponentsV2 flag is fixed at creation and can't be added on edit. Callers
-// recover by recreating the post as a V2 card rather than abandoning the task.
-func isFormatRejected(err error) bool {
-	var re *discordgo.RESTError
-	return errors.As(err, &re) && re.Message != nil && re.Message.Code == discordgo.ErrCodeInvalidFormBody
 }
 
 // permanentIfDiscord marks a permanent Discord error so the worker abandons the

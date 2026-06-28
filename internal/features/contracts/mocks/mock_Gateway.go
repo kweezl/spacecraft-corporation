@@ -314,62 +314,6 @@ func (_c *MockGateway_EditPost_Call) RunAndReturn(run func(string, []discordgo.M
 	return _c
 }
 
-// PostIsComponentsV2 provides a mock function with given fields: threadID
-func (_m *MockGateway) PostIsComponentsV2(threadID string) (bool, error) {
-	ret := _m.Called(threadID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for PostIsComponentsV2")
-	}
-
-	var r0 bool
-	var r1 error
-	if rf, ok := ret.Get(0).(func(string) (bool, error)); ok {
-		return rf(threadID)
-	}
-	if rf, ok := ret.Get(0).(func(string) bool); ok {
-		r0 = rf(threadID)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(threadID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MockGateway_PostIsComponentsV2_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PostIsComponentsV2'
-type MockGateway_PostIsComponentsV2_Call struct {
-	*mock.Call
-}
-
-// PostIsComponentsV2 is a helper method to define mock.On call
-//   - threadID string
-func (_e *MockGateway_Expecter) PostIsComponentsV2(threadID interface{}) *MockGateway_PostIsComponentsV2_Call {
-	return &MockGateway_PostIsComponentsV2_Call{Call: _e.mock.On("PostIsComponentsV2", threadID)}
-}
-
-func (_c *MockGateway_PostIsComponentsV2_Call) Run(run func(threadID string)) *MockGateway_PostIsComponentsV2_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string))
-	})
-	return _c
-}
-
-func (_c *MockGateway_PostIsComponentsV2_Call) Return(_a0 bool, _a1 error) *MockGateway_PostIsComponentsV2_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockGateway_PostIsComponentsV2_Call) RunAndReturn(run func(string) (bool, error)) *MockGateway_PostIsComponentsV2_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // NewMockGateway creates a new instance of MockGateway. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockGateway(t interface {
