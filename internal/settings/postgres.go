@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/uuidv7"
 )
 
@@ -22,13 +23,15 @@ func newRepository(pool *pgxpool.Pool) Repository {
 
 func (r *pgRepository) Get(ctx context.Context, serverID uuid.UUID) (Settings, error) {
 	var s Settings
+	var language string // scan into a plain string; i18n.Language is a named type
 	err := r.pool.QueryRow(ctx,
 		`SELECT COALESCE(theme, ''), COALESCE(language, ''), COALESCE(contracts_forum_channel_id, '')
 		 FROM server_settings WHERE servers_id = $1`,
-		serverID).Scan(&s.Theme, &s.Language, &s.ContractsForumChannelID)
+		serverID).Scan(&s.Theme, &language, &s.ContractsForumChannelID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Settings{}, nil
 	}
+	s.Language = i18n.Language(language)
 	return s, err
 }
 
@@ -36,8 +39,8 @@ func (r *pgRepository) SetTheme(ctx context.Context, serverID uuid.UUID, theme s
 	return r.upsert(ctx, serverID, "theme", theme)
 }
 
-func (r *pgRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error {
-	return r.upsert(ctx, serverID, "language", language)
+func (r *pgRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language i18n.Language) error {
+	return r.upsert(ctx, serverID, "language", string(language))
 }
 
 func (r *pgRepository) SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {

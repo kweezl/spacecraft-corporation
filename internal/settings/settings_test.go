@@ -54,7 +54,7 @@ func TestStore_Resolve_Defaults(t *testing.T) {
 
 	theme, lang := newStore(t, repo).Resolve(context.Background(), g1)
 	assert.Equal(t, "standard", theme)
-	assert.Equal(t, "en", lang)
+	assert.Equal(t, i18n.LanguageEN, lang)
 }
 
 func TestStore_Resolve_StoredValues(t *testing.T) {
@@ -63,7 +63,7 @@ func TestStore_Resolve_StoredValues(t *testing.T) {
 
 	theme, lang := newStore(t, repo).Resolve(context.Background(), g1)
 	assert.Equal(t, "lore", theme)
-	assert.Equal(t, "ru", lang)
+	assert.Equal(t, i18n.LanguageRU, lang)
 }
 
 func TestStore_Resolve_InvalidStoredFallsBack(t *testing.T) {
@@ -73,7 +73,7 @@ func TestStore_Resolve_InvalidStoredFallsBack(t *testing.T) {
 
 	theme, lang := newStore(t, repo).Resolve(context.Background(), g1)
 	assert.Equal(t, "standard", theme, "an unknown stored theme falls back to default")
-	assert.Equal(t, "en", lang)
+	assert.Equal(t, i18n.LanguageEN, lang)
 }
 
 func TestStore_Resolve_Caches(t *testing.T) {
@@ -264,7 +264,7 @@ func TestPanel_SetTheme(t *testing.T) {
 func TestPanel_SetLanguage(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
 	repo.EXPECT().Get(mock.Anything, g1).Return(settings.Settings{}, nil).Once() // current: default
-	repo.EXPECT().SetLanguage(mock.Anything, g1, "ru").Return(nil).Once()
+	repo.EXPECT().SetLanguage(mock.Anything, g1, i18n.LanguageRU).Return(nil).Once()
 
 	tr := translator(t)
 	comp := settings.NewPanelComponent(newStore(t, repo), tr, testLoc(t, tr), nil)

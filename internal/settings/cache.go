@@ -19,7 +19,7 @@ const defaultCacheSize = 1000
 // plus the raw contracts forum channel id (no default — empty means unset).
 type resolved struct {
 	theme string
-	lang  string
+	lang  i18n.Language
 	forum string
 }
 
@@ -75,7 +75,7 @@ func (s *Store) resolve(ctx context.Context, serverID uuid.UUID) (resolved, bool
 
 // Resolve returns the server's effective theme and language, applying app
 // defaults for unset or no-longer-valid values. It never fails.
-func (s *Store) Resolve(ctx context.Context, serverID uuid.UUID) (string, string) {
+func (s *Store) Resolve(ctx context.Context, serverID uuid.UUID) (string, i18n.Language) {
 	r, _ := s.resolve(ctx, serverID)
 	return r.theme, r.lang
 }
@@ -102,7 +102,7 @@ func (s *Store) SetTheme(ctx context.Context, serverID uuid.UUID, theme string) 
 }
 
 // SetLanguage persists the language and invalidates the server's cached resolution.
-func (s *Store) SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error {
+func (s *Store) SetLanguage(ctx context.Context, serverID uuid.UUID, language i18n.Language) error {
 	if err := s.repo.SetLanguage(ctx, serverID, language); err != nil {
 		return err
 	}

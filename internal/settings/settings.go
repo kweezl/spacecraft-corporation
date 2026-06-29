@@ -8,13 +8,15 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
 
 // Settings is a server's stored choice. An empty field means "unset" (use the
 // app default, where one exists).
 type Settings struct {
 	Theme    string
-	Language string
+	Language i18n.Language
 	// ContractsForumChannelID is the Discord forum channel the contracts feature
 	// posts contract threads to; empty = unset. Owned by the contracts feature
 	// conceptually, stored here per the chosen "extend settings" approach.
@@ -28,7 +30,7 @@ type Repository interface {
 	// SetTheme upserts the server's theme, leaving other columns untouched.
 	SetTheme(ctx context.Context, serverID uuid.UUID, theme string) error
 	// SetLanguage upserts the server's language, leaving other columns untouched.
-	SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error
+	SetLanguage(ctx context.Context, serverID uuid.UUID, language i18n.Language) error
 	// SetContractsForumChannelID upserts the server's contracts forum channel,
 	// leaving other columns untouched.
 	SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error
