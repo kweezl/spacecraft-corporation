@@ -112,11 +112,11 @@ func (p *panel) handleComponent(ctx context.Context, r registry.Responder, i *di
 			theme = value
 		}
 	case "language":
-		if value != "" && value != lang && p.tr.HasLanguage(value) {
-			if err := p.store.SetLanguage(ctx, serverID, value); err != nil {
+		if picked := i18n.Language(value); value != "" && picked != lang && p.tr.HasLanguage(picked) {
+			if err := p.store.SetLanguage(ctx, serverID, picked); err != nil {
 				return fmt.Errorf("settings: set language %q: %w", value, err)
 			}
-			lang = value
+			lang = picked
 		}
 	}
 	return r.UpdateComponentsV2(i.Interaction, p.viewFrom(ctx, serverID, theme, lang))
@@ -159,7 +159,7 @@ func (p *panel) view(ctx context.Context, serverID uuid.UUID) []discordgo.Messag
 
 // viewFrom builds the Components V2 view for the given theme/language: a header
 // showing them, then a theme select and a language select, each prefilled.
-func (p *panel) viewFrom(ctx context.Context, serverID uuid.UUID, theme, lang string) []discordgo.MessageComponent {
+func (p *panel) viewFrom(ctx context.Context, serverID uuid.UUID, theme string, lang i18n.Language) []discordgo.MessageComponent {
 	out := []discordgo.MessageComponent{
 		discordgo.TextDisplay{Content: p.loc.Render(ctx, serverID, "settings.panel.header",
 			map[string]any{"Theme": theme, "Language": lang})},
@@ -168,7 +168,7 @@ func (p *panel) viewFrom(ctx context.Context, serverID uuid.UUID, theme, lang st
 				p.loc.Render(ctx, serverID, "settings.panel.theme_placeholder", nil)),
 		}},
 		discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-			valueSelect("language", p.tr.Languages(), lang,
+			valueSelect("language", languageCodes(p.tr.Languages()), string(lang),
 				p.loc.Render(ctx, serverID, "settings.panel.language_placeholder", nil)),
 		}},
 	}
@@ -196,6 +196,16 @@ func valueSelect(kind string, values []string, current, placeholder string) disc
 		MaxValues:   1,
 		Options:     opts,
 	}
+}
+
+// languageCodes flattens renderable languages to their string codes for the
+// string-select (Discord component values are plain strings).
+func languageCodes(langs []i18n.Language) []string {
+	out := make([]string, len(langs))
+	for i, l := range langs {
+		out[i] = string(l)
+	}
+	return out
 }
 
 // customID encodes a select: "settings:theme" / "settings:language".

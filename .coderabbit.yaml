@@ -17,9 +17,10 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
-    # Only review PRs targeting these branches.
+    # Only review PRs targeting these branches (regex, not glob).
     base_branches:
       - main
+      - release/.*
   # Pull project conventions into review context.
   path_instructions:
     - path: "**/*.go"

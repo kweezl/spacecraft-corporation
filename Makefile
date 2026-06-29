@@ -89,3 +89,11 @@ dev.mock:
 dev.migration:
 	@test -n "$(name)" || { echo "usage: make dev.migration name=<snake_case_name>"; exit 1; }
 	$(COMPOSE_DEV) exec -T $(DEV_SERVICE) goose -dir $(MIGRATIONS_DIR) create $(name) sql
+
+## gamedata.gen: regenerate the gamedata layer + item icons from GAMEDATA_SOURCE
+## (the public spacecraft-resources generated/ dir). Runs on the HOST (needs the
+## Go toolchain + the resources clone — the dev container has neither mounted).
+## Default version v1; cut a new layer with: make gamedata.gen version=v2 parent=v1
+gamedata.gen:
+	@test -n "$(GAMEDATA_SOURCE)" || { echo "set GAMEDATA_SOURCE to the spacecraft-resources generated/ dir (see .env.example)"; exit 1; }
+	go run ./internal/gamedata/gen -version $(or $(version),v1) $(if $(parent),-parent $(parent),) -root ./internal/gamedata

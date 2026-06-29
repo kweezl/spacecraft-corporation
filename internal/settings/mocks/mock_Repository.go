@@ -6,6 +6,7 @@ import (
 	context "context"
 
 	uuid "github.com/google/uuid"
+	i18n "github.com/kweezl/spacecraft-corporation/internal/i18n"
 	settings "github.com/kweezl/spacecraft-corporation/internal/settings"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -129,7 +130,7 @@ func (_c *MockRepository_SetContractsForumChannelID_Call) RunAndReturn(run func(
 }
 
 // SetLanguage provides a mock function with given fields: ctx, serverID, language
-func (_m *MockRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error {
+func (_m *MockRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language i18n.Language) error {
 	ret := _m.Called(ctx, serverID, language)
 
 	if len(ret) == 0 {
@@ -137,7 +138,7 @@ func (_m *MockRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, l
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, i18n.Language) error); ok {
 		r0 = rf(ctx, serverID, language)
 	} else {
 		r0 = ret.Error(0)
@@ -154,14 +155,14 @@ type MockRepository_SetLanguage_Call struct {
 // SetLanguage is a helper method to define mock.On call
 //   - ctx context.Context
 //   - serverID uuid.UUID
-//   - language string
+//   - language i18n.Language
 func (_e *MockRepository_Expecter) SetLanguage(ctx interface{}, serverID interface{}, language interface{}) *MockRepository_SetLanguage_Call {
 	return &MockRepository_SetLanguage_Call{Call: _e.mock.On("SetLanguage", ctx, serverID, language)}
 }
 
-func (_c *MockRepository_SetLanguage_Call) Run(run func(ctx context.Context, serverID uuid.UUID, language string)) *MockRepository_SetLanguage_Call {
+func (_c *MockRepository_SetLanguage_Call) Run(run func(ctx context.Context, serverID uuid.UUID, language i18n.Language)) *MockRepository_SetLanguage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(i18n.Language))
 	})
 	return _c
 }
@@ -171,7 +172,7 @@ func (_c *MockRepository_SetLanguage_Call) Return(_a0 error) *MockRepository_Set
 	return _c
 }
 
-func (_c *MockRepository_SetLanguage_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_SetLanguage_Call {
+func (_c *MockRepository_SetLanguage_Call) RunAndReturn(run func(context.Context, uuid.UUID, i18n.Language) error) *MockRepository_SetLanguage_Call {
 	_c.Call.Return(run)
 	return _c
 }

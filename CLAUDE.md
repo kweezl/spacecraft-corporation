@@ -107,7 +107,14 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   language → the key itself). The `Localizer` is the handler-facing facade:
   `Render(ctx, serverID, key, data)` resolves the server's theme/language via a
   `Resolver` (provided by `settings`) and renders. Owns the app defaults
-  `APP_THEME` / `APP_LANGUAGE`.
+  `APP_THEME` / `APP_LANGUAGE`. It also defines the canonical **`Language`** type
+  — a named string with constants for every known code (the union of all eight
+  the game ships; `KnownLanguages`/`ParseLanguage`) — reused by `settings`
+  (`Settings.Language`, the `Resolver`) and `gamedata` (its localized tables key
+  by it). The two relevant sets differ and both are valid: the **renderable**
+  subset has an embedded bundle (`(*Translator).Languages` / `HasLanguage`; today
+  `en`, `ru`) and is what a server may pick; the full known set is the
+  **game-data** coverage. Themes stay plain strings (bundle-discovered).
 - **`settings`** (`internal/settings`) — **core** module owning per-server
   localization. The `server_settings` table holds each server's chosen `theme`
   and `language` (NULL = use the app default). Its `Store` (LRU-cached, like
@@ -143,6 +150,31 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   completes. It depends on the session's `Live` for the gateway, so it needs no
   startup-order coupling; the `Discord` interface gains `ApplicationEmojis` /
   `ApplicationEmojiCreate` / `ApplicationEmojiDelete` (wrapped on `Live`) for it.
+- **`gamedata`** (`internal/gamedata`) — **core** module exposing the compiled-in
+  SpaceCraft game reference data (items, item categories, contract templates,
+  space objects) as a **versioned, read-only** `Registry` of `Catalog`s. Nothing
+  is parsed at runtime: the data is **generated pure-Go literals** under `db/v*`
+  (a build-time `gen` tool reads the public resources repo and bakes the structs),
+  and kept item **icons are emitted into the `emoji` module's assets**. No DB, no
+  I/O, no readiness probe — the `Registry` is ready as soon as it is built (an
+  `fx.Invoke` forces that at startup so loaded versions log and an undefined
+  parent fails fast). Versions are **manually cut** (`v1`, `v2`, …) and form a
+  **parent chain**: a newer version stores only its delta (changed/added entries
+  + removed item ids) over its parent, and a `Catalog` lookup checks the layer,
+  honors its removals, then falls back to the parent — so unchanged data is
+  shared, not duplicated. The point of versions is **link stability**: a stored
+  link (e.g. a contract's item ids) is stamped with a `gamedata_version`, so a
+  **breaking** game update (an item/contract id removed) is cut as a **new
+  version** that overlays the old one, leaving links stamped with the older
+  version still resolvable; a **backward-compatible** update just overwrites the
+  current top version in place. Only the highest version is mutable. The
+  generator applies **exclusion rules** (drops Knowledge / QuestItem /
+  uncategorized / Scrap / decorative items — **except** any id referenced by a
+  contract or space object, always kept), per-version localized name/desc tables
+  for all eight game languages, and a committed `snapshot.json` per version that
+  is the diff basis the generator classifies as compatible-vs-breaking. The
+  shared value types live in a dependency-free `schema` subpackage so the
+  generated `db/v*` packages don't import the registry that consumes them.
 - **`commandregistry`** (`internal/discord/registry`) — collects `Command`s and
   `Component`s from feature modules via fx groups, builds the route maps, and
   dispatches three interaction kinds: slash commands (by name), **autocomplete**
@@ -202,6 +234,7 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
 | `instrumentation` | `INSTRUMENTATION_ADDR` (default `:9464`) |
 | `i18n` | `APP_THEME` (default `standard`); `APP_LANGUAGE` (default `en`) — app-wide fallback wording theme + language; must match an embedded bundle. `settings` has no env of its own (per-server overrides; defaults from `i18n`) |
 | `emoji` | `EMOJI_UPLOAD` (default `false`) — master switch: when true, manage application emojis from the images under `internal/emoji/assets/` (upload missing, idempotent). `EMOJI_PRUNE` (default `true`) — delete emojis the repo no longer defines; `EMOJI_REPLACE` (default `false`) — force delete+recreate every embedded emoji each start (no change detection). Both sub-toggles act only when `EMOJI_UPLOAD=true`. Listing existing emojis to populate the `Store` happens regardless |
+| `gamedata` | `GAMEDATA_VERSIONS` — comma-separated allowlist of game-data versions to load (e.g. `v1,v2`); a version's ancestors load automatically, a listed-but-undefined version is warned and skipped. Unset = load every defined version; set-but-empty = none. **Generator only** (dev/maintainer, *not* read by the running bot): `GAMEDATA_SOURCE` — the `generated/` dir of the public [spacecraft-resources](https://github.com/kweezl/spacecraft-resources) repo, used by `make gamedata.gen` (`go generate`) |
 | `bases` | `BASES_MEMBER_LIMIT` (default `3`), `BASES_CORP_LIMIT` (default `6`) — live bases per member / per corp; `BASES_EXTRACTOR_LIMIT` (default `4`), `BASES_PRODUCTION_LIMIT` (default `30`) — equipment per base; `BASES_LIST_PAGE_SIZE` (default `8`). Only read when the `bases` feature is enabled |
 | `app`/`feature` | `FEATURES` (comma-separated allowlist; unset = all, empty = none) |
 | `appconfig` | `APP_NAME` (default `spacecraft-corporation`); `APP_TIMEZONE` (IANA name, default `UTC`, pins `time.Local`); `APP_OWNER_DISCORD_ID` (optional bot-owner Discord ID for the unapproved-server reply); `Version` injected via build-time ldflags |
@@ -441,6 +474,7 @@ internal/discord/session/    # single-session manager + discordgo wrapper
 internal/discord/registry/   # command/component registry + router + Command type
 internal/discord/servers/    # server tracking + approval gate + event log
 internal/emoji/              # application-emoji store + startup sync (+ assets/)
+internal/gamedata/           # versioned compiled-in game data (gen + db/v* + schema)
 internal/features/ping/
 internal/features/bases/     # /base: registry + command tree + list pagination
 .mockery.yaml         # mock generation config
