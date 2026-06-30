@@ -25,6 +25,26 @@ var (
 		"Scrap":             true,
 		"ShipDecorative":    true,
 		"BaseBuilding_Deco": true,
+		// Deprecated hull pieces that survive only inside shipwrecks; their en
+		// names are tagged "[DEPRECATED …]" and they carry no localization.
+		"ShipHull_WreckOnly": true,
+	}
+
+	// excludedSpaceObjectIDs drops space objects by EXACT id — placeholders and
+	// test entities that are not real stations (the "Empty" sentinel, the pirate
+	// spawn test object). Exact match only, never substring/regex, so a real
+	// future id is never caught by accident.
+	excludedSpaceObjectIDs = map[string]bool{
+		"Empty":        true,
+		"Test_Pirates": true,
+	}
+
+	// excludedContractIDs drops stale contracts by EXACT id — the "Deprecated"
+	// bucket and the bare "Tuto" tutorial template. Exact match only (so real
+	// contracts like "Tuto_Material_Iron" are kept), never substring/regex.
+	excludedContractIDs = map[string]bool{
+		"Deprecated": true,
+		"Tuto":       true,
 	}
 )
 
@@ -37,15 +57,20 @@ type dataset struct {
 	Names         map[i18n.Language]map[schema.GDID]string // item id -> localized name
 	Descs         map[i18n.Language]map[schema.GDID]string // item id -> localized description
 	CategoryNames map[i18n.Language]map[schema.GDID]string // itemType id -> localized name
+	ContractNames map[i18n.Language]map[schema.GDID]string // contract id -> localized title
+	FactionNames  map[i18n.Language]map[schema.GDID]string // faction code -> localized name
+	SpaceObjNames map[i18n.Language]map[schema.GDID]string // space-object id -> localized name
 }
 
 // buildResult is the dataset plus a report of what happened.
 type buildResult struct {
-	data        dataset
-	kept        []string          // kept item ids, sorted
-	dropped     map[string]string // dropped item id -> reason
-	icons       map[string]string // emoji name -> source icon filename (to copy)
-	iconMissing []string          // kept items that have an icon block but no alias
+	data                dataset
+	kept                []string          // kept item ids, sorted
+	dropped             map[string]string // dropped item id -> reason
+	icons               map[string]string // emoji name -> source icon filename (to copy)
+	iconMissing         []string          // kept items that have an icon block but no alias
+	droppedSpaceObjects []string          // space-object ids excluded by id, sorted
+	droppedContracts    []string          // contract ids excluded by id, sorted
 }
 
 // referencedIDs collects every item id named by a contract (requirement or
@@ -58,7 +83,10 @@ func referencedIDs(s *source) map[string]bool {
 			r[id] = true
 		}
 	}
-	for _, c := range s.contracts {
+	for id, c := range s.contracts {
+		if excludedContractIDs[id] {
+			continue
+		}
 		for _, e := range c.Items {
 			add(e.Item)
 		}
@@ -66,7 +94,10 @@ func referencedIDs(s *source) map[string]bool {
 			add(e.Item)
 		}
 	}
-	for _, so := range s.spaceObjects {
+	for id, so := range s.spaceObjects {
+		if excludedSpaceObjectIDs[id] {
+			continue
+		}
 		for _, e := range so.Props.Buyout {
 			add(e.Item)
 		}
@@ -104,6 +135,9 @@ func buildDataset(s *source) (*buildResult, error) {
 			Names:         map[i18n.Language]map[schema.GDID]string{},
 			Descs:         map[i18n.Language]map[schema.GDID]string{},
 			CategoryNames: map[i18n.Language]map[schema.GDID]string{},
+			ContractNames: map[i18n.Language]map[schema.GDID]string{},
+			FactionNames:  map[i18n.Language]map[schema.GDID]string{},
+			SpaceObjNames: map[i18n.Language]map[schema.GDID]string{},
 		},
 		dropped: map[string]string{},
 		icons:   map[string]string{},
@@ -148,6 +182,10 @@ func buildDataset(s *source) (*buildResult, error) {
 		res.data.Categories[schema.GDID(id)] = schema.Category{ID: schema.GDID(id), Parent: schema.GDID(c.Parent)}
 	}
 	for id, c := range s.contracts {
+		if excludedContractIDs[id] {
+			res.droppedContracts = append(res.droppedContracts, id)
+			continue
+		}
 		res.data.Contracts[schema.GDID(id)] = schema.Contract{
 			ID:            schema.GDID(id),
 			Client:        c.Client,
@@ -159,13 +197,19 @@ func buildDataset(s *source) (*buildResult, error) {
 			Rewards:       convReward(c.Rewards),
 		}
 	}
+	sort.Strings(res.droppedContracts)
 	for id, so := range s.spaceObjects {
+		if excludedSpaceObjectIDs[id] {
+			res.droppedSpaceObjects = append(res.droppedSpaceObjects, id)
+			continue
+		}
 		res.data.SpaceObjects[schema.GDID(id)] = schema.SpaceObject{
 			ID:       schema.GDID(id),
 			Owner:    so.Owner,
 			Building: so.Building,
 		}
 	}
+	sort.Strings(res.droppedSpaceObjects)
 
 	for lang, tr := range s.translations {
 		names, descs, catNames := map[schema.GDID]string{}, map[schema.GDID]string{}, map[schema.GDID]string{}
@@ -187,6 +231,31 @@ func buildDataset(s *source) (*buildResult, error) {
 		res.data.Names[lang] = names
 		res.data.Descs[lang] = descs
 		res.data.CategoryNames[lang] = catNames
+
+		// Name-only tables (the data carries no desc for these). Contracts and
+		// space objects are scoped to kept ids; factions have no entity of their
+		// own, so every translated faction code is kept.
+		contractNames := map[schema.GDID]string{}
+		for id := range res.data.Contracts {
+			if v, ok := tr.Contract[string(id)]; ok && v.Name != "" {
+				contractNames[id] = v.Name
+			}
+		}
+		spaceObjNames := map[schema.GDID]string{}
+		for id := range res.data.SpaceObjects {
+			if v, ok := tr.SpaceObject[string(id)]; ok && v.Name != "" {
+				spaceObjNames[id] = v.Name
+			}
+		}
+		factionNames := map[schema.GDID]string{}
+		for code, v := range tr.Faction {
+			if v.Name != "" {
+				factionNames[schema.GDID(code)] = v.Name
+			}
+		}
+		res.data.ContractNames[lang] = contractNames
+		res.data.SpaceObjNames[lang] = spaceObjNames
+		res.data.FactionNames[lang] = factionNames
 	}
 
 	return res, nil

@@ -77,8 +77,11 @@ type rawSpaceObject struct {
 }
 
 type rawTranslation struct {
-	Item     map[string]rawString `json:"item"`
-	ItemType map[string]rawString `json:"itemType"`
+	Item        map[string]rawString `json:"item"`
+	ItemType    map[string]rawString `json:"itemType"`
+	Contract    map[string]rawString `json:"contract"`
+	Faction     map[string]rawString `json:"faction"`
+	SpaceObject map[string]rawString `json:"spaceObject"`
 }
 
 type rawString struct {

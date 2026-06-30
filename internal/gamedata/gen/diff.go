@@ -23,6 +23,9 @@ type snapshot struct {
 	Names         map[i18n.Language]map[schema.GDID]string `json:"names"`
 	Descs         map[i18n.Language]map[schema.GDID]string `json:"descs"`
 	CategoryNames map[i18n.Language]map[schema.GDID]string `json:"categoryNames"`
+	ContractNames map[i18n.Language]map[schema.GDID]string `json:"contractNames"`
+	FactionNames  map[i18n.Language]map[schema.GDID]string `json:"factionNames"`
+	SpaceObjNames map[i18n.Language]map[schema.GDID]string `json:"spaceObjNames"`
 }
 
 func snapshotOf(version, parent string, d dataset) snapshot {
@@ -36,6 +39,9 @@ func snapshotOf(version, parent string, d dataset) snapshot {
 		Names:         d.Names,
 		Descs:         d.Descs,
 		CategoryNames: d.CategoryNames,
+		ContractNames: d.ContractNames,
+		FactionNames:  d.FactionNames,
+		SpaceObjNames: d.SpaceObjNames,
 	}
 }
 
@@ -130,6 +136,9 @@ func deltaDataset(parent snapshot, eff dataset) (dataset, []schema.GDID) {
 		Names:         map[i18n.Language]map[schema.GDID]string{},
 		Descs:         map[i18n.Language]map[schema.GDID]string{},
 		CategoryNames: map[i18n.Language]map[schema.GDID]string{},
+		ContractNames: map[i18n.Language]map[schema.GDID]string{},
+		FactionNames:  map[i18n.Language]map[schema.GDID]string{},
+		SpaceObjNames: map[i18n.Language]map[schema.GDID]string{},
 	}
 	for id, v := range eff.Items {
 		if pv, ok := parent.Items[id]; !ok || !jsonEqual(pv, v) {
@@ -154,6 +163,9 @@ func deltaDataset(parent snapshot, eff dataset) (dataset, []schema.GDID) {
 	deltaStrings(parent.Names, eff.Names, d.Names)
 	deltaStrings(parent.Descs, eff.Descs, d.Descs)
 	deltaStrings(parent.CategoryNames, eff.CategoryNames, d.CategoryNames)
+	deltaStrings(parent.ContractNames, eff.ContractNames, d.ContractNames)
+	deltaStrings(parent.FactionNames, eff.FactionNames, d.FactionNames)
+	deltaStrings(parent.SpaceObjNames, eff.SpaceObjNames, d.SpaceObjNames)
 
 	var removed []schema.GDID
 	for id := range parent.Items {

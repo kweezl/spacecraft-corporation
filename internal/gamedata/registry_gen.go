@@ -12,5 +12,6 @@ var definedSources = map[string]source{
 		items: v1.Items, removedItems: v1.RemovedItems,
 		categories: v1.Categories, contracts: v1.Contracts, spaceObjects: v1.SpaceObjects,
 		names: v1.Names, descs: v1.Descs, categoryNames: v1.CategoryNames,
+		contractNames: v1.ContractNames, factionNames: v1.FactionNames, spaceObjectNames: v1.SpaceObjectNames,
 	},
 }

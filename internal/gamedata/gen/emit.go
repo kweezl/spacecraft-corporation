@@ -64,8 +64,8 @@ func emitVersion(dir, pkg, version, parent string, d dataset, removedItems []sch
 		{"categories_gen.go", fmt.Sprintf("var Categories = %s\n", goLit(d.Categories)), []string{schemaImportPath}},
 		{"contracts_gen.go", fmt.Sprintf("var Contracts = %s\n", goLit(d.Contracts)), []string{schemaImportPath}},
 		{"space_objects_gen.go", fmt.Sprintf("var SpaceObjects = %s\n", goLit(d.SpaceObjects)), []string{schemaImportPath}},
-		{"i18n_gen.go", fmt.Sprintf("var Names = %s\n\nvar Descs = %s\n\nvar CategoryNames = %s\n",
-			goLit(d.Names), goLit(d.Descs), goLit(d.CategoryNames)), []string{i18nImportPath, schemaImportPath}},
+		{"i18n_gen.go", fmt.Sprintf("var Names = %s\n\nvar Descs = %s\n\nvar CategoryNames = %s\n\nvar ContractNames = %s\n\nvar FactionNames = %s\n\nvar SpaceObjectNames = %s\n",
+			goLit(d.Names), goLit(d.Descs), goLit(d.CategoryNames), goLit(d.ContractNames), goLit(d.FactionNames), goLit(d.SpaceObjNames)), []string{i18nImportPath, schemaImportPath}},
 	}
 	for _, f := range files {
 		if err := writeGoFile(filepath.Join(dir, f.name), pkg, f.body, f.imports...); err != nil {
@@ -99,6 +99,7 @@ func emitRegistry(gamedataDir, dbRoot string) error {
 		fmt.Fprintf(&b, "\t\titems: %s.Items, removedItems: %s.RemovedItems,\n", v, v)
 		fmt.Fprintf(&b, "\t\tcategories: %s.Categories, contracts: %s.Contracts, spaceObjects: %s.SpaceObjects,\n", v, v, v)
 		fmt.Fprintf(&b, "\t\tnames: %s.Names, descs: %s.Descs, categoryNames: %s.CategoryNames,\n", v, v, v)
+		fmt.Fprintf(&b, "\t\tcontractNames: %s.ContractNames, factionNames: %s.FactionNames, spaceObjectNames: %s.SpaceObjectNames,\n", v, v, v)
 		b.WriteString("\t},\n")
 	}
 	b.WriteString("}\n")

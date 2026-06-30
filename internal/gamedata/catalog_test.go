@@ -109,3 +109,31 @@ func TestCatalogIconAndCategoryName(t *testing.T) {
 	assert.Equal(t, "", base.IconName("Nope"))
 	assert.Equal(t, "Minerals", base.CategoryName("Minerals", i18n.LanguageEN))
 }
+
+func TestCatalogContractFactionSpaceObjectNames(t *testing.T) {
+	src := baseSrc()
+	src.contractNames = map[i18n.Language]map[schema.GDID]string{
+		i18n.LanguageEN: {"Haul": "Module Kits"},
+		i18n.LanguageRU: {"Haul": "Модульные наборы"},
+	}
+	src.factionNames = map[i18n.Language]map[schema.GDID]string{
+		i18n.LanguageEN: {"TheCo": "The Company"},
+	}
+	src.spaceObjectNames = map[i18n.Language]map[schema.GDID]string{
+		i18n.LanguageEN: {"Station_Start": "Babylon"},
+	}
+	c := newCatalog(src, nil)
+
+	// Localized + Russian variant.
+	assert.Equal(t, "Module Kits", c.ContractName("Haul", i18n.LanguageEN))
+	assert.Equal(t, "Модульные наборы", c.ContractName("Haul", i18n.LanguageRU))
+	// Missing translation falls back to the default language (en).
+	assert.Equal(t, "Module Kits", c.ContractName("Haul", i18n.LanguageDE))
+	// Faction keyed by code; space object by id.
+	assert.Equal(t, "The Company", c.FactionName("TheCo", i18n.LanguageEN))
+	assert.Equal(t, "Babylon", c.SpaceObjectName("Station_Start", i18n.LanguageEN))
+	// Unknown ids resolve to "".
+	assert.Equal(t, "", c.ContractName("Nope", i18n.LanguageEN))
+	assert.Equal(t, "", c.FactionName("Nope", i18n.LanguageEN))
+	assert.Equal(t, "", c.SpaceObjectName("Nope", i18n.LanguageEN))
+}

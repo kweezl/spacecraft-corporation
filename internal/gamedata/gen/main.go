@@ -130,6 +130,12 @@ func printReport(res *buildResult, rep report, basis *snapshot, version, parent 
 	if len(res.iconMissing) > 0 {
 		fmt.Printf("warn:    %d kept items have an icon block but no alias entry (no emoji)\n", len(res.iconMissing))
 	}
+	if len(res.droppedSpaceObjects) > 0 {
+		fmt.Printf("space objects dropped (by id): %s\n", strings.Join(res.droppedSpaceObjects, ", "))
+	}
+	if len(res.droppedContracts) > 0 {
+		fmt.Printf("contracts dropped (by id): %s\n", strings.Join(res.droppedContracts, ", "))
+	}
 
 	if basis == nil {
 		fmt.Println("diff:    initial generation (no prior snapshot)")

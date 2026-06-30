@@ -16,16 +16,19 @@ import (
 // collected by registry_gen.go into definedSources. The Registry turns the
 // requested subset of these into linked Catalogs.
 type source struct {
-	version       string
-	parent        string
-	items         map[schema.GDID]schema.Item
-	removedItems  []schema.GDID
-	categories    map[schema.GDID]schema.Category
-	contracts     map[schema.GDID]schema.Contract
-	spaceObjects  map[schema.GDID]schema.SpaceObject
-	names         map[i18n.Language]map[schema.GDID]string
-	descs         map[i18n.Language]map[schema.GDID]string
-	categoryNames map[i18n.Language]map[schema.GDID]string
+	version          string
+	parent           string
+	items            map[schema.GDID]schema.Item
+	removedItems     []schema.GDID
+	categories       map[schema.GDID]schema.Category
+	contracts        map[schema.GDID]schema.Contract
+	spaceObjects     map[schema.GDID]schema.SpaceObject
+	names            map[i18n.Language]map[schema.GDID]string
+	descs            map[i18n.Language]map[schema.GDID]string
+	categoryNames    map[i18n.Language]map[schema.GDID]string
+	contractNames    map[i18n.Language]map[schema.GDID]string
+	factionNames     map[i18n.Language]map[schema.GDID]string
+	spaceObjectNames map[i18n.Language]map[schema.GDID]string
 }
 
 // Registry holds the loaded game-data versions and resolves a stored

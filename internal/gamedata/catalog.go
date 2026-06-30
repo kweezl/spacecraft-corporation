@@ -22,9 +22,12 @@ type Catalog struct {
 	contracts    map[schema.GDID]schema.Contract
 	spaceObjects map[schema.GDID]schema.SpaceObject
 
-	names         map[i18n.Language]map[schema.GDID]string
-	descs         map[i18n.Language]map[schema.GDID]string
-	categoryNames map[i18n.Language]map[schema.GDID]string
+	names            map[i18n.Language]map[schema.GDID]string
+	descs            map[i18n.Language]map[schema.GDID]string
+	categoryNames    map[i18n.Language]map[schema.GDID]string
+	contractNames    map[i18n.Language]map[schema.GDID]string
+	factionNames     map[i18n.Language]map[schema.GDID]string
+	spaceObjectNames map[i18n.Language]map[schema.GDID]string
 }
 
 func newCatalog(s source, parent *Catalog) *Catalog {
@@ -33,16 +36,19 @@ func newCatalog(s source, parent *Catalog) *Catalog {
 		removed[id] = true
 	}
 	return &Catalog{
-		version:       s.version,
-		parent:        parent,
-		items:         s.items,
-		removed:       removed,
-		categories:    s.categories,
-		contracts:     s.contracts,
-		spaceObjects:  s.spaceObjects,
-		names:         s.names,
-		descs:         s.descs,
-		categoryNames: s.categoryNames,
+		version:          s.version,
+		parent:           parent,
+		items:            s.items,
+		removed:          removed,
+		categories:       s.categories,
+		contracts:        s.contracts,
+		spaceObjects:     s.spaceObjects,
+		names:            s.names,
+		descs:            s.descs,
+		categoryNames:    s.categoryNames,
+		contractNames:    s.contractNames,
+		factionNames:     s.factionNames,
+		spaceObjectNames: s.spaceObjectNames,
 	}
 }
 
@@ -137,6 +143,44 @@ func (c *Catalog) CategoryName(id schema.GDID, lang i18n.Language) string {
 	return ""
 }
 
+// ContractName returns a contract's localized title, or "" if the contract is
+// unknown or untitled. A missing translation falls back to the default language.
+func (c *Catalog) ContractName(id schema.GDID, lang i18n.Language) string {
+	if n, ok := localStr(c.contractNames, id, lang); ok {
+		return n
+	}
+	if c.parent != nil {
+		return c.parent.ContractName(id, lang)
+	}
+	return ""
+}
+
+// FactionName returns a faction's localized name (keyed by its code, e.g.
+// "TheCo"), or "" if unknown. A missing translation falls back to the default
+// language.
+func (c *Catalog) FactionName(code string, lang i18n.Language) string {
+	id := schema.GDID(code)
+	if n, ok := localStr(c.factionNames, id, lang); ok {
+		return n
+	}
+	if c.parent != nil {
+		return c.parent.FactionName(code, lang)
+	}
+	return ""
+}
+
+// SpaceObjectName returns a space object's localized name, or "" if unknown. A
+// missing translation falls back to the default language.
+func (c *Catalog) SpaceObjectName(id schema.GDID, lang i18n.Language) string {
+	if n, ok := localStr(c.spaceObjectNames, id, lang); ok {
+		return n
+	}
+	if c.parent != nil {
+		return c.parent.SpaceObjectName(id, lang)
+	}
+	return ""
+}
+
 // IconName returns the canonical emoji name for an item's icon, or "" if the
 // item is unknown or has no icon. Resolve it via the emoji Store.
 func (c *Catalog) IconName(id schema.GDID) string {
@@ -169,6 +213,78 @@ func (c *Catalog) collectItems(acc map[schema.GDID]schema.Item) {
 	}
 	for id, it := range c.items {
 		acc[id] = it
+	}
+}
+
+// Contracts returns every contract template (the flattened chain, child layers
+// overriding the parent), sorted by id — the enumeration a template picker
+// indexes for search. Allocates on each call; intended for listing, not hot
+// paths. Unlike items, contracts have no removal layer.
+func (c *Catalog) Contracts() []schema.Contract {
+	acc := map[schema.GDID]schema.Contract{}
+	c.collectContracts(acc)
+	out := make([]schema.Contract, 0, len(acc))
+	for _, ct := range acc {
+		out = append(out, ct)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func (c *Catalog) collectContracts(acc map[schema.GDID]schema.Contract) {
+	if c.parent != nil {
+		c.parent.collectContracts(acc)
+	}
+	for id, ct := range c.contracts {
+		acc[id] = ct
+	}
+}
+
+// SpaceObjects returns every space object (the flattened chain, child layers
+// overriding the parent), sorted by id. Allocates on each call; intended for
+// listing/indexing, not hot paths.
+func (c *Catalog) SpaceObjects() []schema.SpaceObject {
+	acc := map[schema.GDID]schema.SpaceObject{}
+	c.collectSpaceObjects(acc)
+	out := make([]schema.SpaceObject, 0, len(acc))
+	for _, so := range acc {
+		out = append(out, so)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func (c *Catalog) collectSpaceObjects(acc map[schema.GDID]schema.SpaceObject) {
+	if c.parent != nil {
+		c.parent.collectSpaceObjects(acc)
+	}
+	for id, so := range c.spaceObjects {
+		acc[id] = so
+	}
+}
+
+// FactionCodes returns every faction code that has a localized name, flattened
+// across the chain and sorted. Factions have no entity of their own, so this
+// reads the name tables; used to build the faction search index.
+func (c *Catalog) FactionCodes() []schema.GDID {
+	set := map[schema.GDID]bool{}
+	c.collectFactionCodes(set)
+	out := make([]schema.GDID, 0, len(set))
+	for id := range set {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func (c *Catalog) collectFactionCodes(set map[schema.GDID]bool) {
+	if c.parent != nil {
+		c.parent.collectFactionCodes(set)
+	}
+	for _, m := range c.factionNames {
+		for id := range m {
+			set[id] = true
+		}
 	}
 }
 
