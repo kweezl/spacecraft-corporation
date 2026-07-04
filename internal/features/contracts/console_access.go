@@ -18,8 +18,9 @@ import (
 // command's ExtraAccessKeys so /permissions can grant each to roles; every check
 // is DefaultDeny (admins bypass). Authoring
 // is split by contract kind — keyCustom covers creating and fully editing custom
-// contracts; keyTemplate covers creating template contracts and their limited
-// edits (deadline + cancel). keyRepublish is independent and reposts either kind.
+// contracts; keyTemplate covers instantiating contracts from templates and
+// editing the result (a template is defaults only, so the contract stays fully
+// editable under this key). keyRepublish is independent and reposts either kind.
 const (
 	keyCustom    = "contracts.custom"
 	keyTemplate  = "contracts.template"
@@ -28,6 +29,10 @@ const (
 	// updating a reservation, delivering on behalf, cancelling a reservation or a
 	// participation. Independent of the custom/template create-and-edit keys.
 	keyManage = "contracts.manage"
+	// keyTemplates gates the template LIBRARY (creating/editing/deleting the
+	// server's templates) — a stronger grant than keyTemplate, which only lets a
+	// member consume the library.
+	keyTemplates = "contracts.templates"
 )
 
 // keyForKind maps a contract kind to the permission key that governs editing it.
@@ -49,47 +54,71 @@ const (
 )
 
 // mutationGate describes how to authorize one console mutation segment. fixedKey,
-// when set, is the permission required regardless of the target's kind (the two
-// create actions and republish). Otherwise the key is derived from the contract's
-// kind; templateAllowed then says whether the action is permitted on a template
-// contract at all — custom-only actions (add item, item edit/remove) set it
-// false and are refused outright on a template.
+// when set, is the permission required regardless of the target's kind (create
+// actions, republish, and the template-library segments). Otherwise the key is
+// derived from the contract's kind (keyCustom / keyTemplate) — a template is
+// defaults only, so BOTH kinds allow the full action set under their key.
 type mutationGate struct {
-	src             idSource
-	fixedKey        string
-	templateAllowed bool
+	src      idSource
+	fixedKey string
 }
 
 // mutationGates maps every gated console segment (both the component button and
 // its modal-submit twin) to its authorization rule. Read-only navigation segments
 // are deliberately absent — gateMutation lets them through on the coarse gate.
+// The shared gamedata pick select (segPick) is also absent: its destination (and
+// so its key) rides in the CustomID, so handlePickSelect re-checks itself.
 var mutationGates = map[string]mutationGate{
 	// Create / republish: a fixed key regardless of kind.
-	segCreate:   {src: srcNone, fixedKey: keyCustom},
-	segMCreate:  {src: srcNone, fixedKey: keyCustom},
-	segTemplate: {src: srcNone, fixedKey: keyTemplate},
-	segRepub:    {src: srcContract, fixedKey: keyRepublish},
+	segCreate:  {src: srcNone, fixedKey: keyCustom},
+	segMCreate: {src: srcNone, fixedKey: keyCustom},
+	segRepub:   {src: srcContract, fixedKey: keyRepublish},
 
-	// Edit (name/description/deadline for custom; deadline only for template) and
-	// cancel: allowed on both kinds, keyed by the contract's kind.
-	segCEdit:   {src: srcContract, templateAllowed: true},
-	segMCEdit:  {src: srcContract, templateAllowed: true},
-	segCancel:  {src: srcContract, templateAllowed: true},
-	segMCancel: {src: srcContract, templateAllowed: true},
-
-	// Add item: custom-only (refused on a template contract).
-	segCAdd:  {src: srcContract, templateAllowed: false},
-	segMCAdd: {src: srcContract, templateAllowed: false},
-
-	// Item edit / remove: custom-only (item-keyed; refused on a template).
-	segIDel:   {src: srcItem, templateAllowed: false},
-	segMIDel:  {src: srcItem, templateAllowed: false},
-	segIEdit:  {src: srcItem, templateAllowed: false},
-	segMIEdit: {src: srcItem, templateAllowed: false},
+	// Contract edits (details/deadline, cancel, items, rewards, location): keyed
+	// by the contract's kind.
+	segCEdit:   {src: srcContract},
+	segMCEdit:  {src: srcContract},
+	segCancel:  {src: srcContract},
+	segMCancel: {src: srcContract},
+	segCAdd:    {src: srcContract},
+	segMCAdd:   {src: srcContract},
+	segCRew:    {src: srcContract},
+	segMCRew:   {src: srcContract},
+	segCLoc:    {src: srcContract},
+	segIDel:    {src: srcItem},
+	segMIDel:   {src: srcItem},
+	segIEdit:   {src: srcItem},
+	segMIEdit:  {src: srcItem},
+	segILink:   {src: srcItem},
+	segMILink:  {src: srcItem},
 
 	// Participant management: the "contracts manager" key, on either modal step.
 	segPEdit:  {src: srcItem, fixedKey: keyManage},
 	segMPEdit: {src: srcItem, fixedKey: keyManage},
+
+	// Instantiating from a template (the pick list's Use button + its confirm
+	// modal). segTemplate/segTPick (opening the pick list) stay ungated nav — the
+	// home button is hidden without the key and the mutation re-checks here.
+	segTUse:  {src: srcNone, fixedKey: keyTemplate},
+	segMTUse: {src: srcNone, fixedKey: keyTemplate},
+
+	// Template library management: every mutation under the stronger keyTemplates.
+	// Targets are template/template-item UUIDs (server-scoped in SQL), so kind
+	// resolution never applies.
+	segTNew:    {src: srcNone, fixedKey: keyTemplates},
+	segMTNew:   {src: srcNone, fixedKey: keyTemplates},
+	segTEdit:   {src: srcNone, fixedKey: keyTemplates},
+	segMTEdit:  {src: srcNone, fixedKey: keyTemplates},
+	segTRew:    {src: srcNone, fixedKey: keyTemplates},
+	segMTRew:   {src: srcNone, fixedKey: keyTemplates},
+	segTLoc:    {src: srcNone, fixedKey: keyTemplates},
+	segTAdd:    {src: srcNone, fixedKey: keyTemplates},
+	segMTAdd:   {src: srcNone, fixedKey: keyTemplates},
+	segTIEdit:  {src: srcNone, fixedKey: keyTemplates},
+	segMTIEdit: {src: srcNone, fixedKey: keyTemplates},
+	segTIDel:   {src: srcNone, fixedKey: keyTemplates},
+	segTDel:    {src: srcNone, fixedKey: keyTemplates},
+	segMTDel:   {src: srcNone, fixedKey: keyTemplates},
 }
 
 // gateMutation authorizes a console mutation before its handler runs — the
@@ -108,9 +137,6 @@ func (h *Feature) gateMutation(ctx context.Context, r registry.Responder, i *dis
 		kind, kerr := h.resolveKind(ctx, serverID, g.src, parts)
 		if kerr != nil {
 			return false, h.consoleErr(ctx, r, i, serverID, kerr)
-		}
-		if kind == KindTemplate && !g.templateAllowed {
-			return false, h.reply(ctx, r, i, serverID, "contracts.console.template_locked", nil)
 		}
 		key = keyForKind(kind)
 	}

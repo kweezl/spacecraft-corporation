@@ -63,16 +63,18 @@ func (h *Feature) renderHomeView(ctx context.Context, r registry.Responder, i *d
 			CustomID: buildID(segCreate),
 		})
 	}
+	// The template LIBRARY (manage view) sits behind the stronger keyTemplates.
+	if h.may(ctx, i, serverID, keyTemplates) {
+		create = append(create, discordgo.Button{
+			Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_templates", nil),
+			Style:    discordgo.SecondaryButton,
+			CustomID: buildID(segTList, "0", ""),
+		})
+	}
 	if len(create) > 0 {
 		inner = append(inner, discordgo.ActionsRow{Components: create})
 	}
 
 	components := []discordgo.MessageComponent{discordgo.Container{Components: inner}}
 	return h.respondView(i, r, components, update)
-}
-
-// handleTemplateWIP replies that template-based contracts are not built yet,
-// without disturbing the dashboard message (ephemeral notice).
-func (h *Feature) handleTemplateWIP(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
-	return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.template_wip", nil))
 }

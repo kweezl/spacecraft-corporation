@@ -15,8 +15,10 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
+	"github.com/kweezl/spacecraft-corporation/internal/emoji"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts/mocks"
+	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
 
@@ -24,16 +26,54 @@ var gid = uuid.New()
 
 const thread = "thread-1"
 
+// testRegistry is the real compiled-in gamedata (pure data, no I/O), shared by
+// every handler test.
+var testRegistry = func() *gamedata.Registry {
+	reg, err := gamedata.Load(nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	return reg
+}()
+
+// staticLang resolves every server to a fixed language (the picker's analog of
+// i18n.StaticResolver).
+type staticLang struct{ lang i18n.Language }
+
+func (s staticLang) Resolve(context.Context, uuid.UUID) (string, i18n.Language) {
+	return "standard", s.lang
+}
+
+// deps bundles the optional Feature dependencies a test may want to override;
+// the zero value gives strict template-repo/search mocks, no emojis, English.
+type featureDeps struct {
+	tpls   contracts.TemplateRepository
+	search contracts.GameSearch
+	access session.CommandAccess
+	emo    *emoji.Store
+}
+
 func newFeature(t *testing.T, repo contracts.Repository, gw contracts.Gateway, forum contracts.ForumConfig) *contracts.Feature {
-	return newFeatureAccess(t, repo, gw, forum, nil)
+	return newFeatureDeps(t, repo, gw, forum, featureDeps{})
 }
 
 func newFeatureAccess(t *testing.T, repo contracts.Repository, gw contracts.Gateway, forum contracts.ForumConfig, access session.CommandAccess) *contracts.Feature {
+	return newFeatureDeps(t, repo, gw, forum, featureDeps{access: access})
+}
+
+func newFeatureDeps(t *testing.T, repo contracts.Repository, gw contracts.Gateway, forum contracts.ForumConfig, d featureDeps) *contracts.Feature {
 	t.Helper()
 	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
 	require.NoError(t, err)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
-	return contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, access, zap.NewNop())
+	if d.tpls == nil {
+		d.tpls = mocks.NewMockTemplateRepository(t)
+	}
+	if d.search == nil {
+		d.search = mocks.NewMockGameSearch(t)
+	}
+	return contracts.New(repo, d.tpls, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, d.access,
+		d.search, staticLang{lang: i18n.LanguageEN}, testRegistry, d.emo, zap.NewNop())
 }
 
 // newFeatureObserved is newFeature with a log observer, for asserting warnings.
@@ -43,7 +83,8 @@ func newFeatureObserved(t *testing.T, repo contracts.Repository, gw contracts.Ga
 	require.NoError(t, err)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
 	core, logs := observer.New(zapcore.WarnLevel)
-	return contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, nil, zap.New(core)), logs
+	return contracts.New(repo, mocks.NewMockTemplateRepository(t), loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, nil,
+		mocks.NewMockGameSearch(t), staticLang{lang: i18n.LanguageEN}, testRegistry, nil, zap.New(core)), logs
 }
 
 // fakeAccess grants exactly the keys in its set; everything else is denied. It
@@ -230,11 +271,20 @@ func TestConsole_DashboardOpensList(t *testing.T) {
 	assert.True(t, r.updated, "opening the list edits the console in place")
 }
 
-func TestConsole_TemplateIsWIP(t *testing.T) {
+func TestConsole_TemplateOpensPickList(t *testing.T) {
+	tpls := mocks.NewMockTemplateRepository(t)
+	tid := uuid.New()
+	tpls.EXPECT().ListTemplates(mock.Anything, gid, "", 3, 0).
+		Return([]contracts.TemplateListEntry{{ID: tid, Title: "Weekly Steel", ItemCount: 2}}, 1, nil).Once()
+
 	r := &capture{}
-	f := newFeature(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
+	f := newFeatureDeps(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), featureDeps{tpls: tpls})
 	require.NoError(t, f.Component().Handler(context.Background(), r, component("", member("officer"), "contract:tmpl"), gid))
-	assert.NotEmpty(t, r.content, "the template button gives an ephemeral WIP notice")
+	require.NotEmpty(t, r.components)
+	assert.True(t, r.updated, "the template button opens the pick list in place")
+	ids := buttonIDs(r.components)
+	assert.True(t, has(ids, "contract:tuse:"+tid.String()), "each template row carries a Use accessory")
+	assert.True(t, has(ids, "contract:tsearch:p"), "the pick list has a search button")
 }
 
 func TestConsole_OpenContract(t *testing.T) {
@@ -335,18 +385,27 @@ func TestConsole_AdminBypassesCreateGate(t *testing.T) {
 	assert.Equal(t, "contract:m_create", r.modalCustomID, "administrators bypass the create gate")
 }
 
-func TestConsole_TemplateContractBlocksItemEdit(t *testing.T) {
+func TestConsole_TemplateContractItemEditAllowed(t *testing.T) {
+	// A template is defaults only: contracts created from one are fully editable,
+	// so add-item opens the item browser under the template key.
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	// Adding an item resolves the contract kind first; a template contract refuses
-	// item changes outright (before any permission/AddItem call).
 	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindTemplate, nil).Once()
 
 	r := &capture{}
 	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.template"))
 	require.NoError(t, f.Component().Handler(context.Background(), r, component("", member("officer"), "contract:cadd:"+cid.String()), gid))
-	assert.NotEmpty(t, r.content, "template item edit is refused with a notice")
-	assert.Empty(t, r.modalCustomID, "no add-item modal is opened for a template contract")
+	assert.True(t, r.updated, "the item browser opens for a template contract")
+	require.NotEmpty(t, r.components)
+
+	// Without the template key the same click is denied.
+	r2 := &capture{}
+	repo2 := mocks.NewMockRepository(t)
+	repo2.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindTemplate, nil).Once()
+	f2 := newFeatureAccess(t, repo2, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.custom"))
+	require.NoError(t, f2.Component().Handler(context.Background(), r2, component("", member("officer"), "contract:cadd:"+cid.String()), gid))
+	assert.NotEmpty(t, r2.content, "denied member gets an ephemeral notice")
+	assert.False(t, r2.updated, "the browser does not open")
 }
 
 func TestConsole_TemplateContractEditAllowed(t *testing.T) {

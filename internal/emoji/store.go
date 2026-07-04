@@ -9,7 +9,10 @@
 // contributes a readiness probe so /readyz stays red until the sync completes.
 package emoji
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
 // Store is the fast-access, name→token map of the bot's emojis. It is written
 // once by the Syncer at startup and read concurrently by handlers, so all access
@@ -37,4 +40,29 @@ func (s *Store) Format(name string) (token string, ok bool) {
 	defer s.mu.RUnlock()
 	token, ok = s.byName[name]
 	return token, ok
+}
+
+// ID returns the named emoji's snowflake id, for the places that need the raw
+// id instead of the message token (e.g. a select option's ComponentEmoji).
+// Parsed from the stored token ("<:name:id>" / "<a:name:id>"), whose format
+// this package owns.
+func (s *Store) ID(name string) (id string, ok bool) {
+	token, ok := s.Format(name)
+	if !ok || len(token) < 4 || token[len(token)-1] != '>' {
+		return "", false
+	}
+	body := token[:len(token)-1]
+	colon := strings.LastIndexByte(body, ':')
+	if colon < 0 || colon == len(body)-1 {
+		return "", false
+	}
+	return body[colon+1:], true
+}
+
+// StaticStore builds a Store pre-populated with a fixed name→token map — for
+// tests and tools that need emoji lookups without a live sync.
+func StaticStore(byName map[string]string) *Store {
+	s := newStore()
+	s.replace(byName)
+	return s
 }

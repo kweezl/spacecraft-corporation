@@ -24,6 +24,9 @@ func (h *Feature) renderContractView(ctx context.Context, r registry.Responder, 
 	if prog.Description != "" {
 		header += "\n\n" + prog.Description
 	}
+	if facts := h.contractFacts(ctx, serverID, prog.Contract); facts != "" {
+		header += "\n\n" + facts
+	}
 	inner := []discordgo.MessageComponent{discordgo.TextDisplay{Content: truncate(header, 4000)}}
 
 	totalPages := pageCount(len(prog.Items))
@@ -42,14 +45,7 @@ func (h *Feature) renderContractView(ctx context.Context, r registry.Responder, 
 			end = len(prog.Items)
 		}
 		for _, it := range prog.Items[start:end] {
-			// Template contracts have fixed items: no drill-down (the item view is
-			// all mutations), so render them as plain read-only text rather than a
-			// Section with an "Open" accessory.
-			if prog.Kind == KindCustom {
-				inner = append(inner, divider(), h.itemSection(ctx, serverID, it))
-			} else {
-				inner = append(inner, divider(), discordgo.TextDisplay{Content: truncate(h.itemSummary(ctx, serverID, it), 4000)})
-			}
+			inner = append(inner, divider(), h.itemSection(ctx, serverID, it))
 		}
 	}
 
@@ -62,9 +58,14 @@ func (h *Feature) renderContractView(ctx context.Context, r registry.Responder, 
 	return h.respondView(i, r, components, update)
 }
 
-// itemSummary is one item's display text: its name and progress line.
+// itemSummary is one item's display text: its name (with the catalog emoji icon
+// for a gamedata-linked item) and progress line.
 func (h *Feature) itemSummary(ctx context.Context, serverID uuid.UUID, it Item) string {
-	return "**" + truncate(it.Name, 200) + "**\n" + h.itemProgress(ctx, serverID, it)
+	name := truncate(it.Name, 200)
+	if it.GDID != "" {
+		name = truncate(h.itemDisplay(ctx, serverID, it.GDID, it.GDVersion), 200)
+	}
+	return "**" + name + "**\n" + h.itemProgress(ctx, serverID, it)
 }
 
 // itemProgress renders an item's progress line: delivered/required plus the
@@ -97,12 +98,12 @@ func (h *Feature) itemSection(ctx context.Context, serverID uuid.UUID, it Item) 
 }
 
 // contractControlRows are the Contract view's action rows: a first row of
-// [Back][Republish] and a second row of [Edit][Add item][Cancel]. A closed
-// (terminal) contract is read-only — only Back is shown. Edit and Cancel need the
-// kind's key (custom edits name/description/deadline; template edits the deadline
-// only); Add item is custom-only under keyCustom; Republish is independent
-// (keyRepublish). Rows that would be empty are dropped (Discord rejects an empty
-// row), but Back keeps the first row non-empty.
+// [Back][Republish] and a second row of [Edit][Add item][Rewards][Location]
+// [Cancel] (exactly Discord's 5-button row cap). A closed (terminal) contract is
+// read-only — only Back is shown. Every edit needs the kind's key (a template
+// contract is fully editable under keyTemplate — templates are defaults only);
+// Republish is independent (keyRepublish). Rows that would be empty are dropped
+// (Discord rejects an empty row), but Back keeps the first row non-empty.
 func (h *Feature) contractControlRows(ctx context.Context, serverID uuid.UUID, i *discordgo.InteractionCreate, cid uuid.UUID, kind Kind, status Status) []discordgo.MessageComponent {
 	id := cid.String()
 	open := status == StatusOpen
@@ -118,13 +119,13 @@ func (h *Feature) contractControlRows(ctx context.Context, serverID uuid.UUID, i
 
 	var manage []discordgo.MessageComponent
 	if canEdit {
-		manage = append(manage, discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_change_name", nil), Style: discordgo.SecondaryButton, CustomID: buildID(segCEdit, id)})
-	}
-	if open && kind == KindCustom && h.may(ctx, i, serverID, keyCustom) {
-		manage = append(manage, discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_add_item", nil), Style: discordgo.SuccessButton, CustomID: buildID(segCAdd, id)})
-	}
-	if canEdit {
-		manage = append(manage, discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_cancel", nil), Style: discordgo.DangerButton, CustomID: buildID(segCancel, id)})
+		manage = append(manage,
+			discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_change_name", nil), Style: discordgo.SecondaryButton, CustomID: buildID(segCEdit, id)},
+			discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_add_item", nil), Style: discordgo.SuccessButton, CustomID: buildID(segCAdd, id)},
+			discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_rewards", nil), Style: discordgo.SecondaryButton, CustomID: buildID(segCRew, id)},
+			discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_location", nil), Style: discordgo.SecondaryButton, CustomID: buildID(segCLoc, id)},
+			discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_cancel", nil), Style: discordgo.DangerButton, CustomID: buildID(segCancel, id)},
+		)
 	}
 	if len(manage) > 0 {
 		rows = append(rows, discordgo.ActionsRow{Components: manage})

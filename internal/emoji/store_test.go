@@ -37,6 +37,27 @@ func TestStoreFormat(t *testing.T) {
 	assert.Equal(t, "", tok)
 }
 
+func TestStoreID(t *testing.T) {
+	s := StaticStore(map[string]string{
+		"iron_bar": "<:iron_bar:123456>",
+		"spinner":  "<a:spinner:789>", // animated tokens parse the same
+		"mangled":  "no-token-here",
+	})
+
+	id, ok := s.ID("iron_bar")
+	assert.True(t, ok)
+	assert.Equal(t, "123456", id)
+
+	id, ok = s.ID("spinner")
+	assert.True(t, ok)
+	assert.Equal(t, "789", id)
+
+	_, ok = s.ID("missing")
+	assert.False(t, ok, "unknown name reports not found")
+	_, ok = s.ID("mangled")
+	assert.False(t, ok, "a malformed token yields no id")
+}
+
 func TestStoreReplaceSwapsWholeMap(t *testing.T) {
 	s := newStore()
 	s.replace(map[string]string{"a": "<:a:1>"})

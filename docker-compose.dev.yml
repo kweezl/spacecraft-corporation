@@ -108,6 +108,8 @@ services:
       <<: *bot-env
     volumes:
       - .:/src
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/home/dev/.cache/go-build
     entrypoint: ["go", "run", "./cmd/bot"]
     command: ["--migrate"]
     restart: "no"
@@ -124,6 +126,8 @@ services:
       <<: *bot-env
     volumes:
       - .:/src
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/home/dev/.cache/go-build
     ports:
       - "2345:2345"   # delve
       - "9464:9464"   # ops: /healthz /readyz /metrics
@@ -139,3 +143,10 @@ services:
 
 volumes:
   pgdata_dev:
+  # Module + build caches shared by migrate and bot, persisted across container
+  # recreations (dev.up-app starts a FRESH migrate container on every run, and
+  # go.mod moves faster than the image's baked-in `go mod download` layer — with
+  # these volumes only genuinely new dependencies are ever downloaded, once).
+  # First use seeds gomodcache from the image's downloaded modules.
+  gomodcache:
+  gobuildcache:

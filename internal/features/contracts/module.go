@@ -6,6 +6,7 @@ import (
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
+	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
 	"github.com/kweezl/spacecraft-corporation/internal/logger"
 	"github.com/kweezl/spacecraft-corporation/internal/outbox"
 	"github.com/kweezl/spacecraft-corporation/internal/settings"
@@ -25,9 +26,16 @@ func Module() fx.Option {
 		logger.Decorate("contracts"),
 		fx.Provide(env.ParseAs[Config]),
 		fx.Provide(newRepository),
+		fx.Provide(newTemplateRepository),
 		fx.Provide(New),
 		fx.Provide(func(l *session.Live) Gateway { return l }),
 		fx.Provide(func(s *settings.Store) ForumConfig { return s }),
+		// The gamedata picker's narrow views of two core services: the bleve
+		// catalog search and the per-server language resolution (the same Resolve
+		// the Localizer renders through). Registry + emoji Store are consumed
+		// concretely in New.
+		fx.Provide(func(s *gamedata.Searcher) GameSearch { return s }),
+		fx.Provide(func(s *settings.Store) LangResolver { return s }),
 		// Contribute the forum-channel control to the /settings panel.
 		fx.Provide(fx.Annotate(
 			newForumSection,

@@ -8,6 +8,7 @@ import (
 
 	uuid "github.com/google/uuid"
 	contracts "github.com/kweezl/spacecraft-corporation/internal/features/contracts"
+	decimal "github.com/shopspring/decimal"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -24,17 +25,17 @@ func (_m *MockRepository) EXPECT() *MockRepository_Expecter {
 	return &MockRepository_Expecter{mock: &_m.Mock}
 }
 
-// AddItemByID provides a mock function with given fields: ctx, serverID, contractID, itemName, qty, maxItems, actor
-func (_m *MockRepository) AddItemByID(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID, itemName string, qty int, maxItems int, actor string) error {
-	ret := _m.Called(ctx, serverID, contractID, itemName, qty, maxItems, actor)
+// AddItemByID provides a mock function with given fields: ctx, serverID, contractID, itemName, gdid, gdVersion, aliases, qty, maxItems, actor
+func (_m *MockRepository) AddItemByID(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID, itemName string, gdid string, gdVersion string, aliases []string, qty int, maxItems int, actor string) error {
+	ret := _m.Called(ctx, serverID, contractID, itemName, gdid, gdVersion, aliases, qty, maxItems, actor)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AddItemByID")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, int, int, string) error); ok {
-		r0 = rf(ctx, serverID, contractID, itemName, qty, maxItems, actor)
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, string, string, []string, int, int, string) error); ok {
+		r0 = rf(ctx, serverID, contractID, itemName, gdid, gdVersion, aliases, qty, maxItems, actor)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -52,16 +53,19 @@ type MockRepository_AddItemByID_Call struct {
 //   - serverID uuid.UUID
 //   - contractID uuid.UUID
 //   - itemName string
+//   - gdid string
+//   - gdVersion string
+//   - aliases []string
 //   - qty int
 //   - maxItems int
 //   - actor string
-func (_e *MockRepository_Expecter) AddItemByID(ctx interface{}, serverID interface{}, contractID interface{}, itemName interface{}, qty interface{}, maxItems interface{}, actor interface{}) *MockRepository_AddItemByID_Call {
-	return &MockRepository_AddItemByID_Call{Call: _e.mock.On("AddItemByID", ctx, serverID, contractID, itemName, qty, maxItems, actor)}
+func (_e *MockRepository_Expecter) AddItemByID(ctx interface{}, serverID interface{}, contractID interface{}, itemName interface{}, gdid interface{}, gdVersion interface{}, aliases interface{}, qty interface{}, maxItems interface{}, actor interface{}) *MockRepository_AddItemByID_Call {
+	return &MockRepository_AddItemByID_Call{Call: _e.mock.On("AddItemByID", ctx, serverID, contractID, itemName, gdid, gdVersion, aliases, qty, maxItems, actor)}
 }
 
-func (_c *MockRepository_AddItemByID_Call) Run(run func(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID, itemName string, qty int, maxItems int, actor string)) *MockRepository_AddItemByID_Call {
+func (_c *MockRepository_AddItemByID_Call) Run(run func(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID, itemName string, gdid string, gdVersion string, aliases []string, qty int, maxItems int, actor string)) *MockRepository_AddItemByID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(int), args[5].(int), args[6].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(string), args[5].(string), args[6].([]string), args[7].(int), args[8].(int), args[9].(string))
 	})
 	return _c
 }
@@ -71,7 +75,7 @@ func (_c *MockRepository_AddItemByID_Call) Return(_a0 error) *MockRepository_Add
 	return _c
 }
 
-func (_c *MockRepository_AddItemByID_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, int, int, string) error) *MockRepository_AddItemByID_Call {
+func (_c *MockRepository_AddItemByID_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, string, string, []string, int, int, string) error) *MockRepository_AddItemByID_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -544,6 +548,70 @@ func (_c *MockRepository_KindByItem_Call) Return(_a0 contracts.Kind, _a1 error) 
 }
 
 func (_c *MockRepository_KindByItem_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID) (contracts.Kind, error)) *MockRepository_KindByItem_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// LinkItemGDID provides a mock function with given fields: ctx, serverID, itemID, gdid, gdVersion, aliases, actor
+func (_m *MockRepository) LinkItemGDID(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, gdid string, gdVersion string, aliases []string, actor string) (uuid.UUID, error) {
+	ret := _m.Called(ctx, serverID, itemID, gdid, gdVersion, aliases, actor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LinkItemGDID")
+	}
+
+	var r0 uuid.UUID
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, string, []string, string) (uuid.UUID, error)); ok {
+		return rf(ctx, serverID, itemID, gdid, gdVersion, aliases, actor)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, string, []string, string) uuid.UUID); ok {
+		r0 = rf(ctx, serverID, itemID, gdid, gdVersion, aliases, actor)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(uuid.UUID)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, uuid.UUID, string, string, []string, string) error); ok {
+		r1 = rf(ctx, serverID, itemID, gdid, gdVersion, aliases, actor)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockRepository_LinkItemGDID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LinkItemGDID'
+type MockRepository_LinkItemGDID_Call struct {
+	*mock.Call
+}
+
+// LinkItemGDID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - itemID uuid.UUID
+//   - gdid string
+//   - gdVersion string
+//   - aliases []string
+//   - actor string
+func (_e *MockRepository_Expecter) LinkItemGDID(ctx interface{}, serverID interface{}, itemID interface{}, gdid interface{}, gdVersion interface{}, aliases interface{}, actor interface{}) *MockRepository_LinkItemGDID_Call {
+	return &MockRepository_LinkItemGDID_Call{Call: _e.mock.On("LinkItemGDID", ctx, serverID, itemID, gdid, gdVersion, aliases, actor)}
+}
+
+func (_c *MockRepository_LinkItemGDID_Call) Run(run func(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, gdid string, gdVersion string, aliases []string, actor string)) *MockRepository_LinkItemGDID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(string), args[5].([]string), args[6].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_LinkItemGDID_Call) Return(cid uuid.UUID, err error) *MockRepository_LinkItemGDID_Call {
+	_c.Call.Return(cid, err)
+	return _c
+}
+
+func (_c *MockRepository_LinkItemGDID_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, string, []string, string) (uuid.UUID, error)) *MockRepository_LinkItemGDID_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1533,6 +1601,57 @@ func (_c *MockRepository_SetDeadline_Call) RunAndReturn(run func(context.Context
 	return _c
 }
 
+// SetDeliveryLocation provides a mock function with given fields: ctx, serverID, contractID, gdid, gdVersion, actor
+func (_m *MockRepository) SetDeliveryLocation(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID, gdid string, gdVersion string, actor string) error {
+	ret := _m.Called(ctx, serverID, contractID, gdid, gdVersion, actor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetDeliveryLocation")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string, string, string) error); ok {
+		r0 = rf(ctx, serverID, contractID, gdid, gdVersion, actor)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetDeliveryLocation_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDeliveryLocation'
+type MockRepository_SetDeliveryLocation_Call struct {
+	*mock.Call
+}
+
+// SetDeliveryLocation is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - contractID uuid.UUID
+//   - gdid string
+//   - gdVersion string
+//   - actor string
+func (_e *MockRepository_Expecter) SetDeliveryLocation(ctx interface{}, serverID interface{}, contractID interface{}, gdid interface{}, gdVersion interface{}, actor interface{}) *MockRepository_SetDeliveryLocation_Call {
+	return &MockRepository_SetDeliveryLocation_Call{Call: _e.mock.On("SetDeliveryLocation", ctx, serverID, contractID, gdid, gdVersion, actor)}
+}
+
+func (_c *MockRepository_SetDeliveryLocation_Call) Run(run func(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID, gdid string, gdVersion string, actor string)) *MockRepository_SetDeliveryLocation_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(string), args[4].(string), args[5].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetDeliveryLocation_Call) Return(_a0 error) *MockRepository_SetDeliveryLocation_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetDeliveryLocation_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, string, string) error) *MockRepository_SetDeliveryLocation_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetReservationByItem provides a mock function with given fields: ctx, serverID, itemID, targetUserID, newReserved, actor
 func (_m *MockRepository) SetReservationByItem(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID, targetUserID string, newReserved int, actor string) (uuid.UUID, error) {
 	ret := _m.Called(ctx, serverID, itemID, targetUserID, newReserved, actor)
@@ -1754,6 +1873,58 @@ func (_c *MockRepository_UpdateItem_Call) Return(cid uuid.UUID, err error) *Mock
 }
 
 func (_c *MockRepository_UpdateItem_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, string, int, string) (uuid.UUID, error)) *MockRepository_UpdateItem_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateRewards provides a mock function with given fields: ctx, serverID, contractID, credits, reputation, licencePoints, actor
+func (_m *MockRepository) UpdateRewards(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID, credits *decimal.Decimal, reputation *int, licencePoints *int, actor string) error {
+	ret := _m.Called(ctx, serverID, contractID, credits, reputation, licencePoints, actor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateRewards")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, *decimal.Decimal, *int, *int, string) error); ok {
+		r0 = rf(ctx, serverID, contractID, credits, reputation, licencePoints, actor)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_UpdateRewards_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateRewards'
+type MockRepository_UpdateRewards_Call struct {
+	*mock.Call
+}
+
+// UpdateRewards is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - contractID uuid.UUID
+//   - credits *decimal.Decimal
+//   - reputation *int
+//   - licencePoints *int
+//   - actor string
+func (_e *MockRepository_Expecter) UpdateRewards(ctx interface{}, serverID interface{}, contractID interface{}, credits interface{}, reputation interface{}, licencePoints interface{}, actor interface{}) *MockRepository_UpdateRewards_Call {
+	return &MockRepository_UpdateRewards_Call{Call: _e.mock.On("UpdateRewards", ctx, serverID, contractID, credits, reputation, licencePoints, actor)}
+}
+
+func (_c *MockRepository_UpdateRewards_Call) Run(run func(ctx context.Context, serverID uuid.UUID, contractID uuid.UUID, credits *decimal.Decimal, reputation *int, licencePoints *int, actor string)) *MockRepository_UpdateRewards_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(*decimal.Decimal), args[4].(*int), args[5].(*int), args[6].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_UpdateRewards_Call) Return(_a0 error) *MockRepository_UpdateRewards_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_UpdateRewards_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, *decimal.Decimal, *int, *int, string) error) *MockRepository_UpdateRewards_Call {
 	_c.Call.Return(run)
 	return _c
 }

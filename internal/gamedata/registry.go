@@ -108,6 +108,16 @@ func buildRegistry(requested []string, defined map[string]source, log *zap.Logge
 	return &Registry{versions: versions, latest: latest}, nil
 }
 
+// Load builds a Registry outside the fx graph (tests, tools): the named
+// versions plus their ancestors, or every defined version when names is empty.
+// Pure compiled-in data — no I/O. A nil logger is fine.
+func Load(names []string, log *zap.Logger) (*Registry, error) {
+	if len(names) == 0 {
+		names = definedVersionNames()
+	}
+	return buildRegistry(names, definedSources, log)
+}
+
 // Version returns the Catalog for a version name (as stored on a link).
 func (r *Registry) Version(name string) (*Catalog, bool) {
 	c, ok := r.versions[name]
