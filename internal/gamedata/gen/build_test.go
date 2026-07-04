@@ -11,6 +11,7 @@ import (
 )
 
 func strptr(s string) *string { return &s }
+func boolptr(b bool) *bool    { return &b }
 
 // testSource builds a small source covering each exclusion path plus the
 // contract/space-object safety net.
@@ -25,6 +26,12 @@ func testSource() *source {
 			"NoCat":      {ID: "NoCat"}, // no displayCategory -> dropped
 			// Referenced-but-otherwise-excluded: the safety net keeps it.
 			"CorpoCredits": {ID: "CorpoCredits"}, // no category, but a contract reward
+			// Cut/unreleased content: valid category, but inGame:false -> dropped.
+			"CutGizmo": {ID: "CutGizmo", DisplayCategory: strptr("ShipPart"), InGame: boolptr(false)},
+			// inGame:false but referenced by a kept contract: rescue overrides.
+			"Drone0": {ID: "Drone0", DisplayCategory: strptr("ShipPart"), InGame: boolptr(false)},
+			// inGame:false, referenced only by a dropped contract: NOT rescued.
+			"GhostItem": {ID: "GhostItem", DisplayCategory: strptr("ShipPart"), InGame: boolptr(false)},
 		},
 		categories: map[string]rawCategory{
 			"Minerals": {ID: "Minerals"},
@@ -32,9 +39,11 @@ func testSource() *source {
 		contracts: map[string]rawContract{
 			"C1": {
 				ID:      "C1",
-				Items:   []rawItemQty{{Item: "IronOre", Qty: 2}},
+				Items:   []rawItemQty{{Item: "IronOre", Qty: 2}, {Item: "Drone0", Qty: 1}},
 				Rewards: []rawItemCount{{Item: "CorpoCredits", Count: 5}},
 			},
+			// A dropped (inGame:false) contract; its item refs must NOT rescue.
+			"DeadC": {ID: "DeadC", InGame: boolptr(false), Items: []rawItemQty{{Item: "GhostItem", Qty: 1}}},
 		},
 		spaceObjects: map[string]rawSpaceObject{},
 		aliases: map[string]string{
@@ -67,6 +76,34 @@ func TestBuildSafetyNetKeepsReferenced(t *testing.T) {
 	_, ok := res.data.Items["CorpoCredits"]
 	assert.True(t, ok, "referenced item must survive exclusion")
 	assert.NotContains(t, res.dropped, "CorpoCredits")
+}
+
+func TestBuildExcludesNotInGame(t *testing.T) {
+	res, err := buildDataset(testSource())
+	require.NoError(t, err)
+
+	// CutGizmo has a valid category but inGame:false and no reference.
+	_, ok := res.data.Items["CutGizmo"]
+	assert.False(t, ok, "inGame:false item must be dropped")
+	assert.Equal(t, "not-in-game", res.dropped["CutGizmo"])
+
+	// The inGame:false contract and its unreferenced item are both dropped.
+	_, ok = res.data.Contracts["DeadC"]
+	assert.False(t, ok, "inGame:false contract must be dropped")
+	assert.Contains(t, res.droppedContracts, "DeadC")
+	_, ok = res.data.Items["GhostItem"]
+	assert.False(t, ok, "item referenced only by a dropped contract is not rescued")
+}
+
+func TestBuildReferencedOverridesNotInGame(t *testing.T) {
+	res, err := buildDataset(testSource())
+	require.NoError(t, err)
+
+	// Drone0 is inGame:false but a kept contract requires it: keep for link
+	// stability, exactly like the real Drone0/*_5_Drones contracts.
+	_, ok := res.data.Items["Drone0"]
+	assert.True(t, ok, "inGame:false item referenced by a kept contract must survive")
+	assert.NotContains(t, res.dropped, "Drone0")
 }
 
 func TestBuildResolvesIconAndTranslations(t *testing.T) {

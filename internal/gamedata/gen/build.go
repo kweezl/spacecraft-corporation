@@ -12,10 +12,19 @@ import (
 
 // Exclusion rules, applied at generation time. An item matching any rule is
 // dropped from the catalog (and so gets no icon emoji) — UNLESS it is referenced
-// by a contract or space object, which always wins (see referencedIDs). Items
+// by a kept contract or space object, which always wins (see referencedIDs). Items
 // with no displayCategory at all (the heterogeneous "None" bucket: Empty*,
 // *_Virtual, Instance*, loot/spawn markers, decals) are dropped too, again
 // except when referenced (which rescues currencies like CorpoCredits).
+//
+// On top of these hand-tuned rules, every record carries the resources
+// pipeline's best-effort inGame marker (referenced/placed/named in a scene,
+// minus dev placeholders); a record with inGame:false is dropped as well. The
+// two signals are complementary: inGame catches cut/unreleased content the
+// category rules miss (e.g. FusionGenerator, spare Cockpit_* variants), while
+// the category/subcategory rules still drop decorative/scrap/virtual rows that
+// inGame keeps. The referenced-rescue overrides inGame too, so an item a kept
+// contract points at (e.g. Drone0) stays resolvable for link stability.
 var (
 	excludedDisplayCategories = map[string]bool{
 		"Knowledge": true,
@@ -84,7 +93,7 @@ func referencedIDs(s *source) map[string]bool {
 		}
 	}
 	for id, c := range s.contracts {
-		if excludedContractIDs[id] {
+		if excludedContractIDs[id] || !inGame(c.InGame) {
 			continue
 		}
 		for _, e := range c.Items {
@@ -95,7 +104,7 @@ func referencedIDs(s *source) map[string]bool {
 		}
 	}
 	for id, so := range s.spaceObjects {
-		if excludedSpaceObjectIDs[id] {
+		if excludedSpaceObjectIDs[id] || !inGame(so.InGame) {
 			continue
 		}
 		for _, e := range so.Props.Buyout {
@@ -104,6 +113,11 @@ func referencedIDs(s *source) map[string]bool {
 	}
 	return r
 }
+
+// inGame reports the effective in-game flag: an absent (nil) marker means
+// "show", matching the resources contract that a record without the field
+// should be displayed.
+func inGame(p *bool) bool { return p == nil || *p }
 
 // excluded reports whether an item is dropped, with a human reason for the
 // report. A referenced item is never excluded.
@@ -119,6 +133,9 @@ func excluded(it rawItem, referenced map[string]bool) (bool, string) {
 	}
 	if excludedSubcategories[it.Subcategory] {
 		return true, "subcategory:" + it.Subcategory
+	}
+	if !inGame(it.InGame) {
+		return true, "not-in-game"
 	}
 	return false, ""
 }
@@ -182,7 +199,7 @@ func buildDataset(s *source) (*buildResult, error) {
 		res.data.Categories[schema.GDID(id)] = schema.Category{ID: schema.GDID(id), Parent: schema.GDID(c.Parent)}
 	}
 	for id, c := range s.contracts {
-		if excludedContractIDs[id] {
+		if excludedContractIDs[id] || !inGame(c.InGame) {
 			res.droppedContracts = append(res.droppedContracts, id)
 			continue
 		}
@@ -199,7 +216,7 @@ func buildDataset(s *source) (*buildResult, error) {
 	}
 	sort.Strings(res.droppedContracts)
 	for id, so := range s.spaceObjects {
-		if excludedSpaceObjectIDs[id] {
+		if excludedSpaceObjectIDs[id] || !inGame(so.InGame) {
 			res.droppedSpaceObjects = append(res.droppedSpaceObjects, id)
 			continue
 		}

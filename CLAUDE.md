@@ -169,8 +169,10 @@ still says `guild` (e.g. `i.GuildID`); we read those into `server`-named values.
   version still resolvable; a **backward-compatible** update just overwrites the
   current top version in place. Only the highest version is mutable. The
   generator applies **exclusion rules** (drops Knowledge / QuestItem /
-  uncategorized / Scrap / decorative items — **except** any id referenced by a
-  contract or space object, always kept), per-version localized name/desc tables
+  uncategorized / Scrap / decorative items, plus any record the resources
+  pipeline marks **`inGame: false`** — cut/unreleased or placeholder content —
+  **except** any id referenced by a kept contract or space object, always kept),
+  per-version localized name/desc tables
   for all eight game languages, and a committed `snapshot.json` per version that
   is the diff basis the generator classifies as compatible-vs-breaking. The
   shared value types live in a dependency-free `schema` subpackage so the

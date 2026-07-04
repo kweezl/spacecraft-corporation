@@ -131,10 +131,10 @@ func printReport(res *buildResult, rep report, basis *snapshot, version, parent 
 		fmt.Printf("warn:    %d kept items have an icon block but no alias entry (no emoji)\n", len(res.iconMissing))
 	}
 	if len(res.droppedSpaceObjects) > 0 {
-		fmt.Printf("space objects dropped (by id): %s\n", strings.Join(res.droppedSpaceObjects, ", "))
+		fmt.Printf("space objects dropped (by id / not-in-game): %s\n", strings.Join(res.droppedSpaceObjects, ", "))
 	}
 	if len(res.droppedContracts) > 0 {
-		fmt.Printf("contracts dropped (by id): %s\n", strings.Join(res.droppedContracts, ", "))
+		fmt.Printf("contracts dropped (by id / not-in-game): %s\n", strings.Join(res.droppedContracts, ", "))
 	}
 
 	if basis == nil {

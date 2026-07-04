@@ -154,8 +154,13 @@ make gamedata.gen version=v2 parent=v1  # cut a new layer after a breaking updat
 The generator (`go run ./gen -version vN [-parent vM]`):
 
 1. Parses the resources JSON and applies the **exclusion rules** — drops
-   Knowledge / QuestItem / uncategorized / Scrap / decorative items, **except**
-   any id a contract or space object references, which is always kept.
+   Knowledge / QuestItem / uncategorized / Scrap / decorative items, plus any
+   record the resources pipeline marks **`inGame: false`** (cut/unreleased or
+   placeholder content), **except** any id a kept contract or space object
+   references, which is always kept (link stability — e.g. `Drone0`). The two
+   signals complement each other: `inGame` catches cut content the category
+   rules miss, while the category rules drop decorative/scrap/virtual rows that
+   `inGame` keeps.
 2. Emits the Go literals (`db/vN/*_gen.go`) — for a delta layer, only the
    changed/added entries plus the removed-item ids — including the per-language
    name tables (items, categories, contracts, factions, space objects) for all

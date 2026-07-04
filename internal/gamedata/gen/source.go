@@ -37,6 +37,10 @@ type rawItem struct {
 	LootMaterial     []string  `json:"lootMaterial"`
 	Attributes       []rawAttr `json:"attributes"`
 	Icon             *rawIcon  `json:"icon"`
+	// InGame is the resources pipeline's best-effort "ships in the game" marker
+	// (referenced/placed/named in a scene, minus dev placeholders). A pointer so
+	// an absent field means "show" (default in game), per the resources contract.
+	InGame *bool `json:"inGame"`
 }
 
 type rawCategory struct {
@@ -63,6 +67,7 @@ type rawContract struct {
 	CreditFormula float64        `json:"creditFormula"`
 	Items         []rawItemQty   `json:"items"`
 	Rewards       []rawItemCount `json:"rewards"`
+	InGame        *bool          `json:"inGame"`
 }
 
 type rawSpaceObject struct {
@@ -74,6 +79,7 @@ type rawSpaceObject struct {
 			Item string `json:"item"`
 		} `json:"buyout"`
 	} `json:"props"`
+	InGame *bool `json:"inGame"`
 }
 
 type rawTranslation struct {
