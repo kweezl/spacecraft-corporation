@@ -40,14 +40,13 @@ x-bot-env: &bot-env
   APP_OWNER_DISCORD_ID: ${APP_OWNER_DISCORD_ID:-}
   # `-` (not `:-`) so an explicit empty FEATURES= passes through as "no features";
   # only a genuinely unset FEATURES falls back to the `ping` default.
-  FEATURES: ${FEATURES-ping}
+  FEATURES: ${FEATURES:-ping}
   INSTRUMENTATION_ADDR: ${INSTRUMENTATION_ADDR:-:9464}
   # contracts feature tunables (only read when "contracts" is in FEATURES). Mapped
   # explicitly — the anchor is an allowlist, so an unmapped var never reaches the
   # container and the code default silently wins.
   CONTRACTS_SWEEP_INTERVAL: ${CONTRACTS_SWEEP_INTERVAL:-1m}
   CONTRACTS_EXPIRES_NOTIFY: ${CONTRACTS_EXPIRES_NOTIFY:-1h}
-  CONTRACTS_MAX_ITEMS: ${CONTRACTS_MAX_ITEMS:-25}
   CONTRACTS_LIST_PAGE_SIZE: ${CONTRACTS_LIST_PAGE_SIZE:-8}
   # bases feature tunables (only read when "bases" is in FEATURES).
   BASES_MEMBER_LIMIT: ${BASES_MEMBER_LIMIT:-3}

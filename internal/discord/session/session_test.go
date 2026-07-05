@@ -80,6 +80,9 @@ func (f *fakeDiscord) RespondEmbedComponents(_ *discordgo.Interaction, embed *di
 	}
 	return nil
 }
+func (f *fakeDiscord) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, c []discordgo.MessageComponent) error {
+	return f.RespondEmbedComponents(i, embed, c)
+}
 func (f *fakeDiscord) UpdateMessage(_ *discordgo.Interaction, embed *discordgo.MessageEmbed, _ []discordgo.MessageComponent) error {
 	if embed != nil {
 		f.lastReply = embed.Title
@@ -111,9 +114,23 @@ func (f *fakeDiscord) ChannelMessageSendComplex(_ string, _ *discordgo.MessageSe
 func (f *fakeDiscord) ChannelEditComplex(_ string, _ *discordgo.ChannelEdit) (*discordgo.Channel, error) {
 	return &discordgo.Channel{}, nil
 }
+func (f *fakeDiscord) ChannelDelete(_ string) (*discordgo.Channel, error) {
+	return &discordgo.Channel{}, nil
+}
 func (f *fakeDiscord) InteractionResponseEdit(_ *discordgo.Interaction, _ *discordgo.WebhookEdit) (*discordgo.Message, error) {
 	return &discordgo.Message{}, nil
 }
+func (f *fakeDiscord) GuildMember(_, userID string) (*discordgo.Member, error) {
+	return &discordgo.Member{User: &discordgo.User{ID: userID, Username: "user-" + userID}}, nil
+}
+func (f *fakeDiscord) Channel(channelID string) (*discordgo.Channel, error) {
+	return &discordgo.Channel{ID: channelID}, nil
+}
+func (f *fakeDiscord) ApplicationEmojis() ([]*discordgo.Emoji, error) { return nil, nil }
+func (f *fakeDiscord) ApplicationEmojiCreate(_, _ string) (*discordgo.Emoji, error) {
+	return &discordgo.Emoji{}, nil
+}
+func (f *fakeDiscord) ApplicationEmojiDelete(string) error { return nil }
 
 // fireGuildCreate invokes every registered GuildCreate handler, mimicking
 // discordgo delivering the event.

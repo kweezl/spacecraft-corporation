@@ -85,6 +85,21 @@ func (d *discordSession) RespondEmbedComponents(i *discordgo.Interaction, embed 
 	})
 }
 
+// RespondEmbedComponentsEphemeral is RespondEmbedComponents with the ephemeral
+// flag — the /contracts console, private to the invoking officer. UpdateMessage
+// edits it in place on subsequent component/modal interactions (ephemerality is
+// fixed at creation, so it is not re-set on update).
+func (d *discordSession) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, embed *discordgo.MessageEmbed, components []discordgo.MessageComponent) error {
+	return d.s.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: components,
+			Flags:      discordgo.MessageFlagsEphemeral,
+		},
+	})
+}
+
 // UpdateMessage edits the message the component is attached to (the pagination
 // case): Discord replaces the embed and components in place rather than posting
 // a new message.
@@ -157,6 +172,41 @@ func (d *discordSession) ChannelEditComplex(channelID string, data *discordgo.Ch
 	return d.s.ChannelEditComplex(channelID, data)
 }
 
+func (d *discordSession) ChannelDelete(channelID string) (*discordgo.Channel, error) {
+	return d.s.ChannelDelete(channelID)
+}
+
+func (d *discordSession) Channel(channelID string) (*discordgo.Channel, error) {
+	return d.s.Channel(channelID)
+}
+
 func (d *discordSession) InteractionResponseEdit(i *discordgo.Interaction, edit *discordgo.WebhookEdit) (*discordgo.Message, error) {
 	return d.s.InteractionResponseEdit(i, edit)
+}
+
+// GuildMember resolves a guild member, preferring the state cache over a REST
+// round-trip (the guilds intent keeps members Discord has already sent us).
+func (d *discordSession) GuildMember(guildID, userID string) (*discordgo.Member, error) {
+	if m, err := d.s.State.Member(guildID, userID); err == nil && m != nil {
+		return m, nil
+	}
+	return d.s.GuildMember(guildID, userID)
+}
+
+// ApplicationEmojis lists the application's emojis. The bot user's id is the
+// application id (same identity discordgo uses for ApplicationCommandBulkOverwrite).
+func (d *discordSession) ApplicationEmojis() ([]*discordgo.Emoji, error) {
+	return d.s.ApplicationEmojis(d.s.State.User.ID)
+}
+
+// ApplicationEmojiCreate uploads a new application emoji. image is a base64
+// data URI (e.g. "data:image/png;base64,...").
+func (d *discordSession) ApplicationEmojiCreate(name, image string) (*discordgo.Emoji, error) {
+	return d.s.ApplicationEmojiCreate(d.s.State.User.ID, &discordgo.EmojiParams{Name: name, Image: image})
+}
+
+// ApplicationEmojiDelete removes an application emoji by id. An emoji's image
+// cannot be edited, so replacing one means deleting then recreating it.
+func (d *discordSession) ApplicationEmojiDelete(id string) error {
+	return d.s.ApplicationEmojiDelete(d.s.State.User.ID, id)
 }

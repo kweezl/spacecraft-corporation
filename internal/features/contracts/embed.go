@@ -3,50 +3,76 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"time"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
 )
 
-// renderEmbed builds the contract's progress embed — the starter message of its
-// forum thread, re-rendered after every change. Open contracts show their
+// postItemsMax bounds how many item blocks the forum-post card renders; the rest
+// collapse into a localized "+N more". It keeps the message within Discord's
+// Components V2 component cap (and matches the old embed's effective 25-field
+// ceiling). Contracts cap their items at BASES-style limits well under this.
+const postItemsMax = 25
+
+// postComponents builds the contract's progress card — the Components V2 starter
+// message of its forum thread, re-rendered after every change as a single
+// Container: a header (title + status + description), one text block per item, a
+// "last updated" line, and (for open contracts) the reserve/deliver/release
+// action row, all sharing the card's background. Open contracts show their
 // deadline as Discord timestamp markdown (absolute date + live relative
-// countdown, kept current client-side); closed ones show their end state.
-func (h *Feature) renderEmbed(ctx context.Context, serverID uuid.UUID, p Progress) *discordgo.MessageEmbed {
-	desc := ""
+// countdown, kept current client-side); closed ones show their end state and drop
+// the buttons.
+func (h *Feature) postComponents(ctx context.Context, serverID uuid.UUID, p Progress, withButtons bool) []discordgo.MessageComponent {
+	header := "## " + h.loc.Render(ctx, serverID, "contracts.embed.title", map[string]any{"Title": p.Title}) +
+		"\n" + h.statusLine(ctx, serverID, p)
 	if p.Description != "" {
-		desc = p.Description + "\n\n"
+		header += "\n\n" + p.Description
 	}
-	desc += h.statusLine(ctx, serverID, p)
+	inner := []discordgo.MessageComponent{discordgo.TextDisplay{Content: truncate(header, embedDescMax)}}
 
-	fields := make([]*discordgo.MessageEmbedField, 0, len(p.Items))
-	for _, it := range p.Items {
-		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:   truncate(it.Name, 256),
-			Value:  h.itemFieldValue(ctx, serverID, it),
-			Inline: false,
-		})
-	}
-	if len(fields) == 0 {
-		desc += "\n\n" + h.loc.Render(ctx, serverID, "contracts.embed.no_items", nil)
+	// Rewards + delivery location, when the contract carries any (typically copied
+	// from a template; also editable on custom contracts).
+	if facts := h.contractFacts(ctx, serverID, p.Contract); facts != "" {
+		inner = append(inner, divider(), discordgo.TextDisplay{Content: truncate(facts, embedDescMax)})
 	}
 
-	// Defensive clamp to Discord's embed limits, so a long title/description can
-	// never make the forum-post create/edit fail with an opaque REST error (input
-	// is already capped via the option MaxLength; this guards every other path).
-	return &discordgo.MessageEmbed{
-		Title:       truncate(h.loc.Render(ctx, serverID, "contracts.embed.title", map[string]any{"Title": p.Title}), embedTitleMax),
-		Description: truncate(desc, embedDescMax),
-		Fields:      fields,
-		// Native "last updated" stamp: Discord renders it in the footer, localized
-		// to each viewer's own timezone. Sourced from last_refreshed_at, which every
-		// mutation advances — so it reflects when the contract was last changed
-		// (RFC3339 carries the configured-zone offset asLocal stamped on the value).
-		Timestamp: p.LastRefreshedAt.Format(time.RFC3339),
-		Footer:    &discordgo.MessageEmbedFooter{Text: h.loc.Render(ctx, serverID, "contracts.embed.updated_footer", nil)},
+	if len(p.Items) == 0 {
+		inner = append(inner, divider(), discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.embed.no_items", nil)})
+	} else {
+		inner = append(inner, divider())
+		shown, overflow := p.Items, 0
+		if len(shown) > postItemsMax {
+			overflow = len(shown) - postItemsMax
+			shown = shown[:postItemsMax]
+		}
+		for _, it := range shown {
+			// Gamedata items lead with the catalog emoji icon + live-localized name;
+			// legacy free-text items render their stored name as-is.
+			name := truncate(it.Name, embedTitleMax)
+			if it.GDID != "" {
+				name = truncate(h.itemDisplay(ctx, serverID, it.GDID, it.GDVersion), embedTitleMax)
+			}
+			block := "**" + name + "**\n" + h.itemFieldValue(ctx, serverID, it)
+			inner = append(inner, discordgo.TextDisplay{Content: truncate(block, embedDescMax)})
+		}
+		if overflow > 0 {
+			inner = append(inner, discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.embed.items_more", map[string]any{"Count": overflow})})
+		}
 	}
+
+	// "Last updated" as Discord timestamp markdown: <t:…:R> renders the relative
+	// time in each viewer's own timezone and stays current client-side, replacing
+	// the embed's native footer timestamp.
+	footer := h.loc.Render(ctx, serverID, "contracts.embed.updated_footer", nil) + " " + fmt.Sprintf("<t:%d:R>", p.LastRefreshedAt.Unix())
+	inner = append(inner, divider(), discordgo.TextDisplay{Content: footer})
+
+	if withButtons {
+		inner = append(inner, divider())
+		inner = append(inner, h.panelComponents(ctx, serverID)...)
+	}
+	return []discordgo.MessageComponent{discordgo.Container{Components: inner}}
 }
 
 // Discord embed field limits.
@@ -100,11 +126,54 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 	return truncate(value, embedFieldValueMax)
 }
 
+// contractFacts renders a contract's rewards + delivery-location block, one line
+// per set fact, "" when none are set (both card and console skip the block).
+func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contract) string {
+	var lines []string
+	var rewards []string
+	if creditsSet(c.RewardCredits) {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_credits", map[string]any{"Amount": c.RewardCredits.String()}))
+	}
+	if c.RewardReputation != nil && *c.RewardReputation > 0 {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_reputation", map[string]any{"Amount": *c.RewardReputation}))
+	}
+	if c.RewardLicencePoints != nil && *c.RewardLicencePoints > 0 {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_licence", map[string]any{"Amount": *c.RewardLicencePoints}))
+	}
+	// The factor only means something when there are credits to split.
+	if creditsSet(c.RewardCredits) && c.ParticipantRewardFactor.IsPositive() {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_factor", map[string]any{"Factor": c.ParticipantRewardFactor.String()}))
+	}
+	if len(rewards) > 0 {
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.rewards_line", map[string]any{
+			"Rewards": strings.Join(rewards, " · "),
+		}))
+	}
+	if c.LocationGDID != "" {
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.location_line", map[string]any{
+			"Location": h.spaceObjectDisplay(ctx, serverID, c.LocationGDID, c.LocationGDVersion),
+		}))
+	}
+	// An officer marked the participant payouts as handed out (completed
+	// contracts only — the mark is guarded on status).
+	if c.PayoutsPaidAt != nil {
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.payout.paid", map[string]any{
+			"Mention": "<@" + c.PayoutsPaidByUserID + ">",
+		}))
+	}
+	return strings.Join(lines, "\n")
+}
+
 // statusLine renders the one-line status: time-left for open contracts, the
 // terminal state otherwise.
 func (h *Feature) statusLine(ctx context.Context, serverID uuid.UUID, p Progress) string {
 	switch p.Status {
 	case StatusOpen:
+		open := h.loc.Render(ctx, serverID, "contracts.embed.status_open", nil)
+		// A deadline-less contract shows "no deadline" instead of a countdown.
+		if p.Deadline == nil {
+			return open + " · " + h.loc.Render(ctx, serverID, "contracts.embed.no_deadline", nil)
+		}
 		// The deadline as Discord timestamp markdown: <t:…:f> renders the absolute
 		// date/time in each viewer's own timezone, <t:…:R> the live relative
 		// countdown ("in 2 days" → "2 days ago") that advances client-side. Because
@@ -115,7 +184,7 @@ func (h *Feature) statusLine(ctx context.Context, serverID uuid.UUID, p Progress
 			"At":  fmt.Sprintf("<t:%d:f>", ts),
 			"Rel": fmt.Sprintf("<t:%d:R>", ts),
 		})
-		return h.loc.Render(ctx, serverID, "contracts.embed.status_open", nil) + " · " + expires
+		return open + " · " + expires
 	case StatusCompleted:
 		return h.loc.Render(ctx, serverID, "contracts.embed.status_completed", nil)
 	case StatusExpired:

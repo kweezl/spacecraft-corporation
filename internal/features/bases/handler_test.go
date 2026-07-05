@@ -130,6 +130,9 @@ func (c *capture) RespondEmbedComponents(_ *discordgo.Interaction, e *discordgo.
 	c.embed, c.components = e, comps
 	return nil
 }
+func (c *capture) RespondEmbedComponentsEphemeral(i *discordgo.Interaction, e *discordgo.MessageEmbed, comps []discordgo.MessageComponent) error {
+	return c.RespondEmbedComponents(i, e, comps)
+}
 func (c *capture) UpdateMessage(_ *discordgo.Interaction, e *discordgo.MessageEmbed, comps []discordgo.MessageComponent) error {
 	c.embed, c.components, c.updated = e, comps, true
 	return nil

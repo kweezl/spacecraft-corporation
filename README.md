@@ -27,6 +27,21 @@ What it does today:
 Each feature can be enabled or disabled independently (see
 [Configuration](#configuration)).
 
+## Discord permissions
+
+When you generate the bot's OAuth2 invite link (and in each server's role /
+channel settings), grant it at least:
+
+- **View Channel**, **Send Messages**, **Send Messages in Threads**, and
+  **Create Posts** on the contracts forum channel — to post and update contracts
+  and to leave the "closing soon" notice.
+- **Manage Threads** on the contracts forum — to lock a contract's post when the
+  contract closes, and to delete-and-repost a contract when its post format
+  changes (a one-time migration the bot performs after an upgrade). Without it,
+  the bot can still create and edit posts, but it cannot delete a post that
+  members have already replied to: such a migration stays pending (the bot logs a
+  hint) until you grant the permission or remove the post's comments.
+
 ## Running the bot (published image)
 
 The release image is published to Docker Hub:

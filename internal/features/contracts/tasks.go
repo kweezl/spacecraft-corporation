@@ -23,6 +23,7 @@ func (h *Feature) Registrations() []outbox.Registration {
 		{Kind: taskRefresh, Handler: h.taskRefresh},
 		{Kind: taskClose, Handler: h.taskClose},
 		{Kind: taskNotify, Handler: h.taskNotify},
+		{Kind: taskPayout, Handler: h.taskPayout},
 	}
 }
 
@@ -64,8 +65,7 @@ func (h *Feature) taskCreateThread(ctx context.Context, t outbox.Task) error {
 		return outbox.Permanent(errors.New("contracts: no forum configured"))
 	}
 
-	embed := h.renderEmbed(ctx, prog.ServerID, prog)
-	threadID, err := h.gw.CreateForumPost(forumCh, truncate(prog.Title, 100), embed, h.panelComponents(ctx, prog.ServerID))
+	threadID, err := h.gw.CreateForumPost(forumCh, truncate(prog.Title, 100), h.postComponents(ctx, prog.ServerID, prog, true))
 	if err != nil {
 		if isPermanentDiscordError(err) {
 			h.notify(ctx, p, prog.ServerID, "contracts.create.failed_perms", nil)
@@ -103,7 +103,18 @@ func (h *Feature) taskRefresh(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" || prog.Status != StatusOpen {
 		return nil
 	}
-	return permanentIfDiscord(h.gw.EditPost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog), h.panelComponents(ctx, prog.ServerID)))
+	if prog.PostVersion < CurrentPostVersion {
+		// The live post is a stale format that can't be edited into the current one
+		// (e.g. the immutable Components V2 flag) — replace it rather than edit.
+		return h.migratePost(ctx, p.ContractID, prog.ThreadID)
+	}
+	err = h.gw.EditPost(prog.ThreadID, h.postComponents(ctx, prog.ServerID, prog, true))
+	if isDeletedPost(err) {
+		// The forum post was deleted out from under us — recreate it (clears the
+		// stale thread id and re-enqueues a create atomically; nothing to delete).
+		return h.repo.RecreatePost(ctx, p.ContractID)
+	}
+	return permanentIfDiscord(err)
 }
 
 // taskClose writes the final embed and locks/archives the thread.
@@ -122,7 +133,36 @@ func (h *Feature) taskClose(ctx context.Context, t outbox.Task) error {
 	if prog.ThreadID == "" {
 		return nil
 	}
-	return permanentIfDiscord(h.gw.ClosePost(prog.ThreadID, h.renderEmbed(ctx, prog.ServerID, prog)))
+	if prog.PostVersion < CurrentPostVersion {
+		// A stale-format post can't be edited into the current format; replace it
+		// with the final card (the recreated post reflects the terminal state).
+		return h.migratePost(ctx, p.ContractID, prog.ThreadID)
+	}
+	err = h.gw.ClosePost(prog.ThreadID, h.postComponents(ctx, prog.ServerID, prog, false))
+	if isDeletedPost(err) {
+		return nil // the post is already gone — nothing left to close
+	}
+	return permanentIfDiscord(err)
+}
+
+// migratePost replaces a stale-format forum post (one below CurrentPostVersion):
+// it deletes the old post, then RecreatePost atomically clears the thread id and
+// enqueues a fresh create, so the contract is reposted in the current format
+// instead of left un-editable or duplicated; SetThreadID then stamps the new post
+// CurrentPostVersion, so it is not migrated again. Idempotent: a re-run whose post
+// is already gone treats the delete as a no-op (isDeletedPost) and still recreates.
+func (h *Feature) migratePost(ctx context.Context, id uuid.UUID, threadID string) error {
+	if err := h.gw.DeletePost(threadID); err != nil && !isDeletedPost(err) {
+		if isMissingPermissions(err) {
+			// Deleting a forum thread that has replies needs Manage Threads; without
+			// it the migration can't proceed. Make the cause actionable rather than a
+			// bare 50013 in the outbox (the task retries, so it heals once granted).
+			h.log.Warn("contracts: cannot migrate forum post — grant the bot Manage Threads on the contracts forum to delete and repost it (or delete the post's comments)",
+				zap.String("contract_id", id.String()), zap.String("thread_id", threadID), zap.Error(err))
+		}
+		return err
+	}
+	return h.repo.RecreatePost(ctx, id)
 }
 
 // taskNotify posts the one-shot "closing soon" comment. It pings only members who
@@ -143,7 +183,9 @@ func (h *Feature) taskNotify(ctx context.Context, t outbox.Task) error {
 	if err != nil {
 		return err
 	}
-	if prog.ThreadID == "" || prog.Status != StatusOpen {
+	// A deadline-less contract is never notified (and never reaches here via the
+	// sweeper, which excludes NULL deadlines) — guard defensively.
+	if prog.ThreadID == "" || prog.Status != StatusOpen || prog.Deadline == nil {
 		return nil
 	}
 	ids, err := h.repo.OutstandingParticipantUserIDs(ctx, p.ContractID)
@@ -156,7 +198,7 @@ func (h *Feature) taskNotify(ctx context.Context, t outbox.Task) error {
 		// All participants have delivered what they reserved — nobody to nudge, so
 		// just leave an informational notice (no pings).
 		content = h.loc.Render(ctx, prog.ServerID, "contracts.notify.closing_soon_done",
-			map[string]any{"Left": formatTimeLeft(time.Until(prog.Deadline))})
+			map[string]any{"Left": formatTimeLeft(time.Until(*prog.Deadline))})
 	} else {
 		content, mentions = h.notifyContent(ctx, prog, ids)
 	}
@@ -183,7 +225,7 @@ func (h *Feature) notifyContent(ctx context.Context, prog Progress, ids []string
 	}
 	content := h.loc.Render(ctx, prog.ServerID, "contracts.notify.closing_soon", map[string]any{
 		"Mentions": list,
-		"Left":     formatTimeLeft(time.Until(prog.Deadline)),
+		"Left":     formatTimeLeft(time.Until(*prog.Deadline)),
 	})
 	return content, mentioned
 }
@@ -221,6 +263,26 @@ func isPermanentDiscordError(err error) bool {
 		}
 	}
 	return false
+}
+
+// isDeletedPost reports a Discord error meaning the forum post/thread no longer
+// exists (deleted out from under us). Distinct from isPermanentDiscordError: a
+// deleted post is recoverable by re-posting, so taskRefresh recreates it rather
+// than abandoning the task. Checked before permanentIfDiscord (UnknownChannel is
+// permanent for a create against a missing forum, but recoverable for an edit
+// against a missing thread).
+func isDeletedPost(err error) bool {
+	var re *discordgo.RESTError
+	return errors.As(err, &re) && re.Message != nil &&
+		(re.Message.Code == discordgo.ErrCodeUnknownMessage || re.Message.Code == discordgo.ErrCodeUnknownChannel)
+}
+
+// isMissingPermissions reports a Discord "missing permissions" (50013) — e.g.
+// deleting a forum thread that has replies, or locking a thread on close, needs
+// the Manage Threads permission.
+func isMissingPermissions(err error) bool {
+	var re *discordgo.RESTError
+	return errors.As(err, &re) && re.Message != nil && re.Message.Code == discordgo.ErrCodeMissingPermissions
 }
 
 // permanentIfDiscord marks a permanent Discord error so the worker abandons the

@@ -14,11 +14,14 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/servers"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
+	"github.com/kweezl/spacecraft-corporation/internal/emoji"
 	"github.com/kweezl/spacecraft-corporation/internal/feature"
 	"github.com/kweezl/spacecraft-corporation/internal/features/bases"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
 	"github.com/kweezl/spacecraft-corporation/internal/features/permissions"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
+	"github.com/kweezl/spacecraft-corporation/internal/features/supply"
+	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/instrumentation"
 	"github.com/kweezl/spacecraft-corporation/internal/logger"
@@ -58,6 +61,12 @@ func coreModules() []fx.Option {
 		// session injects (fx resolves order, this is just for readability).
 		servers.Module(),
 		session.Module(),
+		// emoji: name-keyed access to the bot's application emojis, synced at
+		// startup (depends on session's Live for the gateway).
+		emoji.Module(),
+		// gamedata: compiled-in, versioned game reference data (items, contract
+		// templates, ...). No I/O — the Registry is ready as soon as it is built.
+		gamedata.Module(),
 	}
 }
 
@@ -88,6 +97,8 @@ func selectFeatures(names []feature.Name) ([]fx.Option, error) {
 			opts = append(opts, bases.Module())
 		case feature.Contracts:
 			opts = append(opts, contracts.Module())
+		case feature.Supply:
+			opts = append(opts, supply.Module())
 		default:
 			return nil, fmt.Errorf("no module registered for feature %q", name)
 		}

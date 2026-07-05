@@ -30,6 +30,12 @@ const (
 	// background sweeper closing expired ones. Requires Permissions, since its
 	// per-leaf authorization is enforced by the role gate.
 	Contracts Name = "contracts"
+	// Supply is the member-supply-requests feature: /supply lets a member post a
+	// personal "I need these items" request as a forum thread that any member can
+	// reserve/deliver/release via buttons. Strictly self-scoped (ownership enforced
+	// in SQL) with /supply access Discord-managed, so it needs no Permissions
+	// feature — it works with FEATURES=supply alone.
+	Supply Name = "supply"
 )
 
 // Feature describes an optional feature module and the features it requires.
@@ -47,6 +53,7 @@ func catalog() []Feature {
 		{Name: Permissions},
 		{Name: Bases, Requires: []Name{Permissions}},
 		{Name: Contracts, Requires: []Name{Permissions}},
+		{Name: Supply}, // self-scoped + Discord-managed access: no Requires
 	}
 }
 

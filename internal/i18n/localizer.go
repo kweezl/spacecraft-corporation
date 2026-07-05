@@ -12,7 +12,7 @@ import (
 // applied). The zero UUID (uuid.Nil, used when a server could not be resolved)
 // has no settings row and so resolves to the app defaults.
 type Resolver interface {
-	Resolve(ctx context.Context, serverID uuid.UUID) (theme, lang string)
+	Resolve(ctx context.Context, serverID uuid.UUID) (theme string, lang Language)
 }
 
 // Localizer is the handler-facing facade: it resolves a server's theme/language
@@ -39,10 +39,10 @@ func (l *Localizer) Render(ctx context.Context, serverID uuid.UUID, key string, 
 // degenerate resolver and in tests.
 type StaticResolver struct {
 	Theme string
-	Lang  string
+	Lang  Language
 }
 
 // Resolve returns the fixed theme and language.
-func (s StaticResolver) Resolve(context.Context, uuid.UUID) (string, string) {
+func (s StaticResolver) Resolve(context.Context, uuid.UUID) (string, Language) {
 	return s.Theme, s.Lang
 }

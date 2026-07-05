@@ -48,7 +48,6 @@ x-bot-env: &bot-env
   # container and the code default silently wins.
   CONTRACTS_SWEEP_INTERVAL: ${CONTRACTS_SWEEP_INTERVAL:-1m}
   CONTRACTS_EXPIRES_NOTIFY: ${CONTRACTS_EXPIRES_NOTIFY:-1h}
-  CONTRACTS_MAX_ITEMS: ${CONTRACTS_MAX_ITEMS:-25}
   CONTRACTS_LIST_PAGE_SIZE: ${CONTRACTS_LIST_PAGE_SIZE:-8}
   # bases feature tunables (only read when "bases" is in FEATURES).
   BASES_MEMBER_LIMIT: ${BASES_MEMBER_LIMIT:-3}
@@ -108,6 +107,8 @@ services:
       <<: *bot-env
     volumes:
       - .:/src
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/home/dev/.cache/go-build
     entrypoint: ["go", "run", "./cmd/bot"]
     command: ["--migrate"]
     restart: "no"
@@ -124,6 +125,8 @@ services:
       <<: *bot-env
     volumes:
       - .:/src
+      - gomodcache:/go/pkg/mod
+      - gobuildcache:/home/dev/.cache/go-build
     ports:
       - "2345:2345"   # delve
       - "9464:9464"   # ops: /healthz /readyz /metrics
@@ -139,3 +142,10 @@ services:
 
 volumes:
   pgdata_dev:
+  # Module + build caches shared by migrate and bot, persisted across container
+  # recreations (dev.up-app starts a FRESH migrate container on every run, and
+  # go.mod moves faster than the image's baked-in `go mod download` layer — with
+  # these volumes only genuinely new dependencies are ever downloaded, once).
+  # First use seeds gomodcache from the image's downloaded modules.
+  gomodcache:
+  gobuildcache:

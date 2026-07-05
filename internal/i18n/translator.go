@@ -25,8 +25,8 @@ var localesFS embed.FS
 // Config holds the app-wide fallback theme and language, used for servers that
 // have not chosen their own and as the last resort in the render fallback chain.
 type Config struct {
-	DefaultLanguage string `env:"APP_LANGUAGE" envDefault:"en"`
-	DefaultTheme    string `env:"APP_THEME"    envDefault:"standard"`
+	DefaultLanguage Language `env:"APP_LANGUAGE" envDefault:"en"`
+	DefaultTheme    string   `env:"APP_THEME"    envDefault:"standard"`
 }
 
 func loadConfig() (Config, error) { return env.ParseAs[Config]() }
@@ -35,13 +35,14 @@ func loadConfig() (Config, error) { return env.ParseAs[Config]() }
 // messages. It is read-only after construction, so it is safe for concurrent
 // use.
 type Translator struct {
-	// themes[theme][lang][key] -> compiled template.
+	// themes[theme][lang][key] -> compiled template (lang keyed by string, as it
+	// comes from the bundle filenames).
 	themes       map[string]map[string]map[string]*template.Template
 	themeList    []string
-	langSet      map[string]struct{}
-	langList     []string
+	langSet      map[Language]struct{}
+	langList     []Language
 	defaultTheme string
-	defaultLang  string
+	defaultLang  Language
 }
 
 // New loads the embedded bundles and validates that the configured default
@@ -56,7 +57,7 @@ func New(cfg Config) (*Translator, error) {
 	if _, ok := t.themes[cfg.DefaultTheme]; !ok {
 		return nil, fmt.Errorf("i18n: default theme %q not found in bundles", cfg.DefaultTheme)
 	}
-	if _, ok := t.themes[cfg.DefaultTheme][cfg.DefaultLanguage]; !ok {
+	if _, ok := t.themes[cfg.DefaultTheme][string(cfg.DefaultLanguage)]; !ok {
 		return nil, fmt.Errorf("i18n: default language %q not found in theme %q",
 			cfg.DefaultLanguage, cfg.DefaultTheme)
 	}
@@ -71,7 +72,7 @@ func load(fsys fs.FS, root string) (*Translator, error) {
 	}
 	t := &Translator{
 		themes:  make(map[string]map[string]map[string]*template.Template),
-		langSet: make(map[string]struct{}),
+		langSet: make(map[Language]struct{}),
 	}
 	for _, td := range themeDirs {
 		if !td.IsDir() {
@@ -93,7 +94,7 @@ func load(fsys fs.FS, root string) (*Translator, error) {
 				return nil, err
 			}
 			t.themes[theme][lang] = tmpls
-			t.langSet[lang] = struct{}{}
+			t.langSet[Language(lang)] = struct{}{}
 		}
 	}
 	for theme := range t.themes {
@@ -103,7 +104,7 @@ func load(fsys fs.FS, root string) (*Translator, error) {
 		t.langList = append(t.langList, lang)
 	}
 	sort.Strings(t.themeList)
-	sort.Strings(t.langList)
+	sort.Slice(t.langList, func(i, j int) bool { return t.langList[i] < t.langList[j] })
 	return t, nil
 }
 
@@ -132,7 +133,7 @@ func loadFile(fsys fs.FS, name, theme, lang string) (map[string]*template.Templa
 // (theme, language) falls back to the same theme's default language, then the
 // default theme's default language. If the key is unknown everywhere, the key
 // itself is returned so a missing translation is visible but never fatal.
-func (t *Translator) Render(theme, lang, key string, data any) string {
+func (t *Translator) Render(theme string, lang Language, key string, data any) string {
 	if tmpl := t.lookup(theme, lang, key); tmpl != nil {
 		return exec(tmpl, data, key)
 	}
@@ -145,12 +146,12 @@ func (t *Translator) Render(theme, lang, key string, data any) string {
 	return key
 }
 
-func (t *Translator) lookup(theme, lang, key string) *template.Template {
+func (t *Translator) lookup(theme string, lang Language, key string) *template.Template {
 	langs, ok := t.themes[theme]
 	if !ok {
 		return nil
 	}
-	keys, ok := langs[lang]
+	keys, ok := langs[string(lang)]
 	if !ok {
 		return nil
 	}
@@ -168,14 +169,16 @@ func exec(tmpl *template.Template, data any, key string) string {
 // Themes returns the available theme names, sorted.
 func (t *Translator) Themes() []string { return append([]string(nil), t.themeList...) }
 
-// Languages returns the available language codes, sorted.
-func (t *Translator) Languages() []string { return append([]string(nil), t.langList...) }
+// Languages returns the renderable language codes (those with a bundle), sorted.
+// This is the subset a server may choose, not the full known set
+// (see KnownLanguages).
+func (t *Translator) Languages() []Language { return append([]Language(nil), t.langList...) }
 
 // HasTheme reports whether a theme exists.
 func (t *Translator) HasTheme(theme string) bool { _, ok := t.themes[theme]; return ok }
 
-// HasLanguage reports whether a language exists in any theme.
-func (t *Translator) HasLanguage(lang string) bool { _, ok := t.langSet[lang]; return ok }
+// HasLanguage reports whether a language is renderable (has a bundle).
+func (t *Translator) HasLanguage(lang Language) bool { _, ok := t.langSet[lang]; return ok }
 
 // Defaults returns the configured default theme and language.
-func (t *Translator) Defaults() (theme, lang string) { return t.defaultTheme, t.defaultLang }
+func (t *Translator) Defaults() (theme string, lang Language) { return t.defaultTheme, t.defaultLang }
