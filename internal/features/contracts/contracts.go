@@ -628,6 +628,15 @@ type ItemCap interface {
 	SetContractsMaxItems(ctx context.Context, serverID uuid.UUID, limit int) error
 }
 
+// ReportCSVConfig resolves and sets whether a completed contract's report
+// carries the payout CSV export (default off). Like ForumConfig, the value lives
+// in the core settings store but the control belongs to this feature.
+// Implemented by settings.Store.
+type ReportCSVConfig interface {
+	ContractsReportCSV(ctx context.Context, serverID uuid.UUID) bool
+	SetContractsReportCSV(ctx context.Context, serverID uuid.UUID, enabled bool) error
+}
+
 // parseDHMMinutes totals the console's three-field (days/hours/minutes) modal
 // into whole minutes. Each field is an optional non-negative integer; blank
 // counts as zero, so an all-blank modal totals 0 (= no deadline / no default).

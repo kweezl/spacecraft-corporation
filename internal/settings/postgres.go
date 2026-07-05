@@ -28,10 +28,11 @@ func (r *pgRepository) Get(ctx context.Context, serverID uuid.UUID) (Settings, e
 	err := r.pool.QueryRow(ctx,
 		`SELECT COALESCE(theme, ''), COALESCE(language, ''), COALESCE(contracts_forum_channel_id, ''),
 		        COALESCE(contracts_reports_channel_id, ''), COALESCE(contracts_participant_reward_factor, 0),
-		        COALESCE(supply_forum_channel_id, ''), supply_request_limit, contracts_max_items
+		        COALESCE(supply_forum_channel_id, ''), supply_request_limit, contracts_max_items,
+		        contracts_report_csv
 		 FROM server_settings WHERE servers_id = $1`,
 		serverID).Scan(&s.Theme, &language, &s.ContractsForumChannelID, &s.ContractsReportsChannelID, &s.ContractsRewardFactor,
-		&s.SupplyForumChannelID, &s.SupplyRequestLimit, &s.ContractsMaxItems)
+		&s.SupplyForumChannelID, &s.SupplyRequestLimit, &s.ContractsMaxItems, &s.ContractsReportCSV)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Settings{}, nil
 	}
@@ -75,6 +76,10 @@ func (r *pgRepository) SetSupplyRequestLimit(ctx context.Context, serverID uuid.
 
 func (r *pgRepository) SetContractsMaxItems(ctx context.Context, serverID uuid.UUID, limit int) error {
 	return r.upsert(ctx, serverID, "contracts_max_items", limit)
+}
+
+func (r *pgRepository) SetContractsReportCSV(ctx context.Context, serverID uuid.UUID, enabled bool) error {
+	return r.upsert(ctx, serverID, "contracts_report_csv", enabled)
 }
 
 // upsert sets one column for a server, inserting the row if absent. column is a

@@ -33,6 +33,7 @@ func Module() fx.Option {
 		fx.Provide(func(s *settings.Store) ReportsConfig { return s }),
 		fx.Provide(func(s *settings.Store) RewardDefaults { return s }),
 		fx.Provide(func(s *settings.Store) ItemCap { return s }),
+		fx.Provide(func(s *settings.Store) ReportCSVConfig { return s }),
 		// The gamedata picker's narrow views of two core services: the bleve
 		// catalog search and the per-server language resolution (the same Resolve
 		// the Localizer renders through). Registry + emoji Store are consumed
@@ -55,6 +56,10 @@ func Module() fx.Option {
 		)),
 		fx.Provide(fx.Annotate(
 			newMaxItemsSection,
+			fx.ResultTags(`group:"settings_sections"`),
+		)),
+		fx.Provide(fx.Annotate(
+			newReportCSVSection,
 			fx.ResultTags(`group:"settings_sections"`),
 		)),
 		fx.Provide(newSweeper),

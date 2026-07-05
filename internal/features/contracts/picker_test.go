@@ -53,7 +53,7 @@ func pickerFeature(t *testing.T) *Feature {
 	t.Helper()
 	reg, err := gamedata.Load(nil, nil)
 	require.NoError(t, err)
-	return New(nil, nil, testLoc(t), Config{}, nil, nil, nil, nil, nil, nil, nil,
+	return New(nil, nil, testLoc(t), Config{}, nil, nil, nil, nil, nil, nil, nil, nil,
 		i18n.StaticResolver{Theme: "standard", Lang: i18n.LanguageEN}, reg, nil, zap.NewNop())
 }
 

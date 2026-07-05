@@ -20,22 +20,23 @@ import (
 // reserve/deliver/release panel, and the expiry sweeper share. Constructed via
 // New.
 type Feature struct {
-	repo     Repository
-	tpls     TemplateRepository
-	loc      *i18n.Localizer
-	cfg      Config
-	gw       Gateway
-	forum    ForumConfig
-	reports  ReportsConfig
-	defaults RewardDefaults
-	itemCap  ItemCap
-	access   session.CommandAccess
-	search   GameSearch
-	langs    LangResolver
-	reg      *gamedata.Registry
-	emo      *emoji.Store
-	log      *zap.Logger
-	pick     *gamepick.Picker
+	repo      Repository
+	tpls      TemplateRepository
+	loc       *i18n.Localizer
+	cfg       Config
+	gw        Gateway
+	forum     ForumConfig
+	reports   ReportsConfig
+	defaults  RewardDefaults
+	itemCap   ItemCap
+	reportCSV ReportCSVConfig
+	access    session.CommandAccess
+	search    GameSearch
+	langs     LangResolver
+	reg       *gamedata.Registry
+	emo       *emoji.Store
+	log       *zap.Logger
+	pick      *gamepick.Picker
 }
 
 // New builds the contracts Feature. access is the permissions gate (contracts
@@ -46,8 +47,8 @@ type Feature struct {
 // item lines render with the catalog icon emojis. defaults supplies the
 // server's default participant reward factor (the prefill for new templates
 // and custom contracts).
-func New(repo Repository, tpls TemplateRepository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, reports ReportsConfig, defaults RewardDefaults, itemCap ItemCap, access session.CommandAccess, search GameSearch, langs LangResolver, reg *gamedata.Registry, emo *emoji.Store, log *zap.Logger) *Feature {
-	h := &Feature{repo: repo, tpls: tpls, loc: loc, cfg: cfg, gw: gw, forum: forum, reports: reports, defaults: defaults, itemCap: itemCap, access: access, search: search, langs: langs, reg: reg, emo: emo, log: log}
+func New(repo Repository, tpls TemplateRepository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, reports ReportsConfig, defaults RewardDefaults, itemCap ItemCap, reportCSV ReportCSVConfig, access session.CommandAccess, search GameSearch, langs LangResolver, reg *gamedata.Registry, emo *emoji.Store, log *zap.Logger) *Feature {
+	h := &Feature{repo: repo, tpls: tpls, loc: loc, cfg: cfg, gw: gw, forum: forum, reports: reports, defaults: defaults, itemCap: itemCap, reportCSV: reportCSV, access: access, search: search, langs: langs, reg: reg, emo: emo, log: log}
 	// The gamedata picker/browser is the shared gamepick package, wired with the
 	// contracts component prefix (so CustomIDs stay byte-identical), its i18n key
 	// prefix, and the five destinations from destinations.go. search/langs convert

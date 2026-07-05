@@ -68,17 +68,28 @@ func (s staticItemCap) ContractsMaxItems(context.Context, uuid.UUID) (int, bool)
 }
 func (s staticItemCap) SetContractsMaxItems(context.Context, uuid.UUID, int) error { return nil }
 
+// staticReportCSV is a ReportCSVConfig resolving every server to a fixed toggle
+// (writes are no-op accepted). The harness defaults it to enabled so the existing
+// payout tests still see the CSV attached; the disabled path has its own tests.
+type staticReportCSV struct{ enabled bool }
+
+func (s staticReportCSV) ContractsReportCSV(context.Context, uuid.UUID) bool { return s.enabled }
+func (s staticReportCSV) SetContractsReportCSV(context.Context, uuid.UUID, bool) error {
+	return nil
+}
+
 // deps bundles the optional Feature dependencies a test may want to override;
 // the zero value gives strict template-repo/search mocks, a zero reward-factor
 // default, no emojis, English.
 type featureDeps struct {
-	tpls     contracts.TemplateRepository
-	search   contracts.GameSearch
-	access   session.CommandAccess
-	defaults contracts.RewardDefaults
-	itemCap  contracts.ItemCap
-	reports  contracts.ReportsConfig
-	emo      *emoji.Store
+	tpls      contracts.TemplateRepository
+	search    contracts.GameSearch
+	access    session.CommandAccess
+	defaults  contracts.RewardDefaults
+	itemCap   contracts.ItemCap
+	reports   contracts.ReportsConfig
+	reportCSV contracts.ReportCSVConfig
+	emo       *emoji.Store
 	// lang overrides the server's rendered + content language (default en).
 	lang i18n.Language
 }
@@ -120,7 +131,10 @@ func newFeatureDeps(t *testing.T, repo contracts.Repository, gw contracts.Gatewa
 	if d.itemCap == nil {
 		d.itemCap = staticItemCap{} // unset → DefaultMaxItems (25)
 	}
-	return contracts.New(repo, d.tpls, loc, contracts.Config{PageSize: 8}, gw, forum, d.reports, d.defaults, d.itemCap, d.access,
+	if d.reportCSV == nil {
+		d.reportCSV = staticReportCSV{enabled: true} // default on, so existing tests see the CSV
+	}
+	return contracts.New(repo, d.tpls, loc, contracts.Config{PageSize: 8}, gw, forum, d.reports, d.defaults, d.itemCap, d.reportCSV, d.access,
 		d.search, staticLang{lang: d.lang}, testRegistry, d.emo, zap.NewNop())
 }
 
@@ -131,7 +145,7 @@ func newFeatureObserved(t *testing.T, repo contracts.Repository, gw contracts.Ga
 	require.NoError(t, err)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
 	core, logs := observer.New(zapcore.WarnLevel)
-	return contracts.New(repo, mocks.NewMockTemplateRepository(t), loc, contracts.Config{PageSize: 8}, gw, forum, mocks.NewMockReportsConfig(t), staticDefaults{}, staticItemCap{}, nil,
+	return contracts.New(repo, mocks.NewMockTemplateRepository(t), loc, contracts.Config{PageSize: 8}, gw, forum, mocks.NewMockReportsConfig(t), staticDefaults{}, staticItemCap{}, staticReportCSV{enabled: true}, nil,
 		mocks.NewMockGameSearch(t), staticLang{lang: i18n.LanguageEN}, testRegistry, nil, zap.New(core)), logs
 }
 
