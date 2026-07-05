@@ -49,7 +49,15 @@ type Config struct {
 	ExpiresNotify time.Duration `env:"CONTRACTS_EXPIRES_NOTIFY" envDefault:"1h"`
 	// PageSize is how many contracts one /contract list page shows.
 	PageSize int `env:"CONTRACTS_LIST_PAGE_SIZE" envDefault:"8"`
+	// PayoutDecimals is how many fractional digits participant rewards are
+	// computed and reported with (0 = whole credits). Capped at 2 by the
+	// contract_payouts amount NUMERIC(_,2) column; New clamps out-of-range values.
+	PayoutDecimals int32 `env:"CONTRACT_PAYOUT_DECIMALS" envDefault:"0"`
 }
+
+// maxPayoutDecimals bounds Config.PayoutDecimals — the contract_payouts amount
+// column is NUMERIC(_,2), so more than two fractional digits can't be stored.
+const maxPayoutDecimals = 2
 
 // DefaultMaxItems caps the distinct required items per contract when a server has
 // not set its own limit (the former CONTRACTS_MAX_ITEMS default, now a per-server
@@ -195,6 +203,12 @@ type Contract struct {
 	// server default for custom contracts) at creation and editable while open —
 	// never re-resolved. Zero = participants get nothing (NOT NULL in the DB).
 	ParticipantRewardFactor decimal.Decimal
+	// PayoutDecimals is the fractional-digit precision the participant payouts were
+	// computed at, frozen on the row at compute time (SavePayouts). Rendering reads
+	// it back so a republish reproduces the original figures regardless of a later
+	// CONTRACT_PAYOUT_DECIMALS change. nil = payouts not computed yet (fall back to
+	// the current config for the first render, which then stamps this).
+	PayoutDecimals *int32
 	// PayoutPostedAt is when the payout report was successfully posted to the
 	// reports channel — the payout task's idempotency latch for its Discord side
 	// effect; nil = not posted (or nothing to post).
@@ -531,10 +545,12 @@ type Repository interface {
 	// Payouts returns a contract's persisted participant payouts, ordered by user
 	// id; empty = never computed (the payout worker keys idempotency on this).
 	Payouts(ctx context.Context, contractID uuid.UUID) ([]Payout, error)
-	// SavePayouts inserts a contract's computed payouts in one transaction.
-	// Conflicting rows (a crashed earlier attempt) are left untouched, so a retry
-	// can never double-insert or alter posted figures.
-	SavePayouts(ctx context.Context, contractID uuid.UUID, rows []Payout) error
+	// SavePayouts inserts a contract's computed payouts in one transaction and
+	// stamps the precision (decimals) they were computed at onto the contract row,
+	// so a republish reproduces the same figures. Conflicting rows (a crashed
+	// earlier attempt) are left untouched and the stamp is first-write-wins, so a
+	// retry can never double-insert or alter posted figures.
+	SavePayouts(ctx context.Context, contractID uuid.UUID, rows []Payout, decimals int32) error
 	// MarkPayoutPosted latches that the payout report was posted (the worker's
 	// Discord-side idempotency marker) and records where — the channel + message
 	// id, so a later Reprint/Mark-paid edits that message in place.

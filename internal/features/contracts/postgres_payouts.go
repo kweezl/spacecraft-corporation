@@ -34,7 +34,7 @@ func (r *pgRepository) Payouts(ctx context.Context, contractID uuid.UUID) ([]Pay
 	return out, rows.Err()
 }
 
-func (r *pgRepository) SavePayouts(ctx context.Context, contractID uuid.UUID, payouts []Payout) error {
+func (r *pgRepository) SavePayouts(ctx context.Context, contractID uuid.UUID, payouts []Payout, decimals int32) error {
 	now := time.Now()
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -56,6 +56,14 @@ func (r *pgRepository) SavePayouts(ctx context.Context, contractID uuid.UUID, pa
 			id, contractID, p.UserID, p.UserName, p.Amount, p.SharePercent, now); err != nil {
 			return err
 		}
+	}
+	// Freeze the compute precision on the contract, first-write-wins (IS NULL) so a
+	// retry after a config change can't restamp what the committed rows were
+	// computed at — republish reads this back and reproduces the figures.
+	if _, err := tx.Exec(ctx,
+		`UPDATE contracts SET payout_decimals = $1 WHERE id = $2 AND payout_decimals IS NULL`,
+		decimals, contractID); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

@@ -36,9 +36,14 @@ func TestComputePayout(t *testing.T) {
 		return payoutItem{Name: name, UnitValue: dec(unit), RequiredQty: required, Delivered: parts}
 	}
 	p := func(user string, delivered int) Participant { return Participant{UserID: user, Delivered: delivered} }
+	// compute defaults to the historical 2dp precision; the precision-specific
+	// behavior is covered by the "configurable precision" subtest below.
+	compute := func(credits, factor decimal.Decimal, items []payoutItem) payoutResult {
+		return computePayout(credits, factor, items, 2)
+	}
 
 	t.Run("single participant takes the full pool", func(t *testing.T) {
-		res := computePayout(dec("100"), dec("50"), []payoutItem{
+		res := compute(dec("100"), dec("50"), []payoutItem{
 			item("Iron Ore", "1", 1000, p("alice", 1000)),
 		})
 		assert.True(t, res.Pool.Equal(dec("50")), "pool = 100 × 50%%, got %s", res.Pool)
@@ -52,7 +57,7 @@ func TestComputePayout(t *testing.T) {
 	})
 
 	t.Run("three-way even split leaves truncation dust", func(t *testing.T) {
-		res := computePayout(dec("100"), dec("100"), []payoutItem{
+		res := compute(dec("100"), dec("100"), []payoutItem{
 			item("Ore", "1", 3, p("a", 1), p("b", 1), p("c", 1)),
 		})
 		for _, u := range []string{"a", "b", "c"} {
@@ -67,7 +72,7 @@ func TestComputePayout(t *testing.T) {
 	// participant delivering 500 ore + 10 panels contributed 1500 → 6.81 (the
 	// exact 6.8181… truncates, never rounds up).
 	t.Run("multi-participant multi-item with differing costs", func(t *testing.T) {
-		res := computePayout(dec("100"), dec("50"), []payoutItem{
+		res := compute(dec("100"), dec("50"), []payoutItem{
 			item("Iron Ore", "1", 1000, p("mixed", 500), p("orefan", 500)),
 			item("Solar Panel", "100", 100, p("mixed", 10), p("panelpro", 90)),
 		})
@@ -85,7 +90,7 @@ func TestComputePayout(t *testing.T) {
 	})
 
 	t.Run("participant delivering only one of several items", func(t *testing.T) {
-		res := computePayout(dec("1000"), dec("10"), []payoutItem{
+		res := compute(dec("1000"), dec("10"), []payoutItem{
 			item("Ore", "2", 100, p("a", 100)),
 			item("Panel", "8", 100, p("b", 100)),
 		})
@@ -97,18 +102,18 @@ func TestComputePayout(t *testing.T) {
 	})
 
 	t.Run("factor extremes", func(t *testing.T) {
-		full := computePayout(dec("77.77"), dec("100"), []payoutItem{item("Ore", "1", 1, p("a", 1))})
+		full := compute(dec("77.77"), dec("100"), []payoutItem{item("Ore", "1", 1, p("a", 1))})
 		assert.True(t, full.Pool.Equal(dec("77.77")))
 		assert.True(t, payoutOf(t, full, "a").Amount.Equal(dec("77.77")))
 
-		tiny := computePayout(dec("100"), dec("0.01"), []payoutItem{item("Ore", "1", 1, p("a", 1))})
+		tiny := compute(dec("100"), dec("0.01"), []payoutItem{item("Ore", "1", 1, p("a", 1))})
 		assert.True(t, tiny.Pool.Equal(dec("0.01")))
 		assert.True(t, payoutOf(t, tiny, "a").Amount.Equal(dec("0.01")))
 		sumShares(t, tiny)
 	})
 
 	t.Run("mixed priced and priceless items", func(t *testing.T) {
-		res := computePayout(dec("100"), dec("50"), []payoutItem{
+		res := compute(dec("100"), dec("50"), []payoutItem{
 			item("Ore", "1", 100, p("a", 100)),
 			item("Mystery Box", "0", 10, p("b", 10)), // free-text / unpriced
 		})
@@ -122,7 +127,7 @@ func TestComputePayout(t *testing.T) {
 	})
 
 	t.Run("all items priceless flags ZeroValue", func(t *testing.T) {
-		res := computePayout(dec("100"), dec("50"), []payoutItem{
+		res := compute(dec("100"), dec("50"), []payoutItem{
 			item("Mystery", "0", 10, p("a", 4), p("b", 6)),
 		})
 		assert.True(t, res.ZeroValue)
@@ -132,7 +137,7 @@ func TestComputePayout(t *testing.T) {
 	})
 
 	t.Run("billion-credit contracts stay exact", func(t *testing.T) {
-		res := computePayout(dec("1000000000.00"), dec("33.33"), []payoutItem{
+		res := compute(dec("1000000000.00"), dec("33.33"), []payoutItem{
 			item("Ore", "3", 1000000, p("a", 999999), p("b", 1)),
 		})
 		assert.True(t, res.Pool.Equal(dec("333300000")), "pool got %s", res.Pool)
@@ -145,7 +150,7 @@ func TestComputePayout(t *testing.T) {
 	})
 
 	t.Run("deterministic user ordering", func(t *testing.T) {
-		res := computePayout(dec("100"), dec("100"), []payoutItem{
+		res := compute(dec("100"), dec("100"), []payoutItem{
 			item("Ore", "1", 3, p("zed", 1), p("amy", 1), p("mid", 1)),
 		})
 		require.Len(t, res.Shares, 3)
@@ -158,7 +163,7 @@ func TestComputePayout(t *testing.T) {
 	// normal value-weighted split (positive shares) — payoutFigures must not
 	// confuse it with the all-priceless case when re-deriving from stored rows.
 	t.Run("tiny pool truncating all amounts is not zero-value", func(t *testing.T) {
-		res := computePayout(dec("0.10"), dec("50"), []payoutItem{ // pool 0.05
+		res := compute(dec("0.10"), dec("50"), []payoutItem{ // pool 0.05
 			item("Ore", "1", 10,
 				p("a", 1), p("b", 1), p("c", 1), p("d", 1), p("e", 1),
 				p("f", 1), p("g", 1), p("h", 1), p("i", 1), p("j", 1)),
@@ -171,19 +176,60 @@ func TestComputePayout(t *testing.T) {
 
 		credits := dec("0.10")
 		prog := Progress{Contract: Contract{RewardCredits: &credits, ParticipantRewardFactor: dec("50")}}
-		pool, remainder, zeroValue := payoutFigures(prog, res.Shares)
+		pool, remainder, zeroValue := payoutFigures(prog, res.Shares, 2)
 		assert.True(t, pool.Equal(dec("0.05")))
 		assert.True(t, remainder.Equal(dec("0.05")), "everything stays as remainder")
 		assert.False(t, zeroValue, "positive shares: a split happened, just below a cent each")
 
 		// The genuinely priceless case (all shares zero) still flags.
 		zeroRows := []Payout{{UserID: "a"}, {UserID: "b"}}
-		_, _, zeroValue = payoutFigures(prog, zeroRows)
+		_, _, zeroValue = payoutFigures(prog, zeroRows, 2)
 		assert.True(t, zeroValue)
 	})
 
+	// Configurable precision: the same three-way even split truncates to whole
+	// credits at decimals=0 and to one place at decimals=1. Pool itself is
+	// truncated to the precision, and Σ amounts + remainder == pool holds at every
+	// precision.
+	t.Run("configurable precision truncates pool and amounts", func(t *testing.T) {
+		items := []payoutItem{item("Ore", "1", 3, p("a", 1), p("b", 1), p("c", 1))}
+
+		zero := computePayout(dec("100"), dec("100"), items, 0) // pool 100
+		assert.True(t, zero.Pool.Equal(dec("100")), "pool got %s", zero.Pool)
+		for _, u := range []string{"a", "b", "c"} {
+			assert.Truef(t, payoutOf(t, zero, u).Amount.Equal(dec("33")), "%s got %s", u, payoutOf(t, zero, u).Amount)
+		}
+		assert.True(t, zero.Remainder.Equal(dec("1")), "got %s", zero.Remainder)
+		sumShares(t, zero)
+
+		one := computePayout(dec("100"), dec("100"), items, 1)
+		for _, u := range []string{"a", "b", "c"} {
+			assert.Truef(t, payoutOf(t, one, u).Amount.Equal(dec("33.3")), "%s got %s", u, payoutOf(t, one, u).Amount)
+		}
+		assert.True(t, one.Remainder.Equal(dec("0.1")), "got %s", one.Remainder)
+		sumShares(t, one)
+
+		// A fractional pool is truncated (not rounded) to whole credits at decimals=0.
+		frac := computePayout(dec("1005"), dec("10"), items, 0) // 100.50 → 100
+		assert.True(t, frac.Pool.Equal(dec("100")), "pool got %s", frac.Pool)
+		sumShares(t, frac)
+	})
+
+	// Round-DOWN guarantee: a share whose exact value ends in .6363… (which normal
+	// rounding would push UP) must truncate, never round up — at every precision.
+	// Pool 100, deliverer "a" earns 3/22 of it = 13.6363…
+	t.Run("amounts always round down never up", func(t *testing.T) {
+		items := []payoutItem{item("Ore", "1", 22, p("a", 3), p("rest", 19))} // a: 3/22
+		aShare := func(decimals int32) decimal.Decimal {
+			return computePayout(dec("100"), dec("100"), items, decimals).Shares[0].Amount
+		}
+		assert.True(t, aShare(2).Equal(dec("13.63")), "2dp truncates 13.6363… down to 13.63, got %s", aShare(2))
+		assert.True(t, aShare(1).Equal(dec("13.6")), "1dp truncates down to 13.6, got %s", aShare(1))
+		assert.True(t, aShare(0).Equal(dec("13")), "0dp truncates 13.63… down to 13 (never 14), got %s", aShare(0))
+	})
+
 	t.Run("zero-delivery reservations are excluded", func(t *testing.T) {
-		res := computePayout(dec("100"), dec("100"), []payoutItem{
+		res := compute(dec("100"), dec("100"), []payoutItem{
 			item("Ore", "1", 10, p("worker", 10), p("lurker", 0)),
 		})
 		require.Len(t, res.Shares, 1)
