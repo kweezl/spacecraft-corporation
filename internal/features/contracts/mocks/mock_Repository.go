@@ -1652,17 +1652,17 @@ func (_c *MockRepository_RequestPayoutRepost_Call) RunAndReturn(run func(context
 	return _c
 }
 
-// SavePayouts provides a mock function with given fields: ctx, contractID, rows
-func (_m *MockRepository) SavePayouts(ctx context.Context, contractID uuid.UUID, rows []contracts.Payout) error {
-	ret := _m.Called(ctx, contractID, rows)
+// SavePayouts provides a mock function with given fields: ctx, contractID, rows, decimals
+func (_m *MockRepository) SavePayouts(ctx context.Context, contractID uuid.UUID, rows []contracts.Payout, decimals int32) error {
+	ret := _m.Called(ctx, contractID, rows, decimals)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SavePayouts")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, []contracts.Payout) error); ok {
-		r0 = rf(ctx, contractID, rows)
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, []contracts.Payout, int32) error); ok {
+		r0 = rf(ctx, contractID, rows, decimals)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -1679,13 +1679,14 @@ type MockRepository_SavePayouts_Call struct {
 //   - ctx context.Context
 //   - contractID uuid.UUID
 //   - rows []contracts.Payout
-func (_e *MockRepository_Expecter) SavePayouts(ctx interface{}, contractID interface{}, rows interface{}) *MockRepository_SavePayouts_Call {
-	return &MockRepository_SavePayouts_Call{Call: _e.mock.On("SavePayouts", ctx, contractID, rows)}
+//   - decimals int32
+func (_e *MockRepository_Expecter) SavePayouts(ctx interface{}, contractID interface{}, rows interface{}, decimals interface{}) *MockRepository_SavePayouts_Call {
+	return &MockRepository_SavePayouts_Call{Call: _e.mock.On("SavePayouts", ctx, contractID, rows, decimals)}
 }
 
-func (_c *MockRepository_SavePayouts_Call) Run(run func(ctx context.Context, contractID uuid.UUID, rows []contracts.Payout)) *MockRepository_SavePayouts_Call {
+func (_c *MockRepository_SavePayouts_Call) Run(run func(ctx context.Context, contractID uuid.UUID, rows []contracts.Payout, decimals int32)) *MockRepository_SavePayouts_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].([]contracts.Payout))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].([]contracts.Payout), args[3].(int32))
 	})
 	return _c
 }
@@ -1695,7 +1696,7 @@ func (_c *MockRepository_SavePayouts_Call) Return(_a0 error) *MockRepository_Sav
 	return _c
 }
 
-func (_c *MockRepository_SavePayouts_Call) RunAndReturn(run func(context.Context, uuid.UUID, []contracts.Payout) error) *MockRepository_SavePayouts_Call {
+func (_c *MockRepository_SavePayouts_Call) RunAndReturn(run func(context.Context, uuid.UUID, []contracts.Payout, int32) error) *MockRepository_SavePayouts_Call {
 	_c.Call.Return(run)
 	return _c
 }

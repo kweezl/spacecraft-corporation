@@ -113,7 +113,7 @@ func (s *contractsSuite) TestPayouts_SaveReadIdempotent() {
 	require.NoError(t, repo.SavePayouts(ctx, cid, []Payout{
 		{UserID: "zed", UserName: "Zed", Amount: dec("10.50"), SharePercent: dec("21")},
 		{UserID: "amy", UserName: "Amy", Amount: dec("39.50"), SharePercent: dec("79")},
-	}))
+	}, 2))
 
 	rows, err = repo.Payouts(ctx, cid)
 	require.NoError(t, err)
@@ -123,14 +123,25 @@ func (s *contractsSuite) TestPayouts_SaveReadIdempotent() {
 	assert.True(t, rows[0].Amount.Equal(dec("39.50")), "got %s", rows[0].Amount)
 	assert.True(t, rows[1].SharePercent.Equal(dec("21")), "got %s", rows[1].SharePercent)
 
-	// A retry (possibly with drifted catalog prices) never alters posted figures.
+	// SavePayouts froze the compute precision on the contract row.
+	prog, err := repo.ProgressByID(ctx, cid)
+	require.NoError(t, err)
+	require.NotNil(t, prog.PayoutDecimals)
+	assert.Equal(t, int32(2), *prog.PayoutDecimals)
+
+	// A retry (possibly with drifted catalog prices, or a changed config) never
+	// alters posted figures — nor the frozen precision (first-write-wins).
 	require.NoError(t, repo.SavePayouts(ctx, cid, []Payout{
 		{UserID: "amy", UserName: "Amy!", Amount: dec("1"), SharePercent: dec("1")},
-	}))
+	}, 0))
 	rows, err = repo.Payouts(ctx, cid)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.True(t, rows[0].Amount.Equal(dec("39.50")), "conflict rows stay untouched, got %s", rows[0].Amount)
+	prog, err = repo.ProgressByID(ctx, cid)
+	require.NoError(t, err)
+	require.NotNil(t, prog.PayoutDecimals)
+	assert.Equal(t, int32(2), *prog.PayoutDecimals, "frozen precision is first-write-wins, not restamped")
 }
 
 func (s *contractsSuite) TestRequestPayoutRepost() {

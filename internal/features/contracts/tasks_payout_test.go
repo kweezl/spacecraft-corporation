@@ -85,15 +85,16 @@ func TestTaskPayout_ComputesSavesAndPosts(t *testing.T) {
 		return len(rows) == 2 &&
 			rows[0].UserID == "u1" && rows[0].UserName == "Alice" && rows[0].Amount.Equal(decimal.RequireFromString("30")) &&
 			rows[1].UserID == "u2" && rows[1].UserName == "u2" && rows[1].Amount.Equal(decimal.RequireFromString("20"))
-	})).Return(nil).Once()
+	}), int32(0)).Return(nil).Once() // default precision stamped
 	// A fresh report (no stored message id) posts to the configured reports channel.
 	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
 	gw.EXPECT().PostChannelMessage(reportsChan,
 		mock.MatchedBy(func(content string) bool {
 			// Pool + factor in the header, one line per participant with amounts.
-			return strings.Contains(content, "50.00") && strings.Contains(content, "50%") &&
-				strings.Contains(content, "<@u1>") && strings.Contains(content, "30.00") &&
-				strings.Contains(content, "<@u2>") && strings.Contains(content, "20.00")
+			// Default precision is whole credits (CONTRACT_PAYOUT_DECIMALS=0).
+			return strings.Contains(content, "50 credits") && strings.Contains(content, "50%") &&
+				strings.Contains(content, "<@u1>") && strings.Contains(content, "30 credits") &&
+				strings.Contains(content, "<@u2>") && strings.Contains(content, "20 credits")
 		}),
 		[]string{"u1", "u2"},
 		mock.MatchedBy(func(files []*discordgo.File) bool {
@@ -107,10 +108,11 @@ func TestTaskPayout_ComputesSavesAndPosts(t *testing.T) {
 			recs, err := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(raw, []byte("\uFEFF")))).ReadAll()
 			// Header + two participants. Columns: contract id, contract title,
 			// participant, user id, per-item qty, share, amount.
+			// CSV amount honors the precision (decimals=0 here) but stays ungrouped.
 			return err == nil && len(recs) == 3 &&
 				recs[1][0] == cid.String() && recs[1][1] == "Steel Run" &&
-				recs[1][2] == "Alice" && recs[1][4] == "60" && recs[1][6] == "30.00" &&
-				recs[2][2] == "u2" && recs[2][4] == "40" && recs[2][6] == "20.00"
+				recs[1][2] == "Alice" && recs[1][4] == "60" && recs[1][6] == "30" &&
+				recs[2][2] == "u2" && recs[2][4] == "40" && recs[2][6] == "20"
 		}),
 		mock.MatchedBy(func(comps []discordgo.MessageComponent) bool {
 			return len(buttonIDs(comps)) == 2 // View + Mark-paid
@@ -119,6 +121,63 @@ func TestTaskPayout_ComputesSavesAndPosts(t *testing.T) {
 	repo.EXPECT().MarkPayoutPosted(mock.Anything, cid, reportsChan, "msg-1", mock.Anything).Return(nil).Once()
 
 	f := newFeatureReports(t, repo, gw, rc)
+	require.NoError(t, handlerFor(t, f, "contracts.reward.payout")(context.Background(), payoutTask(t, cid, false)))
+}
+
+// TestTaskPayout_GroupsAndRespectsDecimals: a million-credit reward at
+// CONTRACT_PAYOUT_DECIMALS=2 renders the report with space-grouped thousands and
+// two decimals ("1 000 000.00"), while the CSV amount honors the precision but
+// stays ungrouped ("1000000.00") so spreadsheets parse it as a number.
+func TestTaskPayout_GroupsAndRespectsDecimals(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	rc := mocks.NewMockReportsConfig(t)
+
+	// credits 2 000 000 × factor 50% → pool 1 000 000; sole deliverer takes it all.
+	credits := decimal.RequireFromString("2000000")
+	prog := contracts.Progress{
+		Contract: contracts.Contract{
+			ID: cid, ServerID: gid, ServerDiscordID: guildSnowflake, ThreadID: "thread-9",
+			Title: "Mega Run", Status: contracts.StatusCompleted, PostVersion: contracts.CurrentPostVersion,
+			RewardCredits:           &credits,
+			ParticipantRewardFactor: decimal.RequireFromString("50"),
+		},
+		Items: []contracts.Item{{
+			ID: uuid.New(), Name: "Steel", GDID: pricedGDID, RequiredQty: 100,
+			DeliveredQty: 100, ReservedQty: 100,
+			Participants: []contracts.Participant{{UserID: "u1", Reserved: 100, Delivered: 100}},
+		}},
+	}
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(prog, nil).Once()
+	repo.EXPECT().Payouts(mock.Anything, cid).Return(nil, nil).Once()
+	gw.EXPECT().MemberDisplayName(guildSnowflake, "u1").Return("Alice", true).Once()
+	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything, int32(2)).Return(nil).Once() // configured precision stamped
+	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
+	gw.EXPECT().PostChannelMessage(reportsChan,
+		mock.MatchedBy(func(content string) bool {
+			// Grouped, two decimals in the human-readable report.
+			return strings.Contains(content, "1 000 000.00")
+		}),
+		mock.Anything,
+		mock.MatchedBy(func(files []*discordgo.File) bool {
+			if len(files) != 1 {
+				return false
+			}
+			raw, err := io.ReadAll(files[0].Reader)
+			if err != nil {
+				return false
+			}
+			recs, err := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(raw, []byte("\uFEFF")))).ReadAll()
+			// CSV amount: two decimals, no space grouping.
+			return err == nil && len(recs) == 2 && recs[1][6] == "1000000.00"
+		}),
+		mock.Anything,
+	).Return("msg-1", nil).Once()
+	repo.EXPECT().MarkPayoutPosted(mock.Anything, cid, reportsChan, "msg-1", mock.Anything).Return(nil).Once()
+
+	f := newFeatureDeps(t, repo, gw, mocks.NewMockForumConfig(t),
+		featureDeps{reports: rc, reportCSV: staticReportCSV{enabled: true}, payoutDecimals: 2})
 	require.NoError(t, handlerFor(t, f, "contracts.reward.payout")(context.Background(), payoutTask(t, cid, false)))
 }
 
@@ -134,7 +193,7 @@ func TestTaskPayout_CSVDisabledOmitsAttachment(t *testing.T) {
 	repo.EXPECT().Payouts(mock.Anything, cid).Return(nil, nil).Once()
 	gw.EXPECT().MemberDisplayName(guildSnowflake, "u1").Return("Alice", true).Once()
 	gw.EXPECT().MemberDisplayName(guildSnowflake, "u2").Return("Bob", true).Once()
-	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything).Return(nil).Once()
+	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything, mock.Anything).Return(nil).Once()
 	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
 	gw.EXPECT().PostChannelMessage(reportsChan, mock.Anything, []string{"u1", "u2"},
 		mock.MatchedBy(func(files []*discordgo.File) bool {
@@ -184,7 +243,7 @@ func TestTaskPayout_RepostEditsInPlace(t *testing.T) {
 	}, nil).Once()
 	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
 	gw.EXPECT().EditChannelMessage(reportsChan, "msg-1", mock.MatchedBy(func(content string) bool {
-		return strings.Contains(content, "<@u1>") && strings.Contains(content, "30.00")
+		return strings.Contains(content, "<@u1>") && strings.Contains(content, "30 credits")
 	}), mock.MatchedBy(func(files []*discordgo.File) bool {
 		// The CSV is re-attached on Reprint so a language change refreshes it.
 		return len(files) == 1 && files[0].Name == "payout.csv"
@@ -192,6 +251,53 @@ func TestTaskPayout_RepostEditsInPlace(t *testing.T) {
 	repo.EXPECT().MarkPayoutPosted(mock.Anything, cid, reportsChan, "msg-1", mock.Anything).Return(nil).Once()
 
 	f := newFeatureReports(t, repo, gw, rc)
+	require.NoError(t, handlerFor(t, f, "contracts.reward.payout")(context.Background(), payoutTask(t, cid, true)))
+}
+
+// TestTaskPayout_RepublishUsesFrozenPrecision is the determinism guarantee: a
+// contract whose payouts were computed at 2dp still republishes at 2dp even after
+// the operator lowers CONTRACT_PAYOUT_DECIMALS to 0 — the report reads the
+// precision frozen on the row (prog.PayoutDecimals), never the live config. So a
+// reprint reproduces the original figures byte-for-byte.
+func TestTaskPayout_RepublishUsesFrozenPrecision(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	rc := mocks.NewMockReportsConfig(t)
+
+	frozen := int32(2)
+	prog := completedPayoutProgress(cid, "thread-9")
+	prog.PayoutDecimals = &frozen // computed at 2dp
+	posted := time.Now()
+	prog.PayoutPostedAt = &posted
+	prog.PayoutReportChannelID = reportsChan
+	prog.PayoutReportMessageID = "msg-1"
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(prog, nil).Once()
+	repo.EXPECT().Payouts(mock.Anything, cid).Return([]contracts.Payout{
+		{UserID: "u1", UserName: "Alice", Amount: decimal.RequireFromString("30"), SharePercent: decimal.RequireFromString("60")},
+		{UserID: "u2", UserName: "u2", Amount: decimal.RequireFromString("20"), SharePercent: decimal.RequireFromString("40")},
+	}, nil).Once()
+	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
+	gw.EXPECT().EditChannelMessage(reportsChan, "msg-1", mock.MatchedBy(func(content string) bool {
+		// Frozen 2dp — pool "50.00", amounts "30.00" — NOT the live config's 0dp.
+		return strings.Contains(content, "50.00") && strings.Contains(content, "30.00") &&
+			!strings.Contains(content, "30 credits")
+	}), mock.MatchedBy(func(files []*discordgo.File) bool {
+		if len(files) != 1 {
+			return false
+		}
+		raw, err := io.ReadAll(files[0].Reader)
+		if err != nil {
+			return false
+		}
+		recs, err := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(raw, []byte("\uFEFF")))).ReadAll()
+		return err == nil && len(recs) == 3 && recs[1][6] == "30.00" // CSV also frozen 2dp
+	}), mock.Anything).Return(nil).Once()
+	repo.EXPECT().MarkPayoutPosted(mock.Anything, cid, reportsChan, "msg-1", mock.Anything).Return(nil).Once()
+
+	// The live config has since been lowered to 0 — must be ignored on republish.
+	f := newFeatureDeps(t, repo, gw, mocks.NewMockForumConfig(t),
+		featureDeps{reports: rc, reportCSV: staticReportCSV{enabled: true}, payoutDecimals: 0})
 	require.NoError(t, handlerFor(t, f, "contracts.reward.payout")(context.Background(), payoutTask(t, cid, true)))
 }
 
@@ -211,7 +317,7 @@ func TestTaskPayout_AllPricelessPostsExplanation(t *testing.T) {
 	// explains instead of listing zero payouts; nobody is pinged.
 	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.MatchedBy(func(rows []contracts.Payout) bool {
 		return len(rows) == 2 && rows[0].Amount.IsZero() && rows[1].Amount.IsZero()
-	})).Return(nil).Once()
+	}), mock.Anything).Return(nil).Once()
 	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
 	gw.EXPECT().PostChannelMessage(reportsChan, mock.MatchedBy(func(content string) bool {
 		return strings.Contains(content, "could not be split") && !strings.Contains(content, "<@u1>")
@@ -243,7 +349,7 @@ func TestTaskPayout_CSVLocalizedHeaders(t *testing.T) {
 		repo.EXPECT().ProgressByID(mock.Anything, cid).Return(prog, nil).Once()
 		repo.EXPECT().Payouts(mock.Anything, cid).Return(nil, nil).Once()
 		gw.EXPECT().MemberDisplayName(mock.Anything, mock.Anything).Return("", false).Maybe()
-		repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything).Return(nil).Once()
+		repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything, mock.Anything).Return(nil).Once()
 		rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
 		var records [][]string
 		gw.EXPECT().PostChannelMessage(reportsChan, mock.Anything, mock.Anything,
@@ -303,7 +409,7 @@ func TestTaskPayout_CSVQuotesAndEscapes(t *testing.T) {
 	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(prog, nil).Once()
 	repo.EXPECT().Payouts(mock.Anything, cid).Return(nil, nil).Once()
 	gw.EXPECT().MemberDisplayName(mock.Anything, mock.Anything).Return("", false).Maybe()
-	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything).Return(nil).Once()
+	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything, mock.Anything).Return(nil).Once()
 	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
 	var raw []byte
 	gw.EXPECT().PostChannelMessage(reportsChan, mock.Anything, mock.Anything, mock.MatchedBy(func(files []*discordgo.File) bool {
@@ -352,7 +458,7 @@ func TestTaskPayout_NoReportsChannelComputesButSkips(t *testing.T) {
 	repo.EXPECT().Payouts(mock.Anything, cid).Return(nil, nil).Once()
 	gw.EXPECT().MemberDisplayName(guildSnowflake, "u1").Return("Alice", true).Once()
 	gw.EXPECT().MemberDisplayName(guildSnowflake, "u2").Return("Bob", true).Once()
-	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything).Return(nil).Once()
+	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything, mock.Anything).Return(nil).Once()
 	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return("", false).Once()
 	// No PostChannelMessage / EditChannelMessage and no posted-at latch.
 

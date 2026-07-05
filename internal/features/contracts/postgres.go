@@ -967,8 +967,8 @@ func (r *pgRepository) CancelByID(ctx context.Context, serverID, contractID uuid
 // alias for queries that join.
 // Credits scan straight into *decimal.Decimal via the pool's registered
 // shopspring codec (NULL → nil) — the NUMERIC value never becomes a float.
-const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, kind, post_version, deadline, created_by_user_id, last_refreshed_at, reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, COALESCE(delivery_location_gdid, ''), COALESCE(delivery_location_gd_version, ''), contract_templates_id, participant_reward_factor, payout_posted_at, payouts_paid_at, COALESCE(payouts_paid_by_user_id, ''), COALESCE(payout_report_channel_id, ''), COALESCE(payout_report_message_id, ''), (SELECT server_id FROM servers WHERE servers.id = contracts.servers_id)`
-const contractColsC = `c.id, c.servers_id, COALESCE(c.thread_id, ''), c.title, c.description, c.status, c.kind, c.post_version, c.deadline, c.created_by_user_id, c.last_refreshed_at, c.reward_corpo_credits, c.reward_corpo_reputation, c.reward_corpo_licence_points, COALESCE(c.delivery_location_gdid, ''), COALESCE(c.delivery_location_gd_version, ''), c.contract_templates_id, c.participant_reward_factor, c.payout_posted_at, c.payouts_paid_at, COALESCE(c.payouts_paid_by_user_id, ''), COALESCE(c.payout_report_channel_id, ''), COALESCE(c.payout_report_message_id, ''), (SELECT server_id FROM servers WHERE servers.id = c.servers_id)`
+const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, kind, post_version, deadline, created_by_user_id, last_refreshed_at, reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, COALESCE(delivery_location_gdid, ''), COALESCE(delivery_location_gd_version, ''), contract_templates_id, participant_reward_factor, payout_decimals, payout_posted_at, payouts_paid_at, COALESCE(payouts_paid_by_user_id, ''), COALESCE(payout_report_channel_id, ''), COALESCE(payout_report_message_id, ''), (SELECT server_id FROM servers WHERE servers.id = contracts.servers_id)`
+const contractColsC = `c.id, c.servers_id, COALESCE(c.thread_id, ''), c.title, c.description, c.status, c.kind, c.post_version, c.deadline, c.created_by_user_id, c.last_refreshed_at, c.reward_corpo_credits, c.reward_corpo_reputation, c.reward_corpo_licence_points, COALESCE(c.delivery_location_gdid, ''), COALESCE(c.delivery_location_gd_version, ''), c.contract_templates_id, c.participant_reward_factor, c.payout_decimals, c.payout_posted_at, c.payouts_paid_at, COALESCE(c.payouts_paid_by_user_id, ''), COALESCE(c.payout_report_channel_id, ''), COALESCE(c.payout_report_message_id, ''), (SELECT server_id FROM servers WHERE servers.id = c.servers_id)`
 
 func scanContract(row pgx.Row) (Progress, error) {
 	var p Progress
@@ -976,7 +976,7 @@ func scanContract(row pgx.Row) (Progress, error) {
 	var deadline, payoutPosted, payoutsPaid *time.Time
 	err := row.Scan(&p.ID, &p.ServerID, &p.ThreadID, &p.Title, &p.Description, &status, &kind, &p.PostVersion, &deadline, &p.CreatedByUserID, &p.LastRefreshedAt,
 		&p.RewardCredits, &p.RewardReputation, &p.RewardLicencePoints, &p.LocationGDID, &p.LocationGDVersion, &p.TemplateID,
-		&p.ParticipantRewardFactor, &payoutPosted, &payoutsPaid, &p.PayoutsPaidByUserID, &p.PayoutReportChannelID, &p.PayoutReportMessageID, &p.ServerDiscordID)
+		&p.ParticipantRewardFactor, &p.PayoutDecimals, &payoutPosted, &payoutsPaid, &p.PayoutsPaidByUserID, &p.PayoutReportChannelID, &p.PayoutReportMessageID, &p.ServerDiscordID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Progress{}, ErrNotFound
 	}

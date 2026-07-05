@@ -48,6 +48,20 @@ type Feature struct {
 // server's default participant reward factor (the prefill for new templates
 // and custom contracts).
 func New(repo Repository, tpls TemplateRepository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, reports ReportsConfig, defaults RewardDefaults, itemCap ItemCap, reportCSV ReportCSVConfig, access session.CommandAccess, search GameSearch, langs LangResolver, reg *gamedata.Registry, emo *emoji.Store, log *zap.Logger) *Feature {
+	// Clamp payout precision to what the NUMERIC(_,2) amount column can store;
+	// warn and continue rather than fail startup (mirrors gamedata's leniency).
+	if d := cfg.PayoutDecimals; d < 0 || d > maxPayoutDecimals {
+		clamped := d
+		if clamped < 0 {
+			clamped = 0
+		}
+		if clamped > maxPayoutDecimals {
+			clamped = maxPayoutDecimals
+		}
+		log.Warn("contracts: CONTRACT_PAYOUT_DECIMALS out of range — clamping",
+			zap.Int32("configured", d), zap.Int32("clamped", clamped), zap.Int32("max", maxPayoutDecimals))
+		cfg.PayoutDecimals = clamped
+	}
 	h := &Feature{repo: repo, tpls: tpls, loc: loc, cfg: cfg, gw: gw, forum: forum, reports: reports, defaults: defaults, itemCap: itemCap, reportCSV: reportCSV, access: access, search: search, langs: langs, reg: reg, emo: emo, log: log}
 	// The gamedata picker/browser is the shared gamepick package, wired with the
 	// contracts component prefix (so CustomIDs stay byte-identical), its i18n key

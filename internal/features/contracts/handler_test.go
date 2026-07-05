@@ -92,6 +92,8 @@ type featureDeps struct {
 	emo       *emoji.Store
 	// lang overrides the server's rendered + content language (default en).
 	lang i18n.Language
+	// payoutDecimals sets CONTRACT_PAYOUT_DECIMALS (default 0 = whole credits).
+	payoutDecimals int32
 }
 
 func newFeature(t *testing.T, repo contracts.Repository, gw contracts.Gateway, forum contracts.ForumConfig) *contracts.Feature {
@@ -134,7 +136,7 @@ func newFeatureDeps(t *testing.T, repo contracts.Repository, gw contracts.Gatewa
 	if d.reportCSV == nil {
 		d.reportCSV = staticReportCSV{enabled: true} // default on, so existing tests see the CSV
 	}
-	return contracts.New(repo, d.tpls, loc, contracts.Config{PageSize: 8}, gw, forum, d.reports, d.defaults, d.itemCap, d.reportCSV, d.access,
+	return contracts.New(repo, d.tpls, loc, contracts.Config{PageSize: 8, PayoutDecimals: d.payoutDecimals}, gw, forum, d.reports, d.defaults, d.itemCap, d.reportCSV, d.access,
 		d.search, staticLang{lang: d.lang}, testRegistry, d.emo, zap.NewNop())
 }
 
@@ -147,6 +149,21 @@ func newFeatureObserved(t *testing.T, repo contracts.Repository, gw contracts.Ga
 	core, logs := observer.New(zapcore.WarnLevel)
 	return contracts.New(repo, mocks.NewMockTemplateRepository(t), loc, contracts.Config{PageSize: 8}, gw, forum, mocks.NewMockReportsConfig(t), staticDefaults{}, staticItemCap{}, staticReportCSV{enabled: true}, nil,
 		mocks.NewMockGameSearch(t), staticLang{lang: i18n.LanguageEN}, testRegistry, nil, zap.New(core)), logs
+}
+
+// TestNew_ClampsPayoutDecimals: an out-of-range CONTRACT_PAYOUT_DECIMALS is
+// clamped to the NUMERIC(_,2) ceiling with a warning rather than failing startup.
+func TestNew_ClampsPayoutDecimals(t *testing.T) {
+	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
+	require.NoError(t, err)
+	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
+	core, logs := observer.New(zapcore.WarnLevel)
+	_ = contracts.New(mocks.NewMockRepository(t), mocks.NewMockTemplateRepository(t), loc,
+		contracts.Config{PageSize: 8, PayoutDecimals: 5}, mocks.NewMockGateway(t),
+		mocks.NewMockForumConfig(t), mocks.NewMockReportsConfig(t), staticDefaults{}, staticItemCap{},
+		staticReportCSV{enabled: true}, nil, mocks.NewMockGameSearch(t),
+		staticLang{lang: i18n.LanguageEN}, testRegistry, nil, zap.New(core))
+	require.Equal(t, 1, logs.FilterMessageSnippet("CONTRACT_PAYOUT_DECIMALS").Len())
 }
 
 // fakeAccess grants exactly the keys in its set; everything else is denied. It

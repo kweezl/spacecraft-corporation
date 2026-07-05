@@ -13,7 +13,7 @@ import (
 type Payout struct {
 	UserID       string
 	UserName     string
-	Amount       decimal.Decimal // 2dp, truncated (never rounded up)
+	Amount       decimal.Decimal // truncated (never rounded up) to the configured payout precision
 	SharePercent decimal.Decimal // the participant's value share of the pool, percent (6dp)
 }
 
@@ -29,8 +29,8 @@ type payoutItem struct {
 
 // payoutResult is the full outcome of one payout computation.
 type payoutResult struct {
-	// Pool is the credits actually distributed: credits × factor / 100 (exact —
-	// a 2dp × 2dp product shifted two places never loses precision).
+	// Pool is the credits actually distributed: credits × factor / 100, truncated
+	// to the configured payout precision (decimals).
 	Pool decimal.Decimal
 	// Shares are the per-participant payouts, ordered by UserID (deterministic
 	// across runs). Every member who delivered anything appears, including those
@@ -55,21 +55,22 @@ type payoutResult struct {
 //
 // The algorithm:
 //
-//	pool   = credits × factor / 100            (exact, Shift(-2))
+//	pool   = trunc_d(credits × factor / 100)   (Shift(-2), truncated to decimals)
 //	den    = Σ over items of unitValue × requiredQty
 //	num(p) = Σ over items of unitValue × delivered(p, item)
-//	amount(p) = trunc2(pool × num(p) / den)    (truncated at 2dp — never rounds
-//	                                            up, so Σ amounts ≤ pool holds
-//	                                            structurally)
+//	amount(p) = trunc_d(pool × num(p) / den)   (truncated at `decimals` places —
+//	                                            never rounds up, so Σ amounts ≤
+//	                                            pool holds structurally)
 //	remainder = pool − Σ amounts
 //
-// On completion every item is fully delivered (Σ delivered = required), so the
-// full pool distributes up to the truncation remainder. Items with zero unit
-// value contribute to neither side: their deliverers earn nothing for them, and
-// they are listed in Priceless. If EVERY item is priceless, den is zero — the
-// result is flagged ZeroValue with zero amounts instead of dividing by zero.
-func computePayout(credits, factor decimal.Decimal, items []payoutItem) payoutResult {
-	res := payoutResult{Pool: credits.Mul(factor).Shift(-2)}
+// decimals is the configured payout precision (0–2); at 0 rewards are whole
+// credits. On completion every item is fully delivered (Σ delivered = required),
+// so the full pool distributes up to the truncation remainder. Items with zero
+// unit value contribute to neither side: their deliverers earn nothing for them,
+// and they are listed in Priceless. If EVERY item is priceless, den is zero —
+// the result is flagged ZeroValue with zero amounts instead of dividing by zero.
+func computePayout(credits, factor decimal.Decimal, items []payoutItem, decimals int32) payoutResult {
+	res := payoutResult{Pool: credits.Mul(factor).Shift(-2).Truncate(decimals)}
 
 	den := decimal.Decimal{}
 	nums := map[string]decimal.Decimal{} // user id → delivered value
@@ -106,7 +107,7 @@ func computePayout(credits, factor decimal.Decimal, items []payoutItem) payoutRe
 		var amount, share decimal.Decimal
 		if !res.ZeroValue {
 			num := nums[id]
-			amount, _ = res.Pool.Mul(num).QuoRem(den, 2) // exact truncation at 2dp
+			amount, _ = res.Pool.Mul(num).QuoRem(den, decimals) // exact truncation at `decimals`
 			share = num.Mul(oneHundred).DivRound(den, 6)
 			distributed = distributed.Add(amount)
 		}

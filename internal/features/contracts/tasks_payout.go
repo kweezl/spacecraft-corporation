@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
+	"github.com/kweezl/spacecraft-corporation/internal/numfmt"
 	"github.com/kweezl/spacecraft-corporation/internal/outbox"
 )
 
@@ -62,7 +63,10 @@ func (h *Feature) taskPayout(ctx context.Context, t outbox.Task) error {
 			// Defensive mirror of the enqueue guard.
 			return outbox.Permanent(errors.New("contracts: payout task without a reward to distribute"))
 		}
-		res := computePayout(*prog.RewardCredits, prog.ParticipantRewardFactor, h.payoutItems(prog))
+		// First compute: no frozen precision yet, so use the current config — then
+		// SavePayouts stamps it so every later republish reproduces these figures.
+		dec := h.payoutDecimals(prog)
+		res := computePayout(*prog.RewardCredits, prog.ParticipantRewardFactor, h.payoutItems(prog), dec)
 		if len(res.Shares) == 0 {
 			// Unreachable for a completed contract (every item was fully delivered
 			// by someone); bail loudly rather than post an empty report.
@@ -77,7 +81,7 @@ func (h *Feature) taskPayout(ctx context.Context, t outbox.Task) error {
 			}
 			res.Shares[i].UserName = name
 		}
-		if err := h.repo.SavePayouts(ctx, p.ContractID, res.Shares); err != nil {
+		if err := h.repo.SavePayouts(ctx, p.ContractID, res.Shares, dec); err != nil {
 			return err
 		}
 		rows = res.Shares
@@ -154,17 +158,32 @@ func (h *Feature) payoutItems(prog Progress) []payoutItem {
 	return items
 }
 
+// payoutDecimals is the precision a contract's payouts were computed at: the
+// value frozen on the contract row at compute time (SavePayouts), so every
+// republish reproduces the original figures regardless of a later
+// CONTRACT_PAYOUT_DECIMALS change. Falls back to the current config only before
+// the first compute stamps the row (the first render, which uses the same config
+// value it is about to persist).
+func (h *Feature) payoutDecimals(prog Progress) int32 {
+	if prog.PayoutDecimals != nil {
+		return *prog.PayoutDecimals
+	}
+	return h.cfg.PayoutDecimals
+}
+
 // payoutFigures recovers the report's aggregates from the contract + persisted
-// rows: pool = credits × factor / 100 (both frozen once the contract left
-// 'open', so this is stable across retries), remainder = pool − Σ amounts.
+// rows: pool = credits × factor / 100 truncated to decimals (both credits and
+// factor are frozen once the contract left 'open', so this is stable across
+// retries), remainder = pool − Σ amounts. decimals must match the precision the
+// rows were computed at, so pass the current CONTRACT_PAYOUT_DECIMALS.
 // zeroValue mirrors computePayout's flag from the persisted rows: every share
 // percent is zero only when no item carried a value (a tiny pool can truncate
 // every AMOUNT to zero while the shares stay positive — that is a normal split,
 // not the nothing-to-weigh-by case).
-func payoutFigures(prog Progress, rows []Payout) (pool, remainder decimal.Decimal, zeroValue bool) {
+func payoutFigures(prog Progress, rows []Payout, decimals int32) (pool, remainder decimal.Decimal, zeroValue bool) {
 	pool = decimal.Decimal{}
 	if prog.RewardCredits != nil {
-		pool = prog.RewardCredits.Mul(prog.ParticipantRewardFactor).Shift(-2)
+		pool = prog.RewardCredits.Mul(prog.ParticipantRewardFactor).Shift(-2).Truncate(decimals)
 	}
 	distributed := decimal.Decimal{}
 	zeroValue = pool.IsPositive()
@@ -185,12 +204,13 @@ func payoutFigures(prog Progress, rows []Payout) (pool, remainder decimal.Decima
 // all-priceless case renders an explanatory message instead of zero lines. A
 // reprint after "mark paid" appends who paid.
 func (h *Feature) payoutContent(ctx context.Context, prog Progress, rows []Payout) (string, []string) {
-	pool, remainder, zeroValue := payoutFigures(prog, rows)
+	dec := h.payoutDecimals(prog)
+	pool, remainder, zeroValue := payoutFigures(prog, rows, dec)
 	sid := prog.ServerID
 
 	var b strings.Builder
 	b.WriteString(h.loc.Render(ctx, sid, "contracts.payout.header", map[string]any{
-		"Pool":   pool.StringFixed(2),
+		"Pool":   numfmt.Grouped(pool, dec),
 		"Factor": prog.ParticipantRewardFactor.String(),
 	}))
 
@@ -206,13 +226,13 @@ func (h *Feature) payoutContent(ctx context.Context, prog Progress, rows []Payou
 			b.WriteString("\n")
 			b.WriteString(h.loc.Render(ctx, sid, "contracts.payout.line", map[string]any{
 				"Mention": "<@" + r.UserID + ">",
-				"Amount":  r.Amount.StringFixed(2),
+				"Amount":  numfmt.Grouped(r.Amount, dec),
 			}))
 		}
 		if remainder.IsPositive() {
 			b.WriteString("\n")
 			b.WriteString(h.loc.Render(ctx, sid, "contracts.payout.remainder", map[string]any{
-				"Amount": remainder.StringFixed(2),
+				"Amount": numfmt.Grouped(remainder, dec),
 			}))
 		}
 	}
@@ -302,7 +322,10 @@ func (h *Feature) payoutCSV(ctx context.Context, prog Progress, rows []Payout) [
 		for i := range prog.Items {
 			rec = append(rec, intStr(perItem[i][r.UserID]))
 		}
-		rec = append(rec, r.SharePercent.StringFixed(6), r.Amount.StringFixed(2))
+		// The CSV amount honors the configured precision (truncated toward zero,
+		// never rounded up) but stays un-grouped (raw dot-decimals) so spreadsheets
+		// import it as a number, not text.
+		rec = append(rec, r.SharePercent.StringFixed(6), numfmt.Fixed(r.Amount, h.payoutDecimals(prog)))
 		writeCSVRow(&buf, rec)
 	}
 	return buf.Bytes()
