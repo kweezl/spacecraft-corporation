@@ -140,6 +140,10 @@ func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contr
 	if c.RewardLicencePoints != nil && *c.RewardLicencePoints > 0 {
 		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_licence", map[string]any{"Amount": *c.RewardLicencePoints}))
 	}
+	// The factor only means something when there are credits to split.
+	if creditsSet(c.RewardCredits) && c.ParticipantRewardFactor.IsPositive() {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_factor", map[string]any{"Factor": c.ParticipantRewardFactor.String()}))
+	}
 	if len(rewards) > 0 {
 		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.rewards_line", map[string]any{
 			"Rewards": strings.Join(rewards, " · "),
@@ -148,6 +152,13 @@ func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contr
 	if c.LocationGDID != "" {
 		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.location_line", map[string]any{
 			"Location": h.spaceObjectDisplay(ctx, serverID, c.LocationGDID, c.LocationGDVersion),
+		}))
+	}
+	// An officer marked the participant payouts as handed out (completed
+	// contracts only — the mark is guarded on status).
+	if c.PayoutsPaidAt != nil {
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.payout.paid", map[string]any{
+			"Mention": "<@" + c.PayoutsPaidByUserID + ">",
 		}))
 	}
 	return strings.Join(lines, "\n")

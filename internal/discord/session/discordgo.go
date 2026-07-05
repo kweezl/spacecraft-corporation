@@ -176,8 +176,21 @@ func (d *discordSession) ChannelDelete(channelID string) (*discordgo.Channel, er
 	return d.s.ChannelDelete(channelID)
 }
 
+func (d *discordSession) Channel(channelID string) (*discordgo.Channel, error) {
+	return d.s.Channel(channelID)
+}
+
 func (d *discordSession) InteractionResponseEdit(i *discordgo.Interaction, edit *discordgo.WebhookEdit) (*discordgo.Message, error) {
 	return d.s.InteractionResponseEdit(i, edit)
+}
+
+// GuildMember resolves a guild member, preferring the state cache over a REST
+// round-trip (the guilds intent keeps members Discord has already sent us).
+func (d *discordSession) GuildMember(guildID, userID string) (*discordgo.Member, error) {
+	if m, err := d.s.State.Member(guildID, userID); err == nil && m != nil {
+		return m, nil
+	}
+	return d.s.GuildMember(guildID, userID)
 }
 
 // ApplicationEmojis lists the application's emojis. The bot user's id is the

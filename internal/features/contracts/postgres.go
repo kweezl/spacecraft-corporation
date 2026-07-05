@@ -45,6 +45,14 @@ func (r *pgRepository) enqueueClose(ctx context.Context, tx pgx.Tx, contractID u
 	})
 }
 
+// enqueuePayout enqueues the participant-payout task on the caller's tx. repost
+// marks a console-requested re-post (skips the posted-at latch in the handler).
+func (r *pgRepository) enqueuePayout(ctx context.Context, tx pgx.Tx, contractID uuid.UUID, repost bool) error {
+	return r.enq.Enqueue(ctx, tx, outbox.Request{
+		Kind: taskPayout, Payload: taskPayload{ContractID: contractID, Repost: repost}, ChronometricID: contractID,
+	})
+}
+
 // lockOpenContract resolves the contract for a (server, thread), takes a row lock
 // so concurrent mutations serialize, and enforces the open-and-not-expired guard.
 // It returns ErrNotFound / ErrClosed / ErrExpired so the handler renders the
@@ -203,12 +211,12 @@ func (r *pgRepository) Create(ctx context.Context, in CreateInput) (uuid.UUID, e
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO contracts
 			(id, servers_id, thread_id, title, description, status, kind, post_version, deadline,
-			 reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points,
+			 reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, participant_reward_factor,
 			 delivery_location_gdid, delivery_location_gd_version, contract_templates_id,
 			 created_by_user_id, updated_by_user_id, created_at, updated_at, last_refreshed_at)
-		VALUES ($1, $2, NULL, $3, $4, 'open', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, $15, $15, $15)`,
+		VALUES ($1, $2, NULL, $3, $4, 'open', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15, $16, $16, $16)`,
 		id, in.ServerID, in.Title, in.Description, string(in.Kind), CurrentPostVersion, in.Deadline,
-		in.RewardCredits, in.RewardReputation, in.RewardLicencePoints,
+		in.RewardCredits, in.RewardReputation, in.RewardLicencePoints, in.ParticipantRewardFactor,
 		nullIfEmpty(in.LocationGDID), nullIfEmpty(in.LocationGDVersion), in.TemplateID,
 		in.CreatedByUserID, now); err != nil {
 		return uuid.Nil, err
@@ -505,8 +513,9 @@ func (r *pgRepository) SetDeadline(ctx context.Context, serverID, contractID uui
 }
 
 // UpdateRewards sets an open contract's reward fields (console). nil values
-// clear the matching column.
-func (r *pgRepository) UpdateRewards(ctx context.Context, serverID, contractID uuid.UUID, credits *decimal.Decimal, reputation, licencePoints *int, actor string) error {
+// clear the matching column; the factor is NOT NULL (zero = no participant
+// rewards).
+func (r *pgRepository) UpdateRewards(ctx context.Context, serverID, contractID uuid.UUID, credits *decimal.Decimal, factor decimal.Decimal, reputation, licencePoints *int, actor string) error {
 	now := time.Now()
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -519,9 +528,9 @@ func (r *pgRepository) UpdateRewards(ctx context.Context, serverID, contractID u
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE contracts SET reward_corpo_credits = $1, reward_corpo_reputation = $2, reward_corpo_licence_points = $3,
-		 updated_at = $4, updated_by_user_id = $5, last_refreshed_at = $4 WHERE id = $6`,
-		credits, reputation, licencePoints, now, actor, cid); err != nil {
+		`UPDATE contracts SET reward_corpo_credits = $1, reward_corpo_reputation = $2, reward_corpo_licence_points = $3, participant_reward_factor = $4,
+		 updated_at = $5, updated_by_user_id = $6, last_refreshed_at = $5 WHERE id = $7`,
+		credits, reputation, licencePoints, factor, now, actor, cid); err != nil {
 		return err
 	}
 	if err := r.enqueueRefresh(ctx, tx, cid); err != nil {
@@ -789,6 +798,22 @@ func (r *pgRepository) finishIfComplete(ctx context.Context, tx pgx.Tx, cid uuid
 			now, actor, cid); err != nil {
 			return false, err
 		}
+		// Participant payouts, in the SAME transaction as the status flip — the
+		// contract row is locked and 'completed' is written exactly once, so the
+		// task can never enqueue twice or get lost. Only when there is actually
+		// something to distribute (a positive credit reward and a positive factor).
+		var credits *decimal.Decimal
+		var factor decimal.Decimal
+		if err := tx.QueryRow(ctx,
+			`SELECT reward_corpo_credits, participant_reward_factor FROM contracts WHERE id = $1`, cid).
+			Scan(&credits, &factor); err != nil {
+			return false, err
+		}
+		if creditsSet(credits) && factor.IsPositive() {
+			if err := r.enqueuePayout(ctx, tx, cid, false); err != nil {
+				return false, err
+			}
+		}
 		return true, r.enqueueClose(ctx, tx, cid)
 	}
 	if err := touch(ctx, tx, cid, now, actor); err != nil {
@@ -942,15 +967,16 @@ func (r *pgRepository) CancelByID(ctx context.Context, serverID, contractID uuid
 // alias for queries that join.
 // Credits scan straight into *decimal.Decimal via the pool's registered
 // shopspring codec (NULL → nil) — the NUMERIC value never becomes a float.
-const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, kind, post_version, deadline, created_by_user_id, last_refreshed_at, reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, COALESCE(delivery_location_gdid, ''), COALESCE(delivery_location_gd_version, ''), contract_templates_id`
-const contractColsC = `c.id, c.servers_id, COALESCE(c.thread_id, ''), c.title, c.description, c.status, c.kind, c.post_version, c.deadline, c.created_by_user_id, c.last_refreshed_at, c.reward_corpo_credits, c.reward_corpo_reputation, c.reward_corpo_licence_points, COALESCE(c.delivery_location_gdid, ''), COALESCE(c.delivery_location_gd_version, ''), c.contract_templates_id`
+const contractCols = `id, servers_id, COALESCE(thread_id, ''), title, description, status, kind, post_version, deadline, created_by_user_id, last_refreshed_at, reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, COALESCE(delivery_location_gdid, ''), COALESCE(delivery_location_gd_version, ''), contract_templates_id, participant_reward_factor, payout_posted_at, payouts_paid_at, COALESCE(payouts_paid_by_user_id, ''), COALESCE(payout_report_channel_id, ''), COALESCE(payout_report_message_id, ''), (SELECT server_id FROM servers WHERE servers.id = contracts.servers_id)`
+const contractColsC = `c.id, c.servers_id, COALESCE(c.thread_id, ''), c.title, c.description, c.status, c.kind, c.post_version, c.deadline, c.created_by_user_id, c.last_refreshed_at, c.reward_corpo_credits, c.reward_corpo_reputation, c.reward_corpo_licence_points, COALESCE(c.delivery_location_gdid, ''), COALESCE(c.delivery_location_gd_version, ''), c.contract_templates_id, c.participant_reward_factor, c.payout_posted_at, c.payouts_paid_at, COALESCE(c.payouts_paid_by_user_id, ''), COALESCE(c.payout_report_channel_id, ''), COALESCE(c.payout_report_message_id, ''), (SELECT server_id FROM servers WHERE servers.id = c.servers_id)`
 
 func scanContract(row pgx.Row) (Progress, error) {
 	var p Progress
 	var status, kind string
-	var deadline *time.Time
+	var deadline, payoutPosted, payoutsPaid *time.Time
 	err := row.Scan(&p.ID, &p.ServerID, &p.ThreadID, &p.Title, &p.Description, &status, &kind, &p.PostVersion, &deadline, &p.CreatedByUserID, &p.LastRefreshedAt,
-		&p.RewardCredits, &p.RewardReputation, &p.RewardLicencePoints, &p.LocationGDID, &p.LocationGDVersion, &p.TemplateID)
+		&p.RewardCredits, &p.RewardReputation, &p.RewardLicencePoints, &p.LocationGDID, &p.LocationGDVersion, &p.TemplateID,
+		&p.ParticipantRewardFactor, &payoutPosted, &payoutsPaid, &p.PayoutsPaidByUserID, &p.PayoutReportChannelID, &p.PayoutReportMessageID, &p.ServerDiscordID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Progress{}, ErrNotFound
 	}
@@ -960,6 +986,8 @@ func scanContract(row pgx.Row) (Progress, error) {
 	p.Status = Status(status)
 	p.Kind = Kind(kind)
 	p.Deadline = asLocalPtr(deadline)
+	p.PayoutPostedAt = asLocalPtr(payoutPosted)
+	p.PayoutsPaidAt = asLocalPtr(payoutsPaid)
 	p.LastRefreshedAt = asLocal(p.LastRefreshedAt)
 	return p, nil
 }
@@ -1173,7 +1201,7 @@ func (r *pgRepository) loadParticipants(ctx context.Context, contractID uuid.UUI
 
 func (r *pgRepository) MemberOutstanding(ctx context.Context, serverID uuid.UUID, threadID, userID string) ([]MemberItem, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT ci.item_name, r.reserved_qty, r.delivered_qty
+		SELECT ci.item_name, COALESCE(ci.item_gdid, ''), COALESCE(ci.gamedata_version, ''), r.reserved_qty, r.delivered_qty
 		FROM contract_reservations r
 		JOIN contract_items ci ON ci.id = r.contract_items_id
 		JOIN contracts c ON c.id = ci.contracts_id
@@ -1187,7 +1215,7 @@ func (r *pgRepository) MemberOutstanding(ctx context.Context, serverID uuid.UUID
 	var out []MemberItem
 	for rows.Next() {
 		var m MemberItem
-		if err := rows.Scan(&m.Name, &m.Reserved, &m.Delivered); err != nil {
+		if err := rows.Scan(&m.Name, &m.GDID, &m.GDVersion, &m.Reserved, &m.Delivered); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -1274,33 +1302,6 @@ func (r *pgRepository) Counts(ctx context.Context, serverID uuid.UUID) (Counts, 
 		return Counts{}, err
 	}
 	return c, nil
-}
-
-func (r *pgRepository) KindByID(ctx context.Context, serverID, contractID uuid.UUID) (Kind, error) {
-	var kind string
-	err := r.pool.QueryRow(ctx,
-		`SELECT kind FROM contracts WHERE id = $1 AND servers_id = $2`, contractID, serverID).Scan(&kind)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	if err != nil {
-		return "", err
-	}
-	return Kind(kind), nil
-}
-
-func (r *pgRepository) KindByItem(ctx context.Context, serverID, itemID uuid.UUID) (Kind, error) {
-	var kind string
-	err := r.pool.QueryRow(ctx,
-		`SELECT c.kind FROM contract_items ci JOIN contracts c ON c.id = ci.contracts_id
-		 WHERE ci.id = $1 AND c.servers_id = $2`, itemID, serverID).Scan(&kind)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	if err != nil {
-		return "", err
-	}
-	return Kind(kind), nil
 }
 
 func (r *pgRepository) DueContracts(ctx context.Context, now time.Time, limit int) ([]uuid.UUID, error) {

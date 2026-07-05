@@ -15,9 +15,9 @@ import (
 // participant list for the page, then a [Back][Prev][Next] row, an
 // [Edit][Remove item] row (plus [Link to game data] on a legacy free-text item),
 // and one [Edit] row per participant (the number ties a line to its button; it
-// opens the participant-manage modal). Edit/remove/link need the contract kind's
-// key; participant management needs keyManage; both also require the contract to
-// be open. The handlers re-check regardless (gateMutation).
+// opens the participant-manage modal). Edit/remove/link and participant
+// management all need the manager key (keyManage) and require the contract to be
+// open. The handlers re-check regardless (gateMutation).
 func (h *Feature) renderItemView(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, itemID uuid.UUID, page int, update bool) error {
 	prog, err := h.repo.ProgressByItemScoped(ctx, serverID, itemID)
 	if err != nil {
@@ -61,8 +61,9 @@ func (h *Feature) renderItemView(ctx context.Context, r registry.Responder, i *d
 		"\n" + h.itemProgress(ctx, serverID, item)
 
 	open := prog.Status == StatusOpen
-	canEditItem := open && h.may(ctx, i, serverID, keyForKind(prog.Kind))
-	canManage := open && h.may(ctx, i, serverID, keyManage)
+	manage := h.may(ctx, i, serverID, keyManage)
+	canEditItem := open && manage
+	canManage := open && manage
 
 	inner := []discordgo.MessageComponent{discordgo.TextDisplay{Content: truncate(header, 4000)}}
 	switch {

@@ -54,21 +54,22 @@ func TestConsole_HomeShowsTemplatesButtonWithKey(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
 	repo.EXPECT().Counts(mock.Anything, gid).Return(contracts.Counts{}, nil).Twice()
 
+	// The templates-library button (like every authoring button) shows to a
+	// contract manager and is hidden from anyone without the manager key.
 	r := &capture{}
-	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.templates"))
+	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.manage"))
 	run(t, f, r, consoleCmd(member("librarian")))
-	assert.True(t, has(buttonIDs(r.components), "contract:tlist:0:"), "the templates-library button shows with the key")
+	assert.True(t, has(buttonIDs(r.components), "contract:tlist:0:"), "the templates-library button shows for a manager")
 
 	r2 := &capture{}
-	f2 := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.custom"))
-	run(t, f2, r2, consoleCmd(member("officer")))
-	assert.False(t, has(buttonIDs(r2.components), "contract:tlist:0:"), "hidden without the key")
+	f2 := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.use"))
+	run(t, f2, r2, consoleCmd(member("participant")))
+	assert.False(t, has(buttonIDs(r2.components), "contract:tlist:0:"), "hidden from a non-manager")
 }
 
 func TestConsole_AddItemSearch_NoHits(t *testing.T) {
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	search := mocks.NewMockGameSearch(t)
 	search.EXPECT().Search(gamedata.KindItem, i18n.LanguageEN, "vaporware", 10).Return(nil, nil).Once()
 
@@ -86,7 +87,6 @@ func TestConsole_AddItemSearch_SingleHitOffersPick(t *testing.T) {
 	// the modal-submit → modal gap.
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	search := mocks.NewMockGameSearch(t)
 	search.EXPECT().Search(gamedata.KindItem, i18n.LanguageEN, "actuator", 10).
 		Return([]gamedata.Hit{{ID: "Actuator", Name: "Hydraulic Actuator"}}, nil).Once()
@@ -102,7 +102,6 @@ func TestConsole_AddItemSearch_SingleHitOffersPick(t *testing.T) {
 func TestConsole_AddItemSearch_MultiHitOffersSelect(t *testing.T) {
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	search := mocks.NewMockGameSearch(t)
 	// Both hits must be REAL catalog items (the picker drops unknown/excluded
 	// ones); "Actuator" also has an icon in the emoji store, "ActivatedCoal"
@@ -202,7 +201,6 @@ func TestConsole_PickSelectThenQtyApplies(t *testing.T) {
 	// Step 1: choosing an item from the pick select opens the quantity modal
 	// (the pick re-checks the destination's key itself).
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	r := &capture{}
 	f := newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
 	require.NoError(t, f.Component().Handler(context.Background(), r,
@@ -212,7 +210,6 @@ func TestConsole_PickSelectThenQtyApplies(t *testing.T) {
 	// Step 2: the quantity submit applies — the localized name snapshot, the
 	// gdid, and the latest catalog version reach the repository.
 	repo2 := mocks.NewMockRepository(t)
-	repo2.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	repo2.EXPECT().AddItemByID(mock.Anything, gid, cid, "Hydraulic Actuator", "Actuator", latestVersion(), mock.Anything, 7, 25, "officer").Return(nil).Once()
 	repo2.EXPECT().ProgressByIDScoped(mock.Anything, gid, cid).Return(contracts.Progress{
 		Contract: contracts.Contract{ID: cid, ServerID: gid, Status: contracts.StatusOpen, Kind: contracts.KindCustom, LastRefreshedAt: time.Now()},
@@ -229,7 +226,6 @@ func TestConsole_BrowseFlow(t *testing.T) {
 	// (→ quantity modal, covered above by the shared m_bqty step).
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	emo := emoji.StaticStore(map[string]string{"Actuator": "<:Actuator:1234567890>"})
 
 	// Add item transforms the console into the category browser.
@@ -304,7 +300,6 @@ func TestConsole_ExcludedItemRejectedAtApply(t *testing.T) {
 	// forgeable CustomID — the quantity submit is the hard boundary.
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 
 	r := &capture{}
 	f := newFeature(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
@@ -345,7 +340,6 @@ func TestConsole_LegacyItemLinkFlow(t *testing.T) {
 
 	// 2. The Link button opens the search modal prefilled with the stored name.
 	repo2 := mocks.NewMockRepository(t)
-	repo2.EXPECT().KindByItem(mock.Anything, gid, itemID).Return(contracts.KindCustom, nil).Once()
 	repo2.EXPECT().ProgressByItemScoped(mock.Anything, gid, itemID).Return(legacy, nil).Once()
 	r2 := &capture{}
 	f2 := newFeature(t, repo2, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
@@ -356,7 +350,6 @@ func TestConsole_LegacyItemLinkFlow(t *testing.T) {
 	// 3. Submitting the search with one hit links immediately: gdid + latest
 	// version + the all-language alias set reach the repository.
 	repo3 := mocks.NewMockRepository(t)
-	repo3.EXPECT().KindByItem(mock.Anything, gid, itemID).Return(contracts.KindCustom, nil).Once()
 	repo3.EXPECT().LinkItemGDID(mock.Anything, gid, itemID, "Actuator", latestVersion(),
 		mock.MatchedBy(func(aliases []string) bool {
 			return has(aliases, "Actuator") && has(aliases, "Hydraulic Actuator")
@@ -396,7 +389,6 @@ func TestConsole_LocationBrowser(t *testing.T) {
 	// picker, current location pre-selected.
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	repo.EXPECT().ProgressByIDScoped(mock.Anything, gid, cid).Return(contracts.Progress{
 		Contract: contracts.Contract{ID: cid, ServerID: gid, Status: contracts.StatusOpen, Kind: contracts.KindCustom,
 			LocationGDID: "Station_Cairn", LocationGDVersion: "v1", LastRefreshedAt: time.Now()},
@@ -422,7 +414,6 @@ func TestConsole_LocationBrowser(t *testing.T) {
 	// Choosing a station applies immediately (no quantity, no modal) and lands
 	// back on the contract view.
 	repo2 := mocks.NewMockRepository(t)
-	repo2.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	repo2.EXPECT().SetDeliveryLocation(mock.Anything, gid, cid, "Station_Horizon", latestVersion(), "officer").Return(nil).Once()
 	repo2.EXPECT().ProgressByIDScoped(mock.Anything, gid, cid).Return(contracts.Progress{
 		Contract: contracts.Contract{ID: cid, ServerID: gid, Status: contracts.StatusOpen, Kind: contracts.KindCustom, LastRefreshedAt: time.Now()},
@@ -435,7 +426,6 @@ func TestConsole_LocationBrowser(t *testing.T) {
 
 	// Clear drops the location.
 	repo3 := mocks.NewMockRepository(t)
-	repo3.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindCustom, nil).Once()
 	repo3.EXPECT().SetDeliveryLocation(mock.Anything, gid, cid, "", "", "officer").Return(nil).Once()
 	repo3.EXPECT().ProgressByIDScoped(mock.Anything, gid, cid).Return(contracts.Progress{
 		Contract: contracts.Contract{ID: cid, ServerID: gid, Status: contracts.StatusOpen, Kind: contracts.KindCustom, LastRefreshedAt: time.Now()},

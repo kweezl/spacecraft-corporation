@@ -30,15 +30,26 @@ func Module() fx.Option {
 		fx.Provide(New),
 		fx.Provide(func(l *session.Live) Gateway { return l }),
 		fx.Provide(func(s *settings.Store) ForumConfig { return s }),
+		fx.Provide(func(s *settings.Store) ReportsConfig { return s }),
+		fx.Provide(func(s *settings.Store) RewardDefaults { return s }),
 		// The gamedata picker's narrow views of two core services: the bleve
 		// catalog search and the per-server language resolution (the same Resolve
 		// the Localizer renders through). Registry + emoji Store are consumed
 		// concretely in New.
 		fx.Provide(func(s *gamedata.Searcher) GameSearch { return s }),
 		fx.Provide(func(s *settings.Store) LangResolver { return s }),
-		// Contribute the forum-channel control to the /settings panel.
+		// Contribute the forum-channel and default-reward-factor controls to the
+		// /settings panel.
 		fx.Provide(fx.Annotate(
 			newForumSection,
+			fx.ResultTags(`group:"settings_sections"`),
+		)),
+		fx.Provide(fx.Annotate(
+			newFactorSection,
+			fx.ResultTags(`group:"settings_sections"`),
+		)),
+		fx.Provide(fx.Annotate(
+			newReportsSection,
 			fx.ResultTags(`group:"settings_sections"`),
 		)),
 		fx.Provide(newSweeper),

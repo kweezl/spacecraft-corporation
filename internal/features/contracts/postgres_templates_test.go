@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -36,7 +37,7 @@ func (s *templatesSuite) TestCreateAndRoundTrip() {
 	t := s.T()
 	tpls, ctx, g := s.seed()
 
-	id, err := tpls.CreateTemplate(ctx, g, "Weekly Steel", "Restock the mills", mgr)
+	id, err := tpls.CreateTemplate(ctx, g, "Weekly Steel", "Restock the mills", decimal.Zero, mgr)
 	require.NoError(t, err)
 
 	got, err := tpls.TemplateByID(ctx, g, id)
@@ -44,6 +45,7 @@ func (s *templatesSuite) TestCreateAndRoundTrip() {
 	assert.Equal(t, "Weekly Steel", got.Title)
 	assert.Equal(t, "Restock the mills", got.Description)
 	assert.True(t, got.RewardCredits.IsZero(), "zero-value default, got %s", got.RewardCredits)
+	assert.True(t, got.ParticipantRewardFactor.IsZero(), "the passed factor persists, got %s", got.ParticipantRewardFactor)
 	assert.Zero(t, got.RewardReputation)
 	assert.Zero(t, got.RewardLicencePoints)
 	assert.Zero(t, got.DeadlineMinutes)
@@ -54,7 +56,7 @@ func (s *templatesSuite) TestCreateAndRoundTrip() {
 	// Details: title, description, deadline duration.
 	require.NoError(t, tpls.UpdateTemplateDetails(ctx, g, id, "Weekly Steel v2", "d2", 3*24*60, mgr))
 	// Rewards keep decimal fidelity (12.50 round-trips exactly, never a float).
-	require.NoError(t, tpls.UpdateTemplateRewards(ctx, g, id, dec("12.50"), 7, 3, mgr))
+	require.NoError(t, tpls.UpdateTemplateRewards(ctx, g, id, dec("12.50"), dec("25"), 7, 3, mgr))
 	// Location pair.
 	require.NoError(t, tpls.SetTemplateLocation(ctx, g, id, "Station_Cairn", "v1", mgr))
 
@@ -63,6 +65,7 @@ func (s *templatesSuite) TestCreateAndRoundTrip() {
 	assert.Equal(t, "Weekly Steel v2", got.Title)
 	assert.Equal(t, 3*24*60, got.DeadlineMinutes)
 	assert.True(t, got.RewardCredits.Equal(dec("12.50")), "got %s", got.RewardCredits)
+	assert.True(t, got.ParticipantRewardFactor.Equal(dec("25")), "got %s", got.ParticipantRewardFactor)
 	assert.Equal(t, 7, got.RewardReputation)
 	assert.Equal(t, 3, got.RewardLicencePoints)
 	assert.Equal(t, "Station_Cairn", got.LocationGDID)
@@ -76,31 +79,44 @@ func (s *templatesSuite) TestCreateAndRoundTrip() {
 	assert.Empty(t, got.LocationGDVersion)
 }
 
+// TestCreateWithFactorPrefill persists the factor passed at creation (the
+// caller prefills it from the server default).
+func (s *templatesSuite) TestCreateWithFactorPrefill() {
+	t := s.T()
+	tpls, ctx, g := s.seed()
+
+	id, err := tpls.CreateTemplate(ctx, g, "Prefilled", "", dec("12.5"), mgr)
+	require.NoError(t, err)
+	got, err := tpls.TemplateByID(ctx, g, id)
+	require.NoError(t, err)
+	assert.True(t, got.ParticipantRewardFactor.Equal(dec("12.5")), "got %s", got.ParticipantRewardFactor)
+}
+
 func (s *templatesSuite) TestTitleUniqueness() {
 	t := s.T()
 	tpls, ctx, g := s.seed()
 
-	a, err := tpls.CreateTemplate(ctx, g, "Steel Run", "", mgr)
+	a, err := tpls.CreateTemplate(ctx, g, "Steel Run", "", decimal.Zero, mgr)
 	require.NoError(t, err)
-	_, err = tpls.CreateTemplate(ctx, g, "steel run", "", mgr)
+	_, err = tpls.CreateTemplate(ctx, g, "steel run", "", decimal.Zero, mgr)
 	require.ErrorIs(t, err, ErrTemplateExists, "case-insensitive title collision")
 
 	// Renaming onto an existing title collides too; renaming onto itself is fine.
-	b, err := tpls.CreateTemplate(ctx, g, "Copper Run", "", mgr)
+	b, err := tpls.CreateTemplate(ctx, g, "Copper Run", "", decimal.Zero, mgr)
 	require.NoError(t, err)
 	require.ErrorIs(t, tpls.UpdateTemplateDetails(ctx, g, b, "STEEL RUN", "", 0, mgr), ErrTemplateExists)
 	require.NoError(t, tpls.UpdateTemplateDetails(ctx, g, a, "Steel Run", "same title", 0, mgr))
 
 	// Another server may reuse the title.
 	g2 := testdb.SeedServer(t, s.Pool, "g2")
-	_, err = tpls.CreateTemplate(ctx, g2, "Steel Run", "", mgr)
+	_, err = tpls.CreateTemplate(ctx, g2, "Steel Run", "", decimal.Zero, mgr)
 	require.NoError(t, err)
 }
 
 func (s *templatesSuite) TestItems_AddUpdateRemove() {
 	t := s.T()
 	tpls, ctx, g := s.seed()
-	id, err := tpls.CreateTemplate(ctx, g, "T", "", mgr)
+	id, err := tpls.CreateTemplate(ctx, g, "T", "", decimal.Zero, mgr)
 	require.NoError(t, err)
 
 	require.NoError(t, tpls.AddTemplateItem(ctx, g, id, "SteelIngot", "v1", 500, 2, mgr))
@@ -140,12 +156,12 @@ func (s *templatesSuite) TestListTemplates_SearchAndPaging() {
 	t := s.T()
 	tpls, ctx, g := s.seed()
 	for _, title := range []string{"Steel Run", "Steel Rush", "Copper Run", "100% Special_Char"} {
-		_, err := tpls.CreateTemplate(ctx, g, title, "", mgr)
+		_, err := tpls.CreateTemplate(ctx, g, title, "", decimal.Zero, mgr)
 		require.NoError(t, err)
 	}
 	// Another server's templates never leak in.
 	g2 := testdb.SeedServer(t, s.Pool, "g2")
-	_, err := tpls.CreateTemplate(ctx, g2, "Steel Elsewhere", "", mgr)
+	_, err := tpls.CreateTemplate(ctx, g2, "Steel Elsewhere", "", decimal.Zero, mgr)
 	require.NoError(t, err)
 
 	// No query = all, ordered by title, paged.
@@ -184,7 +200,7 @@ func (s *templatesSuite) TestListTemplates_SearchAndPaging() {
 func (s *templatesSuite) TestDeleteTemplate_ContractSurvives() {
 	t := s.T()
 	tpls, ctx, g := s.seed()
-	id, err := tpls.CreateTemplate(ctx, g, "Doomed", "", mgr)
+	id, err := tpls.CreateTemplate(ctx, g, "Doomed", "", decimal.Zero, mgr)
 	require.NoError(t, err)
 	require.NoError(t, tpls.AddTemplateItem(ctx, g, id, "SteelIngot", "v1", 500, 25, mgr))
 
@@ -213,7 +229,7 @@ func (s *templatesSuite) TestTemplateLinkIsSameServerOnly() {
 	t := s.T()
 	tpls, ctx, g := s.seed()
 	g2 := testdb.SeedServer(t, s.Pool, "g2")
-	id, err := tpls.CreateTemplate(ctx, g, "Mine", "", mgr)
+	id, err := tpls.CreateTemplate(ctx, g, "Mine", "", decimal.Zero, mgr)
 	require.NoError(t, err)
 
 	// A contract in another server cannot link this server's template — the
@@ -235,13 +251,13 @@ func (s *templatesSuite) TestServerScoping() {
 	t := s.T()
 	tpls, ctx, g := s.seed()
 	g2 := testdb.SeedServer(t, s.Pool, "g2")
-	id, err := tpls.CreateTemplate(ctx, g, "Mine", "", mgr)
+	id, err := tpls.CreateTemplate(ctx, g, "Mine", "", decimal.Zero, mgr)
 	require.NoError(t, err)
 
 	_, err = tpls.TemplateByID(ctx, g2, id)
 	require.ErrorIs(t, err, ErrTemplateNotFound)
 	require.ErrorIs(t, tpls.UpdateTemplateDetails(ctx, g2, id, "Hax", "", 0, mgr), ErrTemplateNotFound)
-	require.ErrorIs(t, tpls.UpdateTemplateRewards(ctx, g2, id, dec("1"), 0, 0, mgr), ErrTemplateNotFound)
+	require.ErrorIs(t, tpls.UpdateTemplateRewards(ctx, g2, id, dec("1"), decimal.Zero, 0, 0, mgr), ErrTemplateNotFound)
 	require.ErrorIs(t, tpls.SetTemplateLocation(ctx, g2, id, "X", "v1", mgr), ErrTemplateNotFound)
 	require.ErrorIs(t, tpls.AddTemplateItem(ctx, g2, id, "X", "v1", 1, 25, mgr), ErrTemplateNotFound)
 	require.ErrorIs(t, tpls.DeleteTemplate(ctx, g2, id, mgr), ErrTemplateNotFound)

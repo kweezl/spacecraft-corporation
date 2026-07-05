@@ -104,6 +104,23 @@ func (h *Feature) itemDisplay(ctx context.Context, serverID uuid.UUID, gdid, ver
 	return name
 }
 
+// itemName is itemDisplay without the emoji token — the localized name for
+// plain-text surfaces (the CSV export). Free-text items (no GDID) and unknown
+// gdids / nil catalog fall back to the stored name snapshot.
+func (h *Feature) itemName(ctx context.Context, serverID uuid.UUID, it Item) string {
+	if it.GDID == "" {
+		return it.Name
+	}
+	cat := h.catalogFor(it.GDVersion)
+	if cat == nil {
+		return it.Name
+	}
+	if name := cat.Name(gamedata.GDID(it.GDID), h.lang(ctx, serverID)); name != "" {
+		return name
+	}
+	return it.Name
+}
+
 // spaceObjectDisplay renders a gamedata space object's localized name.
 func (h *Feature) spaceObjectDisplay(ctx context.Context, serverID uuid.UUID, gdid, version string) string {
 	cat := h.catalogFor(version)
@@ -198,14 +215,23 @@ func (h *Feature) runPick(ctx context.Context, r registry.Responder, i *discordg
 	return h.respondView(i, r, []discordgo.MessageComponent{discordgo.Container{Components: inner}}, true)
 }
 
-// optionEmoji resolves a catalog item's icon to a select-option emoji, nil when
-// the item has no icon or the emoji store doesn't carry it (space objects have
-// no icons, so location picks always render plain).
+// optionEmoji resolves a catalog item's icon (from the latest loaded catalog) to
+// a select-option emoji — the search/browse pick lists, which always work off the
+// latest catalog.
 func (h *Feature) optionEmoji(gdid gamedata.GDID) *discordgo.ComponentEmoji {
+	return h.optionEmojiFor(gdid, "")
+}
+
+// optionEmojiFor resolves a catalog item's icon to a select-option emoji using
+// the catalog stamped by version (empty = latest), nil when the item has no icon
+// or the emoji store doesn't carry it (space objects have no icons, so location
+// picks always render plain). Used by the op-modal item options, which key off
+// the item's stored gamedata version.
+func (h *Feature) optionEmojiFor(gdid gamedata.GDID, version string) *discordgo.ComponentEmoji {
 	if h.emo == nil {
 		return nil
 	}
-	cat := h.reg.Latest()
+	cat := h.catalogFor(version)
 	if cat == nil {
 		return nil
 	}
@@ -247,9 +273,9 @@ func pickSearchID(dest pickDest, targetID uuid.UUID) string {
 
 // handlePickSelect handles the choice made in the pick select: item
 // destinations continue to the quantity modal (this is a component interaction,
-// so a modal may open), the rest apply immediately. The gate table can't
-// authorize segPick (its key depends on the destination in the CustomID), so it
-// re-checks here.
+// so a modal may open), the rest apply immediately. segPick is not in
+// gatedSegments (it isn't a fixed console button), so it re-checks the manager
+// key here.
 func (h *Feature) handlePickSelect(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	if len(parts) < 2 {
 		return fmt.Errorf("contracts: malformed pick id %v", parts)
@@ -260,13 +286,9 @@ func (h *Feature) handlePickSelect(ctx context.Context, r registry.Responder, i 
 		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
 	}
 
-	key, err := h.pickKey(ctx, serverID, dest, targetID)
+	allowed, err := h.authorizedKey(ctx, i, serverID, keyManage)
 	if err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
-	allowed, err := h.authorizedKey(ctx, i, serverID, key)
-	if err != nil {
-		return fmt.Errorf("contracts: authorize %s: %w", key, err)
+		return fmt.Errorf("contracts: authorize %s: %w", keyManage, err)
 	}
 	if !allowed {
 		return h.reply(ctx, r, i, serverID, "contracts.console.denied", nil)
@@ -280,29 +302,6 @@ func (h *Feature) handlePickSelect(ctx context.Context, r registry.Responder, i 
 		return h.openPickQtyModal(ctx, r, i, serverID, dest, targetID, values[0])
 	}
 	return h.applyPick(ctx, r, i, serverID, dest, targetID, values[0], 0, true)
-}
-
-// pickKey is the permission a pick destination requires: the template library
-// key for template writes, the contract's kind key for contract writes.
-func (h *Feature) pickKey(ctx context.Context, serverID uuid.UUID, dest pickDest, targetID uuid.UUID) (string, error) {
-	switch dest {
-	case pickTemplateItem, pickTemplateLoc:
-		return keyTemplates, nil
-	case pickContractItem, pickContractLoc:
-		kind, err := h.repo.KindByID(ctx, serverID, targetID)
-		if err != nil {
-			return "", err
-		}
-		return keyForKind(kind), nil
-	case pickItemLink:
-		kind, err := h.repo.KindByItem(ctx, serverID, targetID)
-		if err != nil {
-			return "", err
-		}
-		return keyForKind(kind), nil
-	default:
-		return "", fmt.Errorf("contracts: unknown pick dest %q", dest)
-	}
 }
 
 // itemAliases collects every name a catalog item is known by — its localized

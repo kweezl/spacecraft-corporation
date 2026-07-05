@@ -77,9 +77,9 @@ func (_c *MockTemplateRepository_AddTemplateItem_Call) RunAndReturn(run func(con
 	return _c
 }
 
-// CreateTemplate provides a mock function with given fields: ctx, serverID, title, description, actor
-func (_m *MockTemplateRepository) CreateTemplate(ctx context.Context, serverID uuid.UUID, title string, description string, actor string) (uuid.UUID, error) {
-	ret := _m.Called(ctx, serverID, title, description, actor)
+// CreateTemplate provides a mock function with given fields: ctx, serverID, title, description, factor, actor
+func (_m *MockTemplateRepository) CreateTemplate(ctx context.Context, serverID uuid.UUID, title string, description string, factor decimal.Decimal, actor string) (uuid.UUID, error) {
+	ret := _m.Called(ctx, serverID, title, description, factor, actor)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateTemplate")
@@ -87,19 +87,19 @@ func (_m *MockTemplateRepository) CreateTemplate(ctx context.Context, serverID u
 
 	var r0 uuid.UUID
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, string, string) (uuid.UUID, error)); ok {
-		return rf(ctx, serverID, title, description, actor)
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, string, decimal.Decimal, string) (uuid.UUID, error)); ok {
+		return rf(ctx, serverID, title, description, factor, actor)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, string, string) uuid.UUID); ok {
-		r0 = rf(ctx, serverID, title, description, actor)
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string, string, decimal.Decimal, string) uuid.UUID); ok {
+		r0 = rf(ctx, serverID, title, description, factor, actor)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(uuid.UUID)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, string, string, string) error); ok {
-		r1 = rf(ctx, serverID, title, description, actor)
+	if rf, ok := ret.Get(1).(func(context.Context, uuid.UUID, string, string, decimal.Decimal, string) error); ok {
+		r1 = rf(ctx, serverID, title, description, factor, actor)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -117,14 +117,15 @@ type MockTemplateRepository_CreateTemplate_Call struct {
 //   - serverID uuid.UUID
 //   - title string
 //   - description string
+//   - factor decimal.Decimal
 //   - actor string
-func (_e *MockTemplateRepository_Expecter) CreateTemplate(ctx interface{}, serverID interface{}, title interface{}, description interface{}, actor interface{}) *MockTemplateRepository_CreateTemplate_Call {
-	return &MockTemplateRepository_CreateTemplate_Call{Call: _e.mock.On("CreateTemplate", ctx, serverID, title, description, actor)}
+func (_e *MockTemplateRepository_Expecter) CreateTemplate(ctx interface{}, serverID interface{}, title interface{}, description interface{}, factor interface{}, actor interface{}) *MockTemplateRepository_CreateTemplate_Call {
+	return &MockTemplateRepository_CreateTemplate_Call{Call: _e.mock.On("CreateTemplate", ctx, serverID, title, description, factor, actor)}
 }
 
-func (_c *MockTemplateRepository_CreateTemplate_Call) Run(run func(ctx context.Context, serverID uuid.UUID, title string, description string, actor string)) *MockTemplateRepository_CreateTemplate_Call {
+func (_c *MockTemplateRepository_CreateTemplate_Call) Run(run func(ctx context.Context, serverID uuid.UUID, title string, description string, factor decimal.Decimal, actor string)) *MockTemplateRepository_CreateTemplate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string), args[3].(string), args[4].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string), args[3].(string), args[4].(decimal.Decimal), args[5].(string))
 	})
 	return _c
 }
@@ -134,7 +135,7 @@ func (_c *MockTemplateRepository_CreateTemplate_Call) Return(_a0 uuid.UUID, _a1 
 	return _c
 }
 
-func (_c *MockTemplateRepository_CreateTemplate_Call) RunAndReturn(run func(context.Context, uuid.UUID, string, string, string) (uuid.UUID, error)) *MockTemplateRepository_CreateTemplate_Call {
+func (_c *MockTemplateRepository_CreateTemplate_Call) RunAndReturn(run func(context.Context, uuid.UUID, string, string, decimal.Decimal, string) (uuid.UUID, error)) *MockTemplateRepository_CreateTemplate_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -541,17 +542,17 @@ func (_c *MockTemplateRepository_UpdateTemplateItemQty_Call) RunAndReturn(run fu
 	return _c
 }
 
-// UpdateTemplateRewards provides a mock function with given fields: ctx, serverID, templateID, credits, reputation, licencePoints, actor
-func (_m *MockTemplateRepository) UpdateTemplateRewards(ctx context.Context, serverID uuid.UUID, templateID uuid.UUID, credits decimal.Decimal, reputation int, licencePoints int, actor string) error {
-	ret := _m.Called(ctx, serverID, templateID, credits, reputation, licencePoints, actor)
+// UpdateTemplateRewards provides a mock function with given fields: ctx, serverID, templateID, credits, factor, reputation, licencePoints, actor
+func (_m *MockTemplateRepository) UpdateTemplateRewards(ctx context.Context, serverID uuid.UUID, templateID uuid.UUID, credits decimal.Decimal, factor decimal.Decimal, reputation int, licencePoints int, actor string) error {
+	ret := _m.Called(ctx, serverID, templateID, credits, factor, reputation, licencePoints, actor)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateTemplateRewards")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, decimal.Decimal, int, int, string) error); ok {
-		r0 = rf(ctx, serverID, templateID, credits, reputation, licencePoints, actor)
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, decimal.Decimal, decimal.Decimal, int, int, string) error); ok {
+		r0 = rf(ctx, serverID, templateID, credits, factor, reputation, licencePoints, actor)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -569,16 +570,17 @@ type MockTemplateRepository_UpdateTemplateRewards_Call struct {
 //   - serverID uuid.UUID
 //   - templateID uuid.UUID
 //   - credits decimal.Decimal
+//   - factor decimal.Decimal
 //   - reputation int
 //   - licencePoints int
 //   - actor string
-func (_e *MockTemplateRepository_Expecter) UpdateTemplateRewards(ctx interface{}, serverID interface{}, templateID interface{}, credits interface{}, reputation interface{}, licencePoints interface{}, actor interface{}) *MockTemplateRepository_UpdateTemplateRewards_Call {
-	return &MockTemplateRepository_UpdateTemplateRewards_Call{Call: _e.mock.On("UpdateTemplateRewards", ctx, serverID, templateID, credits, reputation, licencePoints, actor)}
+func (_e *MockTemplateRepository_Expecter) UpdateTemplateRewards(ctx interface{}, serverID interface{}, templateID interface{}, credits interface{}, factor interface{}, reputation interface{}, licencePoints interface{}, actor interface{}) *MockTemplateRepository_UpdateTemplateRewards_Call {
+	return &MockTemplateRepository_UpdateTemplateRewards_Call{Call: _e.mock.On("UpdateTemplateRewards", ctx, serverID, templateID, credits, factor, reputation, licencePoints, actor)}
 }
 
-func (_c *MockTemplateRepository_UpdateTemplateRewards_Call) Run(run func(ctx context.Context, serverID uuid.UUID, templateID uuid.UUID, credits decimal.Decimal, reputation int, licencePoints int, actor string)) *MockTemplateRepository_UpdateTemplateRewards_Call {
+func (_c *MockTemplateRepository_UpdateTemplateRewards_Call) Run(run func(ctx context.Context, serverID uuid.UUID, templateID uuid.UUID, credits decimal.Decimal, factor decimal.Decimal, reputation int, licencePoints int, actor string)) *MockTemplateRepository_UpdateTemplateRewards_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(decimal.Decimal), args[4].(int), args[5].(int), args[6].(string))
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(uuid.UUID), args[3].(decimal.Decimal), args[4].(decimal.Decimal), args[5].(int), args[6].(int), args[7].(string))
 	})
 	return _c
 }
@@ -588,7 +590,7 @@ func (_c *MockTemplateRepository_UpdateTemplateRewards_Call) Return(_a0 error) *
 	return _c
 }
 
-func (_c *MockTemplateRepository_UpdateTemplateRewards_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, decimal.Decimal, int, int, string) error) *MockTemplateRepository_UpdateTemplateRewards_Call {
+func (_c *MockTemplateRepository_UpdateTemplateRewards_Call) RunAndReturn(run func(context.Context, uuid.UUID, uuid.UUID, decimal.Decimal, decimal.Decimal, int, int, string) error) *MockTemplateRepository_UpdateTemplateRewards_Call {
 	_c.Call.Return(run)
 	return _c
 }

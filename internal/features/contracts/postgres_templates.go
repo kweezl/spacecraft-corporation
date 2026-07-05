@@ -68,22 +68,24 @@ func touchTemplate(ctx context.Context, tx pgx.Tx, templateID uuid.UUID, now tim
 	return err
 }
 
-func (r *pgRepository) CreateTemplate(ctx context.Context, serverID uuid.UUID, title, description, actor string) (uuid.UUID, error) {
+func (r *pgRepository) CreateTemplate(ctx context.Context, serverID uuid.UUID, title, description string, factor decimal.Decimal, actor string) (uuid.UUID, error) {
 	id, err := uuidv7.NewUUID()
 	if err != nil {
 		return uuid.Nil, err
 	}
 	now := time.Now()
 	// Zero-value defaults for everything the create modal doesn't ask (rewards,
-	// duration, location) — filled in afterward on the template page.
+	// duration, location) — filled in afterward on the template page. The
+	// participant reward factor is the exception: the caller prefills it from
+	// the server default.
 	_, err = r.pool.Exec(ctx, `
 		INSERT INTO contract_templates
 			(id, servers_id, title, description,
-			 reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, deadline_minutes,
+			 reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, participant_reward_factor, deadline_minutes,
 			 delivery_location_gdid, delivery_location_gd_version,
 			 created_by_user_id, updated_by_user_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, 0, 0, 0, 0, NULL, NULL, $5, $5, $6, $6)`,
-		id, serverID, title, description, actor, now)
+		VALUES ($1, $2, $3, $4, 0, 0, 0, $5, 0, NULL, NULL, $6, $6, $7, $7)`,
+		id, serverID, title, description, factor, actor, now)
 	if uniqueViolation(err) {
 		return uuid.Nil, ErrTemplateExists
 	}
@@ -97,12 +99,12 @@ func (r *pgRepository) TemplateByID(ctx context.Context, serverID, templateID uu
 	var t Template
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, servers_id, title, description,
-		       reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, deadline_minutes,
+		       reward_corpo_credits, reward_corpo_reputation, reward_corpo_licence_points, participant_reward_factor, deadline_minutes,
 		       COALESCE(delivery_location_gdid, ''), COALESCE(delivery_location_gd_version, ''), created_by_user_id
 		FROM contract_templates WHERE id = $1 AND servers_id = $2`,
 		templateID, serverID).
 		Scan(&t.ID, &t.ServerID, &t.Title, &t.Description,
-			&t.RewardCredits, &t.RewardReputation, &t.RewardLicencePoints, &t.DeadlineMinutes,
+			&t.RewardCredits, &t.RewardReputation, &t.RewardLicencePoints, &t.ParticipantRewardFactor, &t.DeadlineMinutes,
 			&t.LocationGDID, &t.LocationGDVersion, &t.CreatedByUserID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Template{}, ErrTemplateNotFound
@@ -196,7 +198,7 @@ func (r *pgRepository) UpdateTemplateDetails(ctx context.Context, serverID, temp
 	return tx.Commit(ctx)
 }
 
-func (r *pgRepository) UpdateTemplateRewards(ctx context.Context, serverID, templateID uuid.UUID, credits decimal.Decimal, reputation, licencePoints int, actor string) error {
+func (r *pgRepository) UpdateTemplateRewards(ctx context.Context, serverID, templateID uuid.UUID, credits, factor decimal.Decimal, reputation, licencePoints int, actor string) error {
 	now := time.Now()
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -208,9 +210,9 @@ func (r *pgRepository) UpdateTemplateRewards(ctx context.Context, serverID, temp
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`UPDATE contract_templates SET reward_corpo_credits = $1, reward_corpo_reputation = $2, reward_corpo_licence_points = $3,
-		 updated_at = $4, updated_by_user_id = $5 WHERE id = $6`,
-		credits, reputation, licencePoints, now, actor, templateID); err != nil {
+		`UPDATE contract_templates SET reward_corpo_credits = $1, reward_corpo_reputation = $2, reward_corpo_licence_points = $3, participant_reward_factor = $4,
+		 updated_at = $5, updated_by_user_id = $6 WHERE id = $7`,
+		credits, reputation, licencePoints, factor, now, actor, templateID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

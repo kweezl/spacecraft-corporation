@@ -8,6 +8,7 @@ import (
 	uuid "github.com/google/uuid"
 	i18n "github.com/kweezl/spacecraft-corporation/internal/i18n"
 	settings "github.com/kweezl/spacecraft-corporation/internal/settings"
+	decimal "github.com/shopspring/decimal"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -125,6 +126,102 @@ func (_c *MockRepository_SetContractsForumChannelID_Call) Return(_a0 error) *Moc
 }
 
 func (_c *MockRepository_SetContractsForumChannelID_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_SetContractsForumChannelID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetContractsReportsChannelID provides a mock function with given fields: ctx, serverID, channelID
+func (_m *MockRepository) SetContractsReportsChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
+	ret := _m.Called(ctx, serverID, channelID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetContractsReportsChannelID")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
+		r0 = rf(ctx, serverID, channelID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetContractsReportsChannelID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetContractsReportsChannelID'
+type MockRepository_SetContractsReportsChannelID_Call struct {
+	*mock.Call
+}
+
+// SetContractsReportsChannelID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - channelID string
+func (_e *MockRepository_Expecter) SetContractsReportsChannelID(ctx interface{}, serverID interface{}, channelID interface{}) *MockRepository_SetContractsReportsChannelID_Call {
+	return &MockRepository_SetContractsReportsChannelID_Call{Call: _e.mock.On("SetContractsReportsChannelID", ctx, serverID, channelID)}
+}
+
+func (_c *MockRepository_SetContractsReportsChannelID_Call) Run(run func(ctx context.Context, serverID uuid.UUID, channelID string)) *MockRepository_SetContractsReportsChannelID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetContractsReportsChannelID_Call) Return(_a0 error) *MockRepository_SetContractsReportsChannelID_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetContractsReportsChannelID_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_SetContractsReportsChannelID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetContractsRewardFactor provides a mock function with given fields: ctx, serverID, factor
+func (_m *MockRepository) SetContractsRewardFactor(ctx context.Context, serverID uuid.UUID, factor decimal.Decimal) error {
+	ret := _m.Called(ctx, serverID, factor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetContractsRewardFactor")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, decimal.Decimal) error); ok {
+		r0 = rf(ctx, serverID, factor)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetContractsRewardFactor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetContractsRewardFactor'
+type MockRepository_SetContractsRewardFactor_Call struct {
+	*mock.Call
+}
+
+// SetContractsRewardFactor is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - factor decimal.Decimal
+func (_e *MockRepository_Expecter) SetContractsRewardFactor(ctx interface{}, serverID interface{}, factor interface{}) *MockRepository_SetContractsRewardFactor_Call {
+	return &MockRepository_SetContractsRewardFactor_Call{Call: _e.mock.On("SetContractsRewardFactor", ctx, serverID, factor)}
+}
+
+func (_c *MockRepository_SetContractsRewardFactor_Call) Run(run func(ctx context.Context, serverID uuid.UUID, factor decimal.Decimal)) *MockRepository_SetContractsRewardFactor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(decimal.Decimal))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetContractsRewardFactor_Call) Return(_a0 error) *MockRepository_SetContractsRewardFactor_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetContractsRewardFactor_Call) RunAndReturn(run func(context.Context, uuid.UUID, decimal.Decimal) error) *MockRepository_SetContractsRewardFactor_Call {
 	_c.Call.Return(run)
 	return _c
 }

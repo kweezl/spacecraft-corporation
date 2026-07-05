@@ -23,6 +23,7 @@ func (h *Feature) Registrations() []outbox.Registration {
 		{Kind: taskRefresh, Handler: h.taskRefresh},
 		{Kind: taskClose, Handler: h.taskClose},
 		{Kind: taskNotify, Handler: h.taskNotify},
+		{Kind: taskPayout, Handler: h.taskPayout},
 	}
 }
 

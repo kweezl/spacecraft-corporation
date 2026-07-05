@@ -10,9 +10,9 @@ import (
 )
 
 // The templates list, in two modes sharing one renderer: the MANAGE mode is the
-// server's template library (Edit accessories + Create new, behind keyTemplates),
+// server's template library (Edit accessories + Create new, behind keyManage),
 // the PICK mode is the "New from template" chooser (Use accessories, behind
-// keyTemplate). Search-by-title is a button opening a one-field modal — a
+// the manager key). Search-by-title is a button opening a one-field modal — a
 // Components V2 message cannot hold a text input — and the query then rides the
 // pager/clear CustomIDs (encQuery), keeping the console stateless.
 
@@ -61,7 +61,7 @@ func tplListSeg(mode string) string {
 
 // tplControlsRow is the list's top row: [Search][Clear][Create new]. Clear only
 // appears while a query filters the list; Create new only in manage mode for
-// holders of keyTemplates (the handlers re-check regardless).
+// managers (the handlers re-check regardless).
 func (h *Feature) tplControlsRow(ctx context.Context, serverID uuid.UUID, i *discordgo.InteractionCreate, mode, query string) discordgo.MessageComponent {
 	btns := []discordgo.MessageComponent{
 		discordgo.Button{
@@ -77,7 +77,7 @@ func (h *Feature) tplControlsRow(ctx context.Context, serverID uuid.UUID, i *dis
 			CustomID: buildID(tplListSeg(mode), "0", ""),
 		})
 	}
-	if mode == tplModeManage && h.may(ctx, i, serverID, keyTemplates) {
+	if mode == tplModeManage && h.may(ctx, i, serverID, keyManage) {
 		btns = append(btns, discordgo.Button{
 			Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_tpl_new", nil),
 			Style:    discordgo.SuccessButton,

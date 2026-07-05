@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
@@ -16,11 +17,14 @@ import (
 const defaultCacheSize = 1000
 
 // resolved is a server's effective theme/language with defaults already applied,
-// plus the raw contracts forum channel id (no default — empty means unset).
+// plus the raw contracts forum channel id (no default — empty means unset) and
+// the default participant reward factor (zero IS the default).
 type resolved struct {
-	theme string
-	lang  i18n.Language
-	forum string
+	theme   string
+	lang    i18n.Language
+	forum   string
+	reports string
+	factor  decimal.Decimal
 }
 
 // Store fronts the Repository with an in-memory LRU cache and implements
@@ -68,7 +72,7 @@ func (s *Store) resolve(ctx context.Context, serverID uuid.UUID) (resolved, bool
 	if lang == "" || !s.tr.HasLanguage(lang) {
 		lang = defLang
 	}
-	r := resolved{theme: theme, lang: lang, forum: st.ContractsForumChannelID}
+	r := resolved{theme: theme, lang: lang, forum: st.ContractsForumChannelID, reports: st.ContractsReportsChannelID, factor: st.ContractsRewardFactor}
 	s.cache.Add(serverID, r)
 	return r, true
 }
@@ -85,6 +89,20 @@ func (s *Store) Resolve(ctx context.Context, serverID uuid.UUID) (string, i18n.L
 func (s *Store) ContractsForumChannelID(ctx context.Context, serverID uuid.UUID) (string, bool) {
 	r, _ := s.resolve(ctx, serverID)
 	return r.forum, r.forum != ""
+}
+
+// ContractsReportsChannelID returns the server's configured contract reports
+// channel and whether one is set. Cached on the same resolution as Resolve.
+func (s *Store) ContractsReportsChannelID(ctx context.Context, serverID uuid.UUID) (string, bool) {
+	r, _ := s.resolve(ctx, serverID)
+	return r.reports, r.reports != ""
+}
+
+// ContractsRewardFactor returns the server's default participant reward factor
+// (percent, 0–100; zero when unset). Cached on the same resolution as Resolve.
+func (s *Store) ContractsRewardFactor(ctx context.Context, serverID uuid.UUID) decimal.Decimal {
+	r, _ := s.resolve(ctx, serverID)
+	return r.factor
 }
 
 // Get returns the raw stored settings (uncached, for display).
@@ -114,6 +132,26 @@ func (s *Store) SetLanguage(ctx context.Context, serverID uuid.UUID, language i1
 // invalidates the server's cached resolution.
 func (s *Store) SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
 	if err := s.repo.SetContractsForumChannelID(ctx, serverID, channelID); err != nil {
+		return err
+	}
+	s.cache.Remove(serverID)
+	return nil
+}
+
+// SetContractsReportsChannelID persists the contracts reports channel and
+// invalidates the server's cached resolution.
+func (s *Store) SetContractsReportsChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
+	if err := s.repo.SetContractsReportsChannelID(ctx, serverID, channelID); err != nil {
+		return err
+	}
+	s.cache.Remove(serverID)
+	return nil
+}
+
+// SetContractsRewardFactor persists the default participant reward factor and
+// invalidates the server's cached resolution.
+func (s *Store) SetContractsRewardFactor(ctx context.Context, serverID uuid.UUID, factor decimal.Decimal) error {
+	if err := s.repo.SetContractsRewardFactor(ctx, serverID, factor); err != nil {
 		return err
 	}
 	s.cache.Remove(serverID)

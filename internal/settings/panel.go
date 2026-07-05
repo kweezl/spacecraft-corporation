@@ -81,6 +81,21 @@ func (p *panel) handleComponent(ctx context.Context, r registry.Responder, i *di
 		})
 	}
 
+	// Modal submits land here too: the registry's DispatchModal routes by the
+	// same "settings:" prefix to this handler. Their CustomID lives in
+	// ModalSubmitData (reading MessageComponentData would panic on the type
+	// assertion), and only sections open modals — the built-in theme/language
+	// selects below are component-only — so an unclaimed modal is an error.
+	if i.Type == discordgo.InteractionModalSubmit {
+		id := i.ModalSubmitData().CustomID
+		for _, s := range p.sections {
+			if s.Owns(id) {
+				return s.Handle(ctx, r, i, serverID, func() []discordgo.MessageComponent { return p.view(ctx, serverID) })
+			}
+		}
+		return fmt.Errorf("settings: unrouted modal %q", id)
+	}
+
 	id := i.MessageComponentData().CustomID
 	// Feature-contributed sections claim their own CustomIDs (e.g. "settings:forum").
 	// They run behind the same authorize gate above; each persists its change and

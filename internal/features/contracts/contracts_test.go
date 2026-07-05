@@ -141,6 +141,35 @@ func TestParseCredits(t *testing.T) {
 	}
 }
 
+func TestParseFactor(t *testing.T) {
+	// Blank means zero (the column is NOT NULL — there is no "unset").
+	for _, in := range []string{"", "  "} {
+		got, err := parseFactor(in)
+		require.NoErrorf(t, err, "parseFactor(%q)", in)
+		assert.Truef(t, got.IsZero(), "parseFactor(%q) = %s", in, got)
+	}
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"0", "0"},
+		{"100", "100"},
+		{"100.00", "100"},
+		{"33,33", "33.33"}, // comma accepted as the separator
+		{"12.5", "12.5"},
+		{"0.01", "0.01"},
+	}
+	for _, c := range cases {
+		got, err := parseFactor(c.in)
+		require.NoErrorf(t, err, "parseFactor(%q)", c.in)
+		assert.Truef(t, got.Equal(decimal.RequireFromString(c.want)), "parseFactor(%q) = %s, want %s", c.in, got, c.want)
+	}
+	for _, in := range []string{"-1", "101", "100.01", "1.234", "x", "1e3", ".5", "1.", "1,2,3"} {
+		_, err := parseFactor(in)
+		assert.ErrorIsf(t, err, ErrBadReward, "parseFactor(%q) should error", in)
+	}
+}
+
 func TestCreditsSet(t *testing.T) {
 	pos := decimal.RequireFromString("0.01")
 	zero := decimal.Zero

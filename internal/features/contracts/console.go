@@ -105,8 +105,15 @@ const (
 	segIBack    = "iback"
 	segPEdit    = "pedit" // participant manage (modal: action + quantity)
 	segPPage    = "ppage"
-	segCRew     = "crew" // contract rewards (modal: credits + reputation + licence)
-	segCLoc     = "cloc" // contract delivery location (search modal → picker)
+	segCRew     = "crew"    // contract rewards (modal: credits + reputation + licence + factor)
+	segCLoc     = "cloc"    // contract delivery location (search modal → picker)
+	segPayRep   = "payrep"  // re-post the payout report from the persisted rows (completed only)
+	segPayPaid  = "paypaid" // mark the payouts as handed out in game (completed only, once)
+	// segRepView / segRepPaid are the buttons on the PUBLIC payout report message
+	// (posted to the reports channel). Distinct from segPayRep/segPayPaid so their
+	// handlers don't UpdateMessage the shared report. Both require keyManage.
+	segRepView = "repview" // open the (ephemeral) console contract view from the report
+	segRepPaid = "reppaid" // mark payouts paid from the report + edit it in place
 )
 
 // Template library / picker component segments.
@@ -306,6 +313,18 @@ func argInt(parts []string, idx int) int {
 	return n
 }
 
+// listCtx decodes the list-filter return context (status mask + page) carried
+// through the contract/item views so Back and item pagination restore the filter
+// the user drilled in from. An absent or zero mask falls back to the default
+// (active) filter — the case for entry points with no list origin.
+func listCtx(parts []string, maskIdx int) (mask, page int) {
+	mask = defaultMask
+	if m := argInt(parts, maskIdx); m != 0 {
+		mask = m
+	}
+	return mask, argInt(parts, maskIdx+1)
+}
+
 // Command builds the /contracts console command. Who may run it (and thus open
 // and view the console) is governed by Discord's native command permissions
 // (DiscordManaged) — not a bot grant. What a member may then CREATE or EDIT is
@@ -319,7 +338,7 @@ func (h *Feature) Command() *registry.Command {
 		},
 		Handler:         h.handleConsole,
 		DiscordManaged:  true,
-		ExtraAccessKeys: []string{panelAccessKey, keyCustom, keyTemplate, keyTemplates, keyRepublish, keyManage},
+		ExtraAccessKeys: []string{panelAccessKey, keyManage},
 	}
 }
 
@@ -439,8 +458,17 @@ func (h *Feature) routeConsoleComponent(ctx context.Context, r registry.Responde
 		return h.handleAddItem(ctx, r, i, serverID, parts)
 	case segRepub:
 		return h.handleRepublish(ctx, r, i, serverID, parts)
+	case segPayRep:
+		return h.handlePayoutReprint(ctx, r, i, serverID, parts)
+	case segPayPaid:
+		return h.handlePayoutPaid(ctx, r, i, serverID, parts)
+	case segRepView:
+		return h.handleReportView(ctx, r, i, serverID, parts)
+	case segRepPaid:
+		return h.handleReportPaid(ctx, r, i, serverID, parts)
 	case segCBack:
-		return h.renderListView(ctx, r, i, serverID, defaultMask, 0, true)
+		mask, page := listCtx(parts, 0)
+		return h.renderListView(ctx, r, i, serverID, mask, page, true)
 	case segIRow:
 		return h.handleOpenItem(ctx, r, i, serverID, parts)
 	case segIDel:

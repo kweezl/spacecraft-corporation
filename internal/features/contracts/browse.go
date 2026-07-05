@@ -507,17 +507,13 @@ func locArgs(parts []string) (pickDest, uuid.UUID, bool) {
 	return dest, targetID, ok
 }
 
-// authorizePick re-checks the destination's permission key (the gate table
-// can't — the key rides the CustomID). proceed=false means it already
-// responded; err carries only unexpected failures.
-func (h *Feature) authorizePick(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, dest pickDest, targetID uuid.UUID) (bool, error) {
-	key, err := h.pickKey(ctx, serverID, dest, targetID)
+// authorizePick re-checks the manager key for a browse/location apply (these
+// segments aren't in gatedSegments — they carry a destination in the CustomID).
+// proceed=false means it already responded; err carries only unexpected failures.
+func (h *Feature) authorizePick(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, _ pickDest, _ uuid.UUID) (bool, error) {
+	allowed, err := h.authorizedKey(ctx, i, serverID, keyManage)
 	if err != nil {
-		return false, h.consoleErr(ctx, r, i, serverID, err)
-	}
-	allowed, err := h.authorizedKey(ctx, i, serverID, key)
-	if err != nil {
-		return false, fmt.Errorf("contracts: authorize %s: %w", key, err)
+		return false, fmt.Errorf("contracts: authorize %s: %w", keyManage, err)
 	}
 	if !allowed {
 		return false, h.reply(ctx, r, i, serverID, "contracts.console.denied", nil)
@@ -536,9 +532,9 @@ func (h *Feature) openPickQtyModal(ctx context.Context, r registry.Responder, i 
 		h.modalTitle(ctx, serverID, "contracts.console.modal_qty_title"), comps)
 }
 
-// submitBrowseQty applies a picked item with its quantity. The gate table can't
-// authorize it (the key depends on the destination in the CustomID), so it
-// re-checks here — this is where the browse/search flows finally mutate.
+// submitBrowseQty applies a picked item with its quantity. This segment isn't in
+// gatedSegments (it carries a destination in the CustomID), so it re-checks the
+// manager key here — this is where the browse/search flows finally mutate.
 func (h *Feature) submitBrowseQty(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	if len(parts) < 3 {
 		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
@@ -550,13 +546,9 @@ func (h *Feature) submitBrowseQty(ctx context.Context, r registry.Responder, i *
 	}
 	gdid := parts[2]
 
-	key, err := h.pickKey(ctx, serverID, dest, targetID)
+	allowed, err := h.authorizedKey(ctx, i, serverID, keyManage)
 	if err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
-	allowed, err := h.authorizedKey(ctx, i, serverID, key)
-	if err != nil {
-		return fmt.Errorf("contracts: authorize %s: %w", key, err)
+		return fmt.Errorf("contracts: authorize %s: %w", keyManage, err)
 	}
 	if !allowed {
 		return h.reply(ctx, r, i, serverID, "contracts.console.denied", nil)

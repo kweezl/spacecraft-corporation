@@ -398,6 +398,32 @@ func (s *contractsSuite) TestAddItem_GDID() {
 	assert.Empty(t, p.Items[1].GDVersion)
 }
 
+// TestMemberOutstanding_CarriesGDID covers Update A: the deliver/release picker
+// query returns each outstanding item's gamedata link (empty for a free-text
+// item) so the op modal can show the catalog icon.
+func (s *contractsSuite) TestMemberOutstanding_CarriesGDID() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	cid := s.newContract(ctx, g, thread)
+
+	require.NoError(t, repo.AddItemByID(ctx, g, cid, "Steel Ingot", "SteelIngot", "v1", nil, 500, 25, mgr))
+	require.NoError(t, repo.AddItemByID(ctx, g, cid, "Handwritten", "", "", nil, 50, 25, mgr))
+	require.NoError(t, repo.Participate(ctx, g, thread, "Steel Ingot", u1, 100))
+	require.NoError(t, repo.Participate(ctx, g, thread, "Handwritten", u1, 20))
+
+	items, err := repo.MemberOutstanding(ctx, g, thread, u1)
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	byName := map[string]MemberItem{}
+	for _, m := range items {
+		byName[m.Name] = m
+	}
+	assert.Equal(t, "SteelIngot", byName["Steel Ingot"].GDID)
+	assert.Equal(t, "v1", byName["Steel Ingot"].GDVersion)
+	assert.Empty(t, byName["Handwritten"].GDID, "a free-text item carries no gdid")
+	assert.Empty(t, byName["Handwritten"].GDVersion)
+}
+
 func (s *contractsSuite) TestAddItem_AliasDuplicate() {
 	t := s.T()
 	repo, ctx, g := s.seed()
@@ -467,14 +493,15 @@ func (s *contractsSuite) TestLinkItemGDID() {
 func (s *contractsSuite) TestCreate_WithItemsRewardsAndTemplateLink() {
 	t := s.T()
 	repo, ctx, g := s.seed()
-	tid, err := repo.(TemplateRepository).CreateTemplate(ctx, g, "Weekly Steel", "desc", mgr)
+	tid, err := repo.(TemplateRepository).CreateTemplate(ctx, g, "Weekly Steel", "desc", decimal.Zero, mgr)
 	require.NoError(t, err)
 
 	rep, lic := 5, 2
 	id, err := repo.Create(ctx, CreateInput{
 		ServerID: g, Kind: KindTemplate, Title: "From Tpl", Description: "d",
 		RewardCredits: decPtr("1250.50"), RewardReputation: &rep, RewardLicencePoints: &lic,
-		LocationGDID: "Station_Cairn", LocationGDVersion: "v1", TemplateID: &tid,
+		ParticipantRewardFactor: dec("33.33"),
+		LocationGDID:            "Station_Cairn", LocationGDVersion: "v1", TemplateID: &tid,
 		Items: []CreateItemInput{
 			{Name: "Steel Ingot", GDID: "SteelIngot", GDVersion: "v1", Qty: 500},
 			{Name: "Copper Wire", GDID: "CopperWire", GDVersion: "v1", Qty: 100},
@@ -492,6 +519,7 @@ func (s *contractsSuite) TestCreate_WithItemsRewardsAndTemplateLink() {
 	assert.Equal(t, 5, *p.RewardReputation)
 	require.NotNil(t, p.RewardLicencePoints)
 	assert.Equal(t, 2, *p.RewardLicencePoints)
+	assert.True(t, p.ParticipantRewardFactor.Equal(dec("33.33")), "factor round-trips, got %s", p.ParticipantRewardFactor)
 	assert.Equal(t, "Station_Cairn", p.LocationGDID)
 	assert.Equal(t, "v1", p.LocationGDVersion)
 	require.NotNil(t, p.TemplateID)
@@ -514,6 +542,7 @@ func (s *contractsSuite) TestCreate_WithItemsRewardsAndTemplateLink() {
 	assert.Nil(t, p2.RewardCredits)
 	assert.Nil(t, p2.RewardReputation)
 	assert.Nil(t, p2.RewardLicencePoints)
+	assert.True(t, p2.ParticipantRewardFactor.IsZero())
 	assert.Empty(t, p2.LocationGDID)
 	assert.Nil(t, p2.TemplateID)
 	assert.Empty(t, p2.Items)
@@ -525,25 +554,27 @@ func (s *contractsSuite) TestUpdateRewards() {
 	cid := s.newContract(ctx, g, thread)
 
 	rep := 3
-	require.NoError(t, repo.UpdateRewards(ctx, g, cid, decPtr("99.90"), &rep, nil, mgr))
+	require.NoError(t, repo.UpdateRewards(ctx, g, cid, decPtr("99.90"), dec("15.5"), &rep, nil, mgr))
 	p, err := repo.ProgressByIDScoped(ctx, g, cid)
 	require.NoError(t, err)
 	require.NotNil(t, p.RewardCredits)
 	assert.True(t, p.RewardCredits.Equal(dec("99.90")), "got %s", p.RewardCredits)
+	assert.True(t, p.ParticipantRewardFactor.Equal(dec("15.5")), "factor updates with the rewards, got %s", p.ParticipantRewardFactor)
 	require.NotNil(t, p.RewardReputation)
 	assert.Equal(t, 3, *p.RewardReputation)
 	assert.Nil(t, p.RewardLicencePoints)
 
-	// Clearing: nil values null the columns.
-	require.NoError(t, repo.UpdateRewards(ctx, g, cid, nil, nil, nil, mgr))
+	// Clearing: nil values null the columns; the factor drops to zero (NOT NULL).
+	require.NoError(t, repo.UpdateRewards(ctx, g, cid, nil, decimal.Zero, nil, nil, mgr))
 	p, err = repo.ProgressByIDScoped(ctx, g, cid)
 	require.NoError(t, err)
 	assert.Nil(t, p.RewardCredits)
 	assert.Nil(t, p.RewardReputation)
+	assert.True(t, p.ParticipantRewardFactor.IsZero())
 
 	// Open-guard: a cancelled contract refuses the mutation.
 	require.NoError(t, s.cancel(ctx, g, thread, mgr))
-	require.ErrorIs(t, repo.UpdateRewards(ctx, g, cid, decPtr("1"), nil, nil, mgr), ErrClosed)
+	require.ErrorIs(t, repo.UpdateRewards(ctx, g, cid, decPtr("1"), decimal.Zero, nil, nil, mgr), ErrClosed)
 }
 
 func (s *contractsSuite) TestSetDeliveryLocation() {

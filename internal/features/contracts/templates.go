@@ -28,6 +28,10 @@ type Template struct {
 	RewardCredits       decimal.Decimal
 	RewardReputation    int
 	RewardLicencePoints int
+	// ParticipantRewardFactor is the default percent (0–100) of RewardCredits
+	// distributed to participants, copied onto contracts created from this
+	// template. Prefilled from the server default at template creation.
+	ParticipantRewardFactor decimal.Decimal
 	// DeadlineMinutes is the default deadline as a duration in whole minutes
 	// (templates are reusable, so they store how long a contract runs, not a
 	// fixed timestamp); 0 = no default deadline.
@@ -62,10 +66,12 @@ type TemplateListEntry struct {
 // target by a persistent id, so cross-server and forged-id access is impossible;
 // serverID is the resolved servers.id. Implemented by the same pgRepository.
 type TemplateRepository interface {
-	// CreateTemplate inserts a template with the given title/description and
-	// zero-value defaults for everything else (edited afterward on the template
-	// page); a case-insensitive title collision yields ErrTemplateExists.
-	CreateTemplate(ctx context.Context, serverID uuid.UUID, title, description, actor string) (uuid.UUID, error)
+	// CreateTemplate inserts a template with the given title/description, the
+	// given participant reward factor (the caller prefills it from the server
+	// default), and zero-value defaults for everything else (edited afterward on
+	// the template page); a case-insensitive title collision yields
+	// ErrTemplateExists.
+	CreateTemplate(ctx context.Context, serverID uuid.UUID, title, description string, factor decimal.Decimal, actor string) (uuid.UUID, error)
 	// TemplateByID returns a template with its items, or ErrTemplateNotFound.
 	TemplateByID(ctx context.Context, serverID, templateID uuid.UUID) (Template, error)
 	// ListTemplates pages a server's templates filtered by a case-insensitive
@@ -76,9 +82,9 @@ type TemplateRepository interface {
 	// duration (whole minutes, 0 = none). A title collision with another template
 	// yields ErrTemplateExists.
 	UpdateTemplateDetails(ctx context.Context, serverID, templateID uuid.UUID, title, description string, deadlineMinutes int, actor string) error
-	// UpdateTemplateRewards sets the three reward defaults (zero = none; the
-	// columns are NOT NULL).
-	UpdateTemplateRewards(ctx context.Context, serverID, templateID uuid.UUID, credits decimal.Decimal, reputation, licencePoints int, actor string) error
+	// UpdateTemplateRewards sets the reward defaults, including the participant
+	// reward factor (zero = none; the columns are NOT NULL).
+	UpdateTemplateRewards(ctx context.Context, serverID, templateID uuid.UUID, credits, factor decimal.Decimal, reputation, licencePoints int, actor string) error
 	// SetTemplateLocation sets (or clears, with empty gdid) the delivery
 	// location default; gdid/gdVersion are set or cleared together.
 	SetTemplateLocation(ctx context.Context, serverID, templateID uuid.UUID, gdid, gdVersion, actor string) error

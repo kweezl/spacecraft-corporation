@@ -56,7 +56,11 @@ func (h *Feature) submitTemplateNew(ctx context.Context, r registry.Responder, i
 	if title == "" {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_name", nil))
 	}
-	tid, err := h.tpls.CreateTemplate(ctx, serverID, title, strings.TrimSpace(modalTextValue(data, inDesc)), invokerID(i))
+	// The participant reward factor prefills from the server default (a copy —
+	// later default changes never touch this template); everything else starts
+	// zero and is edited on the template page.
+	tid, err := h.tpls.CreateTemplate(ctx, serverID, title, strings.TrimSpace(modalTextValue(data, inDesc)),
+		h.defaults.ContractsRewardFactor(ctx, serverID), invokerID(i))
 	if err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
@@ -126,7 +130,7 @@ func (h *Feature) openTemplateRewardsModal(ctx context.Context, r registry.Respo
 	if t.RewardLicencePoints > 0 {
 		lic = intStr(t.RewardLicencePoints)
 	}
-	comps := h.rewardInputs(ctx, serverID, credits, rep, lic)
+	comps := h.rewardInputs(ctx, serverID, credits, rep, lic, factorStr(t.ParticipantRewardFactor))
 	return r.RespondModal(i.Interaction, buildID(segMTRew, tid.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_rewards_title"), comps)
 }
 
@@ -139,7 +143,8 @@ func (h *Feature) submitTemplateRewards(ctx context.Context, r registry.Responde
 	credits, cerr := parseCredits(modalTextValue(data, inCredits))
 	reputation, rerr := parseRewardInt(modalTextValue(data, inReputation))
 	licence, lerr := parseRewardInt(modalTextValue(data, inLicence))
-	if cerr != nil || rerr != nil || lerr != nil {
+	factor, ferr := parseFactor(modalTextValue(data, inFactor))
+	if cerr != nil || rerr != nil || lerr != nil || ferr != nil {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_reward", nil))
 	}
 	// Template rewards are NOT NULL: blank fields mean zero, not unset.
@@ -154,7 +159,7 @@ func (h *Feature) submitTemplateRewards(ctx context.Context, r registry.Responde
 	if licence != nil {
 		lic = *licence
 	}
-	if err := h.tpls.UpdateTemplateRewards(ctx, serverID, tid, cr, rep, lic, invokerID(i)); err != nil {
+	if err := h.tpls.UpdateTemplateRewards(ctx, serverID, tid, cr, factor, rep, lic, invokerID(i)); err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
 	return h.renderTemplateEditView(ctx, r, i, serverID, tid, 0, true)
@@ -301,15 +306,16 @@ func (h *Feature) submitUseTemplate(ctx context.Context, r registry.Responder, i
 	// never change this contract. Item versions carry over from the template rows
 	// (provenance); name snapshots resolve through each item's own stamped catalog.
 	in := CreateInput{
-		ServerID:          serverID,
-		Kind:              KindTemplate,
-		TemplateID:        &tid,
-		Title:             title,
-		Description:       t.Description,
-		Deadline:          deadline,
-		LocationGDID:      t.LocationGDID,
-		LocationGDVersion: t.LocationGDVersion,
-		CreatedByUserID:   invokerID(i),
+		ServerID:                serverID,
+		Kind:                    KindTemplate,
+		TemplateID:              &tid,
+		Title:                   title,
+		Description:             t.Description,
+		Deadline:                deadline,
+		ParticipantRewardFactor: t.ParticipantRewardFactor,
+		LocationGDID:            t.LocationGDID,
+		LocationGDVersion:       t.LocationGDVersion,
+		CreatedByUserID:         invokerID(i),
 		// No AppID/Token: the console navigates to the new contract itself, so the
 		// worker must NOT edit this interaction's response (see submitCreate).
 	}

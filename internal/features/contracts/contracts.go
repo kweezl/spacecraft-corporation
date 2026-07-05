@@ -98,15 +98,22 @@ const (
 	taskClose        = "contracts.thread.close"
 	// taskNotify posts the one-shot "closing soon" comment pinging participants.
 	taskNotify = "contracts.thread.notify"
+	// taskPayout computes, persists, and posts the participant reward payouts of
+	// a completed contract. Its own kind so chronometric collapsing never merges
+	// it with a refresh/close of the same contract.
+	taskPayout = "contracts.reward.payout"
 )
 
 // taskPayload is the JSON payload for every contracts outbox task. AppID/Token
 // are only set for the create task, so the worker can edit the original
 // interaction reply with the outcome (the thread link, or a permission error).
+// Repost is only set for a payout task re-enqueued from the console's Reprint
+// button: it skips the posted-at latch and re-posts from the persisted rows.
 type taskPayload struct {
 	ContractID uuid.UUID `json:"contract_id"`
 	AppID      string    `json:"app_id,omitempty"`
 	Token      string    `json:"token,omitempty"`
+	Repost     bool      `json:"repost,omitempty"`
 }
 
 // Sentinel errors the repository returns so handlers can render the right
@@ -179,10 +186,34 @@ type Contract struct {
 	RewardCredits       *decimal.Decimal
 	RewardReputation    *int
 	RewardLicencePoints *int
+	// ParticipantRewardFactor is the percent (0–100, up to two fraction digits)
+	// of RewardCredits distributed to participants when the contract completes,
+	// proportional to the value each delivered. Copied from the template (or the
+	// server default for custom contracts) at creation and editable while open —
+	// never re-resolved. Zero = participants get nothing (NOT NULL in the DB).
+	ParticipantRewardFactor decimal.Decimal
+	// PayoutPostedAt is when the payout report was successfully posted to the
+	// reports channel — the payout task's idempotency latch for its Discord side
+	// effect; nil = not posted (or nothing to post).
+	PayoutPostedAt *time.Time
+	// PayoutsPaidAt / PayoutsPaidByUserID record an officer pressing "mark paid"
+	// on a completed contract: when the computed payouts were handed out in game
+	// and by whom. Both set together; nil/"" = not paid yet.
+	PayoutsPaidAt       *time.Time
+	PayoutsPaidByUserID string
+	// PayoutReportChannelID / PayoutReportMessageID locate the already-posted
+	// payout report, so Reprint and Mark-paid edit that one message in place
+	// instead of posting a duplicate. Both empty until the report is first posted.
+	PayoutReportChannelID string
+	PayoutReportMessageID string
 	// LocationGDID is the delivery location as a gamedata space-object GDID plus
 	// the catalog version it was picked from; both empty = not set.
 	LocationGDID      string
 	LocationGDVersion string
+	// ServerDiscordID is the owning server's Discord snowflake (discordgo's
+	// guild id), resolved from the servers row — the payout task needs it to
+	// look up member display names. Read-only, never written by this feature.
+	ServerDiscordID string
 	// TemplateID is the stats-only provenance link to the template this contract
 	// was instantiated from; nil for custom contracts and after the template is
 	// deleted (ON DELETE SET NULL). Never consulted for behavior. A template
@@ -257,9 +288,12 @@ type Progress struct {
 }
 
 // MemberItem is one item a member has an outstanding reservation on (for the
-// deliver/release autocomplete pickers).
+// deliver/release autocomplete pickers). GDID/GDVersion carry the gamedata link
+// (empty for a free-text item) so the op modal can show the catalog icon.
 type MemberItem struct {
 	Name      string
+	GDID      string
+	GDVersion string
 	Reserved  int
 	Delivered int
 }
@@ -310,8 +344,12 @@ type CreateInput struct {
 	RewardCredits       *decimal.Decimal
 	RewardReputation    *int
 	RewardLicencePoints *int
-	LocationGDID        string
-	LocationGDVersion   string
+	// ParticipantRewardFactor is the concrete factor to stamp on the contract:
+	// the template's value when instantiating, the server default for custom
+	// contracts (prefill + copy — the contract never re-resolves it).
+	ParticipantRewardFactor decimal.Decimal
+	LocationGDID            string
+	LocationGDVersion       string
 	// TemplateID is the stats-only provenance link when instantiating from a
 	// template; nil for custom contracts.
 	TemplateID *uuid.UUID
@@ -418,8 +456,9 @@ type Repository interface {
 	// re-arms its closing-soon latch (console).
 	SetDeadline(ctx context.Context, serverID, contractID uuid.UUID, deadline *time.Time, actor string) error
 	// UpdateRewards sets an open contract's reward fields (console). nil values
-	// clear the matching column.
-	UpdateRewards(ctx context.Context, serverID, contractID uuid.UUID, credits *decimal.Decimal, reputation, licencePoints *int, actor string) error
+	// clear the matching column; factor is NOT NULL (zero = no participant
+	// rewards), edited in the same modal.
+	UpdateRewards(ctx context.Context, serverID, contractID uuid.UUID, credits *decimal.Decimal, factor decimal.Decimal, reputation, licencePoints *int, actor string) error
 	// SetDeliveryLocation sets (or clears, with empty gdid) an open contract's
 	// delivery location (console). gdid/gdVersion are set or cleared together.
 	SetDeliveryLocation(ctx context.Context, serverID, contractID uuid.UUID, gdid, gdVersion, actor string) error
@@ -464,15 +503,6 @@ type Repository interface {
 	// dashboard (open split into unpublished/active by forum-thread presence).
 	Counts(ctx context.Context, serverID uuid.UUID) (Counts, error)
 
-	// KindByID returns a contract's kind, scoped to the server (the console gate
-	// resolves which permission a contract-keyed mutation needs). A forged or
-	// cross-server id yields ErrNotFound.
-	KindByID(ctx context.Context, serverID, contractID uuid.UUID) (Kind, error)
-	// KindByItem returns the kind of the contract owning an item, scoped to the
-	// server (the gate for item-keyed mutations). A forged/cross-server item
-	// yields ErrNotFound.
-	KindByItem(ctx context.Context, serverID, itemID uuid.UUID) (Kind, error)
-
 	// DueContracts returns the ids of open contracts whose deadline is at or
 	// before now, across all servers (for the global sweeper, which only needs the
 	// id to MarkExpired).
@@ -494,6 +524,28 @@ type Repository interface {
 	// notice pings. A member who has delivered everything they reserved has nothing
 	// left to do and is excluded.
 	OutstandingParticipantUserIDs(ctx context.Context, contractID uuid.UUID) ([]string, error)
+
+	// Payouts returns a contract's persisted participant payouts, ordered by user
+	// id; empty = never computed (the payout worker keys idempotency on this).
+	Payouts(ctx context.Context, contractID uuid.UUID) ([]Payout, error)
+	// SavePayouts inserts a contract's computed payouts in one transaction.
+	// Conflicting rows (a crashed earlier attempt) are left untouched, so a retry
+	// can never double-insert or alter posted figures.
+	SavePayouts(ctx context.Context, contractID uuid.UUID, rows []Payout) error
+	// MarkPayoutPosted latches that the payout report was posted (the worker's
+	// Discord-side idempotency marker) and records where — the channel + message
+	// id, so a later Reprint/Mark-paid edits that message in place.
+	MarkPayoutPosted(ctx context.Context, contractID uuid.UUID, channelID, messageID string, now time.Time) error
+	// MarkPayoutsPaid records an officer marking a completed contract's payouts
+	// as handed out in game (who + when). Guarded in SQL: reports false without
+	// writing when the contract is not completed or was already marked, so a
+	// concurrent double-press has exactly one winner.
+	MarkPayoutsPaid(ctx context.Context, serverID, contractID uuid.UUID, actor string, now time.Time) (bool, error)
+	// RequestPayoutRepost enqueues the payout task with its repost flag for a
+	// completed contract (the console's Reprint button): the worker re-posts the
+	// report from the persisted rows. A non-completed or forged/cross-server id
+	// yields ErrNotFound.
+	RequestPayoutRepost(ctx context.Context, serverID, contractID uuid.UUID) error
 }
 
 // Gateway performs the proactive Discord operations the feature needs (create the
@@ -516,6 +568,20 @@ type Gateway interface {
 	// mentionUserIDs (passed through AllowedMentions so they actually ping). Used
 	// for the pre-expiry "closing soon" notice.
 	CommentPost(threadID, content string, mentionUserIDs []string) error
+	// PostChannelMessage posts the payout report to the server's reports channel:
+	// content + participant mentions (AllowedMentions), the CSV export as a file,
+	// and an ActionsRow of buttons. Returns the new message id so a later
+	// Reprint/Mark-paid edits it in place.
+	PostChannelMessage(channelID, content string, mentionUserIDs []string, files []*discordgo.File, components []discordgo.MessageComponent) (messageID string, err error)
+	// EditChannelMessage edits an already-posted payout report's content +
+	// components in place. When files is non-nil the existing attachments are
+	// replaced by them (so a Reprint after a language change refreshes the CSV);
+	// nil files leaves the existing attachment untouched.
+	EditChannelMessage(channelID, messageID, content string, files []*discordgo.File, components []discordgo.MessageComponent) error
+	// MemberDisplayName resolves a member's display name (nick > global name >
+	// username) for the payout report's name snapshots; ok is false when the
+	// member can't be resolved and the caller falls back to the raw user id.
+	MemberDisplayName(guildID, userID string) (name string, ok bool)
 	// EditOriginalResponse edits the original reply of an interaction (by app id +
 	// token), used to deliver the async create outcome. Fails once the token has
 	// expired (~15 min); callers treat that as best-effort.
@@ -529,6 +595,25 @@ type Gateway interface {
 type ForumConfig interface {
 	ContractsForumChannelID(ctx context.Context, serverID uuid.UUID) (string, bool)
 	SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error
+}
+
+// ReportsConfig resolves and sets a server's designated contract reports
+// channel — where completed contracts post their payout report. Like ForumConfig,
+// the value lives in the core settings store but the control belongs to this
+// feature. Implemented by settings.Store.
+type ReportsConfig interface {
+	ContractsReportsChannelID(ctx context.Context, serverID uuid.UUID) (string, bool)
+	SetContractsReportsChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error
+}
+
+// RewardDefaults resolves and sets a server's default participant reward factor
+// (percent, 0–100; zero = participants get nothing) — the prefill for new
+// templates and custom contracts. Like ForumConfig, the value lives in the core
+// settings store but the control belongs to this feature. Implemented by
+// settings.Store.
+type RewardDefaults interface {
+	ContractsRewardFactor(ctx context.Context, serverID uuid.UUID) decimal.Decimal
+	SetContractsRewardFactor(ctx context.Context, serverID uuid.UUID, factor decimal.Decimal) error
 }
 
 // parseDHMMinutes totals the console's three-field (days/hours/minutes) modal
@@ -661,6 +746,34 @@ func parseCredits(s string) (*decimal.Decimal, error) {
 // creditsSet reports whether a credits value carries an actual reward: NULL
 // (nil) and zero both count as "no reward" for display and copying.
 func creditsSet(d *decimal.Decimal) bool { return d != nil && d.IsPositive() }
+
+// factorPattern is the accepted shape of a participant reward factor: up to
+// three integer digits (the range check below rejects >100) with at most two
+// fraction digits, comma accepted as the decimal separator.
+var factorPattern = regexp.MustCompile(`^\d{1,3}([.,]\d{1,2})?$`)
+
+// oneHundred is the factor range cap (and the percent divisor in the payout
+// pool computation).
+var oneHundred = decimal.NewFromInt(100)
+
+// parseFactor validates a participant-reward-factor modal field: blank means
+// zero (no participant rewards — the column is NOT NULL, so there is no "unset");
+// otherwise a decimal in [0, 100] with at most two fraction digits, comma
+// accepted as the separator. Bad input is rejected with ErrBadReward.
+func parseFactor(s string) (decimal.Decimal, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return decimal.Decimal{}, nil
+	}
+	if !factorPattern.MatchString(s) {
+		return decimal.Decimal{}, ErrBadReward
+	}
+	d, err := decimal.NewFromString(strings.ReplaceAll(s, ",", "."))
+	if err != nil || d.GreaterThan(oneHundred) {
+		return decimal.Decimal{}, ErrBadReward
+	}
+	return d, nil
+}
 
 // parseRewardInt parses an int reward modal field: blank clears (nil); otherwise
 // a non-negative integer. Bad input is rejected with ErrBadReward.

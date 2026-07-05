@@ -17,7 +17,7 @@ import (
 // delivery location), one Section per required item (icon + localized name +
 // quantity, with an Edit accessory opening the qty modal), a remove-item select
 // over the current page's items, and the control rows. Every mutation behind the
-// buttons is gated on keyTemplates (gateMutation); the page itself is navigation.
+// buttons is gated on keyManage (gateMutation); the page itself is navigation.
 func (h *Feature) renderTemplateEditView(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, tid uuid.UUID, page int, update bool) error {
 	t, err := h.tpls.TemplateByID(ctx, serverID, tid)
 	if err != nil {
@@ -74,6 +74,10 @@ func (h *Feature) templateFacts(ctx context.Context, serverID uuid.UUID, t Templ
 	}
 	if t.RewardLicencePoints > 0 {
 		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_licence", map[string]any{"Amount": t.RewardLicencePoints}))
+	}
+	// The factor only means something when there are credits to split.
+	if t.RewardCredits.IsPositive() && t.ParticipantRewardFactor.IsPositive() {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_factor", map[string]any{"Factor": t.ParticipantRewardFactor.String()}))
 	}
 	lines := make([]string, 0, 3)
 	if len(rewards) > 0 {
@@ -166,7 +170,7 @@ func (h *Feature) templateItemPagerRow(ctx context.Context, serverID uuid.UUID, 
 }
 
 // templateControlRows are the edit page's action rows: [Back][Delete] then
-// [Details][Rewards][Location][Add item]. The whole page is keyTemplates
+// [Details][Rewards][Location][Add item]. The whole page is keyManage
 // territory, so no per-button visibility checks — gateMutation re-authorizes
 // every action anyway.
 func (h *Feature) templateControlRows(ctx context.Context, serverID uuid.UUID, tid uuid.UUID) []discordgo.MessageComponent {

@@ -28,12 +28,14 @@ const (
 	inConfirm = "confirm"
 	// inQuery is the gamedata search field (item / space-object pickers).
 	inQuery = "query"
-	// The three reward fields (contract + template rewards modals).
+	// The four reward fields (contract + template rewards modals).
 	inCredits    = "credits"
 	inReputation = "reputation"
 	inLicence    = "licence"
+	inFactor     = "factor"
 
 	rewardFieldMaxLen = 13 // NUMERIC(14,2): up to 10 digits + separator + 2
+	factorFieldMaxLen = 6  // NUMERIC(5,2): "100.00"
 )
 
 // labelInput builds a Label-wrapped text input (the modal layout the panel uses).
@@ -111,9 +113,13 @@ func (h *Feature) submitCreate(ctx context.Context, r registry.Responder, i *dis
 	}
 	// No AppID/Token: the console navigates to the new contract itself, so the
 	// worker must NOT edit this interaction's response (it would clobber the view).
+	// The participant reward factor prefills from the server default (copied, so a
+	// later default change never touches this contract; editable in the rewards
+	// modal like the rest).
 	cid, err := h.repo.Create(ctx, CreateInput{
 		ServerID: serverID, Kind: KindCustom, Title: title, Description: strings.TrimSpace(modalTextValue(data, inDesc)),
-		Deadline: deadline, CreatedByUserID: invokerID(i),
+		Deadline: deadline, ParticipantRewardFactor: h.defaults.ContractsRewardFactor(ctx, serverID),
+		CreatedByUserID: invokerID(i),
 	})
 	if err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
@@ -258,13 +264,14 @@ func (h *Feature) submitItemEdit(ctx context.Context, r registry.Responder, i *d
 
 // --- rewards + delivery location (contract view) ---
 
-// rewardInputs builds the three reward fields, prefilled (shared with the
-// template rewards modal).
-func (h *Feature) rewardInputs(ctx context.Context, serverID uuid.UUID, credits, reputation, licence string) []discordgo.MessageComponent {
+// rewardInputs builds the four reward fields, prefilled (shared with the
+// template rewards modal). Four of Discord's five modal inputs — one slot left.
+func (h *Feature) rewardInputs(ctx context.Context, serverID uuid.UUID, credits, reputation, licence, factor string) []discordgo.MessageComponent {
 	return []discordgo.MessageComponent{
 		h.labelInput(ctx, serverID, "contracts.console.lbl_credits", inCredits, discordgo.TextInputShort, credits, false, rewardFieldMaxLen),
 		h.labelInput(ctx, serverID, "contracts.console.lbl_reputation", inReputation, discordgo.TextInputShort, reputation, false, 10),
 		h.labelInput(ctx, serverID, "contracts.console.lbl_licence", inLicence, discordgo.TextInputShort, licence, false, 10),
+		h.labelInput(ctx, serverID, "contracts.console.lbl_factor", inFactor, discordgo.TextInputShort, factor, false, factorFieldMaxLen),
 	}
 }
 
@@ -284,6 +291,15 @@ func creditsStr(d *decimal.Decimal) string {
 	return d.String()
 }
 
+// factorStr prefills the participant-reward-factor field ("" for zero — a blank
+// reads as "none" better than "0").
+func factorStr(d decimal.Decimal) string {
+	if d.IsZero() {
+		return ""
+	}
+	return d.String()
+}
+
 func (h *Feature) openContractRewardsModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	cid, ok := argUUID(parts, 0)
 	if !ok {
@@ -293,7 +309,7 @@ func (h *Feature) openContractRewardsModal(ctx context.Context, r registry.Respo
 	if err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
-	comps := h.rewardInputs(ctx, serverID, creditsStr(prog.RewardCredits), rewardIntStr(prog.RewardReputation), rewardIntStr(prog.RewardLicencePoints))
+	comps := h.rewardInputs(ctx, serverID, creditsStr(prog.RewardCredits), rewardIntStr(prog.RewardReputation), rewardIntStr(prog.RewardLicencePoints), factorStr(prog.ParticipantRewardFactor))
 	return r.RespondModal(i.Interaction, buildID(segMCRew, cid.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_rewards_title"), comps)
 }
 
@@ -306,10 +322,11 @@ func (h *Feature) submitContractRewards(ctx context.Context, r registry.Responde
 	credits, cerr := parseCredits(modalTextValue(data, inCredits))
 	reputation, rerr := parseRewardInt(modalTextValue(data, inReputation))
 	licence, lerr := parseRewardInt(modalTextValue(data, inLicence))
-	if cerr != nil || rerr != nil || lerr != nil {
+	factor, ferr := parseFactor(modalTextValue(data, inFactor))
+	if cerr != nil || rerr != nil || lerr != nil || ferr != nil {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_reward", nil))
 	}
-	if err := h.repo.UpdateRewards(ctx, serverID, cid, credits, reputation, licence, invokerID(i)); err != nil {
+	if err := h.repo.UpdateRewards(ctx, serverID, cid, credits, factor, reputation, licence, invokerID(i)); err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
 	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)

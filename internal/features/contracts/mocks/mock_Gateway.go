@@ -219,6 +219,56 @@ func (_c *MockGateway_DeletePost_Call) RunAndReturn(run func(string) error) *Moc
 	return _c
 }
 
+// EditChannelMessage provides a mock function with given fields: channelID, messageID, content, files, components
+func (_m *MockGateway) EditChannelMessage(channelID string, messageID string, content string, files []*discordgo.File, components []discordgo.MessageComponent) error {
+	ret := _m.Called(channelID, messageID, content, files, components)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EditChannelMessage")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, string, string, []*discordgo.File, []discordgo.MessageComponent) error); ok {
+		r0 = rf(channelID, messageID, content, files, components)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockGateway_EditChannelMessage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EditChannelMessage'
+type MockGateway_EditChannelMessage_Call struct {
+	*mock.Call
+}
+
+// EditChannelMessage is a helper method to define mock.On call
+//   - channelID string
+//   - messageID string
+//   - content string
+//   - files []*discordgo.File
+//   - components []discordgo.MessageComponent
+func (_e *MockGateway_Expecter) EditChannelMessage(channelID interface{}, messageID interface{}, content interface{}, files interface{}, components interface{}) *MockGateway_EditChannelMessage_Call {
+	return &MockGateway_EditChannelMessage_Call{Call: _e.mock.On("EditChannelMessage", channelID, messageID, content, files, components)}
+}
+
+func (_c *MockGateway_EditChannelMessage_Call) Run(run func(channelID string, messageID string, content string, files []*discordgo.File, components []discordgo.MessageComponent)) *MockGateway_EditChannelMessage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(string), args[2].(string), args[3].([]*discordgo.File), args[4].([]discordgo.MessageComponent))
+	})
+	return _c
+}
+
+func (_c *MockGateway_EditChannelMessage_Call) Return(_a0 error) *MockGateway_EditChannelMessage_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockGateway_EditChannelMessage_Call) RunAndReturn(run func(string, string, string, []*discordgo.File, []discordgo.MessageComponent) error) *MockGateway_EditChannelMessage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // EditOriginalResponse provides a mock function with given fields: appID, token, content
 func (_m *MockGateway) EditOriginalResponse(appID string, token string, content string) error {
 	ret := _m.Called(appID, token, content)
@@ -310,6 +360,123 @@ func (_c *MockGateway_EditPost_Call) Return(_a0 error) *MockGateway_EditPost_Cal
 }
 
 func (_c *MockGateway_EditPost_Call) RunAndReturn(run func(string, []discordgo.MessageComponent) error) *MockGateway_EditPost_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// MemberDisplayName provides a mock function with given fields: guildID, userID
+func (_m *MockGateway) MemberDisplayName(guildID string, userID string) (string, bool) {
+	ret := _m.Called(guildID, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MemberDisplayName")
+	}
+
+	var r0 string
+	var r1 bool
+	if rf, ok := ret.Get(0).(func(string, string) (string, bool)); ok {
+		return rf(guildID, userID)
+	}
+	if rf, ok := ret.Get(0).(func(string, string) string); ok {
+		r0 = rf(guildID, userID)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(string, string) bool); ok {
+		r1 = rf(guildID, userID)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	return r0, r1
+}
+
+// MockGateway_MemberDisplayName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MemberDisplayName'
+type MockGateway_MemberDisplayName_Call struct {
+	*mock.Call
+}
+
+// MemberDisplayName is a helper method to define mock.On call
+//   - guildID string
+//   - userID string
+func (_e *MockGateway_Expecter) MemberDisplayName(guildID interface{}, userID interface{}) *MockGateway_MemberDisplayName_Call {
+	return &MockGateway_MemberDisplayName_Call{Call: _e.mock.On("MemberDisplayName", guildID, userID)}
+}
+
+func (_c *MockGateway_MemberDisplayName_Call) Run(run func(guildID string, userID string)) *MockGateway_MemberDisplayName_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(string))
+	})
+	return _c
+}
+
+func (_c *MockGateway_MemberDisplayName_Call) Return(name string, ok bool) *MockGateway_MemberDisplayName_Call {
+	_c.Call.Return(name, ok)
+	return _c
+}
+
+func (_c *MockGateway_MemberDisplayName_Call) RunAndReturn(run func(string, string) (string, bool)) *MockGateway_MemberDisplayName_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PostChannelMessage provides a mock function with given fields: channelID, content, mentionUserIDs, files, components
+func (_m *MockGateway) PostChannelMessage(channelID string, content string, mentionUserIDs []string, files []*discordgo.File, components []discordgo.MessageComponent) (string, error) {
+	ret := _m.Called(channelID, content, mentionUserIDs, files, components)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PostChannelMessage")
+	}
+
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(string, string, []string, []*discordgo.File, []discordgo.MessageComponent) (string, error)); ok {
+		return rf(channelID, content, mentionUserIDs, files, components)
+	}
+	if rf, ok := ret.Get(0).(func(string, string, []string, []*discordgo.File, []discordgo.MessageComponent) string); ok {
+		r0 = rf(channelID, content, mentionUserIDs, files, components)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	if rf, ok := ret.Get(1).(func(string, string, []string, []*discordgo.File, []discordgo.MessageComponent) error); ok {
+		r1 = rf(channelID, content, mentionUserIDs, files, components)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockGateway_PostChannelMessage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PostChannelMessage'
+type MockGateway_PostChannelMessage_Call struct {
+	*mock.Call
+}
+
+// PostChannelMessage is a helper method to define mock.On call
+//   - channelID string
+//   - content string
+//   - mentionUserIDs []string
+//   - files []*discordgo.File
+//   - components []discordgo.MessageComponent
+func (_e *MockGateway_Expecter) PostChannelMessage(channelID interface{}, content interface{}, mentionUserIDs interface{}, files interface{}, components interface{}) *MockGateway_PostChannelMessage_Call {
+	return &MockGateway_PostChannelMessage_Call{Call: _e.mock.On("PostChannelMessage", channelID, content, mentionUserIDs, files, components)}
+}
+
+func (_c *MockGateway_PostChannelMessage_Call) Run(run func(channelID string, content string, mentionUserIDs []string, files []*discordgo.File, components []discordgo.MessageComponent)) *MockGateway_PostChannelMessage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(string), args[2].([]string), args[3].([]*discordgo.File), args[4].([]discordgo.MessageComponent))
+	})
+	return _c
+}
+
+func (_c *MockGateway_PostChannelMessage_Call) Return(messageID string, err error) *MockGateway_PostChannelMessage_Call {
+	_c.Call.Return(messageID, err)
+	return _c
+}
+
+func (_c *MockGateway_PostChannelMessage_Call) RunAndReturn(run func(string, string, []string, []*discordgo.File, []discordgo.MessageComponent) (string, error)) *MockGateway_PostChannelMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }

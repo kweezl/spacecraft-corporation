@@ -120,6 +120,12 @@ func (f *fakeDiscord) ChannelDelete(_ string) (*discordgo.Channel, error) {
 func (f *fakeDiscord) InteractionResponseEdit(_ *discordgo.Interaction, _ *discordgo.WebhookEdit) (*discordgo.Message, error) {
 	return &discordgo.Message{}, nil
 }
+func (f *fakeDiscord) GuildMember(_, userID string) (*discordgo.Member, error) {
+	return &discordgo.Member{User: &discordgo.User{ID: userID, Username: "user-" + userID}}, nil
+}
+func (f *fakeDiscord) Channel(channelID string) (*discordgo.Channel, error) {
+	return &discordgo.Channel{ID: channelID}, nil
+}
 func (f *fakeDiscord) ApplicationEmojis() ([]*discordgo.Emoji, error) { return nil, nil }
 func (f *fakeDiscord) ApplicationEmojiCreate(_, _ string) (*discordgo.Emoji, error) {
 	return &discordgo.Emoji{}, nil

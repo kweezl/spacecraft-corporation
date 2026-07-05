@@ -14,6 +14,6 @@ func NewPanelCommand(store *Store, tr *i18n.Translator, loc *i18n.Localizer) *re
 	return newPanel(store, tr, loc, nil, nil).command()
 }
 
-func NewPanelComponent(store *Store, tr *i18n.Translator, loc *i18n.Localizer, access session.CommandAccess) *registry.Component {
-	return newPanel(store, tr, loc, access, nil).component()
+func NewPanelComponent(store *Store, tr *i18n.Translator, loc *i18n.Localizer, access session.CommandAccess, sections ...Section) *registry.Component {
+	return newPanel(store, tr, loc, access, sections).component()
 }
