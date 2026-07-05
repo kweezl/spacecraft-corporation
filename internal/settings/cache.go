@@ -28,6 +28,7 @@ type resolved struct {
 	supplyForum      string
 	supplyLimit      *int
 	contractsMaxItem *int
+	reportCSV        bool
 }
 
 // Store fronts the Repository with an in-memory LRU cache and implements
@@ -79,6 +80,7 @@ func (s *Store) resolve(ctx context.Context, serverID uuid.UUID) (resolved, bool
 		theme: theme, lang: lang,
 		forum: st.ContractsForumChannelID, reports: st.ContractsReportsChannelID, factor: st.ContractsRewardFactor,
 		supplyForum: st.SupplyForumChannelID, supplyLimit: st.SupplyRequestLimit, contractsMaxItem: st.ContractsMaxItems,
+		reportCSV: st.ContractsReportCSV,
 	}
 	s.cache.Add(serverID, r)
 	return r, true
@@ -137,6 +139,13 @@ func (s *Store) ContractsMaxItems(ctx context.Context, serverID uuid.UUID) (int,
 		return 0, false
 	}
 	return *r.contractsMaxItem, true
+}
+
+// ContractsReportCSV reports whether the server attaches the payout CSV export
+// to completed contracts' reports (default false). Cached like Resolve.
+func (s *Store) ContractsReportCSV(ctx context.Context, serverID uuid.UUID) bool {
+	r, _ := s.resolve(ctx, serverID)
+	return r.reportCSV
 }
 
 // Get returns the raw stored settings (uncached, for display).
@@ -216,6 +225,16 @@ func (s *Store) SetSupplyRequestLimit(ctx context.Context, serverID uuid.UUID, l
 // server's cached resolution.
 func (s *Store) SetContractsMaxItems(ctx context.Context, serverID uuid.UUID, limit int) error {
 	if err := s.repo.SetContractsMaxItems(ctx, serverID, limit); err != nil {
+		return err
+	}
+	s.cache.Remove(serverID)
+	return nil
+}
+
+// SetContractsReportCSV persists the payout-CSV attachment toggle and
+// invalidates the server's cached resolution.
+func (s *Store) SetContractsReportCSV(ctx context.Context, serverID uuid.UUID, enabled bool) error {
+	if err := s.repo.SetContractsReportCSV(ctx, serverID, enabled); err != nil {
 		return err
 	}
 	s.cache.Remove(serverID)

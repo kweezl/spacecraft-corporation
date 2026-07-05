@@ -112,7 +112,7 @@ func (h *Feature) editReportAfterPaid(ctx context.Context, serverID, contractID 
 		return
 	}
 	content, _ := h.reportContent(ctx, prog, rows)
-	files := []*discordgo.File{h.payoutCSVFile(ctx, prog, rows)}
+	files := h.payoutFiles(ctx, prog, rows)
 	if err := h.gw.EditChannelMessage(prog.PayoutReportChannelID, prog.PayoutReportMessageID, content, files, h.reportComponents(ctx, prog)); err != nil {
 		h.log.Warn("contracts: edit payout report failed", zap.String("contract_id", contractID.String()), zap.Error(err))
 	}

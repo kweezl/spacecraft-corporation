@@ -43,6 +43,11 @@ type Settings struct {
 	// nil = unset (the contracts feature applies its default of 25). Replaces the
 	// former CONTRACTS_MAX_ITEMS env var. Pointer for the same reason as above.
 	ContractsMaxItems *int
+	// ContractsReportCSV toggles attaching the payout CSV export to a completed
+	// contract's report. Like ContractsRewardFactor the zero value IS the default
+	// (false = no attachment), so an unset column reads as false and the field
+	// stays a plain bool. Owned by the contracts feature.
+	ContractsReportCSV bool
 }
 
 // Repository persists per-server settings. serverID is the resolved servers.id.
@@ -71,4 +76,7 @@ type Repository interface {
 	// SetContractsMaxItems upserts the server's per-contract item cap, leaving
 	// other columns untouched.
 	SetContractsMaxItems(ctx context.Context, serverID uuid.UUID, limit int) error
+	// SetContractsReportCSV upserts the server's payout-CSV attachment toggle,
+	// leaving other columns untouched.
+	SetContractsReportCSV(ctx context.Context, serverID uuid.UUID, enabled bool) error
 }

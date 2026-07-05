@@ -101,9 +101,9 @@ func (h *Feature) taskPayout(ctx context.Context, t outbox.Task) error {
 	// after the first post) — no duplicate. Fall through to a fresh post on the
 	// first run or when that message has been deleted.
 	if prog.PayoutReportMessageID != "" {
-		// Refresh the CSV too, so a Reprint after a language change re-renders both
-		// the message and the attachment in the current language.
-		err := h.gw.EditChannelMessage(prog.PayoutReportChannelID, prog.PayoutReportMessageID, content, []*discordgo.File{h.payoutCSVFile(ctx, prog, rows)}, comps)
+		// Refresh the CSV too (when enabled), so a Reprint after a language change
+		// re-renders both the message and the attachment in the current language.
+		err := h.gw.EditChannelMessage(prog.PayoutReportChannelID, prog.PayoutReportMessageID, content, h.payoutFiles(ctx, prog, rows), comps)
 		if err == nil {
 			return h.repo.MarkPayoutPosted(ctx, p.ContractID, prog.PayoutReportChannelID, prog.PayoutReportMessageID, now)
 		}
@@ -114,7 +114,7 @@ func (h *Feature) taskPayout(ctx context.Context, t outbox.Task) error {
 			zap.String("contract_id", p.ContractID.String()))
 	}
 
-	msgID, err := h.gw.PostChannelMessage(ch, content, mentions, []*discordgo.File{h.payoutCSVFile(ctx, prog, rows)}, comps)
+	msgID, err := h.gw.PostChannelMessage(ch, content, mentions, h.payoutFiles(ctx, prog, rows), comps)
 	if err != nil {
 		if isDeletedPost(err) {
 			// The configured channel is gone; set a new one and Reprint. Not latched.
@@ -237,6 +237,19 @@ func (h *Feature) payoutContent(ctx context.Context, prog Progress, rows []Payou
 		}))
 	}
 	return truncate(b.String(), 2000), mentions
+}
+
+// payoutFiles returns the report's attachments honoring the server's payout-CSV
+// toggle (default off): the CSV export when enabled, else an empty — but
+// non-nil — slice. Non-nil matters for the in-place edit paths: EditChannelMessage
+// treats nil as "leave existing attachments untouched" and a non-nil slice as
+// "replace them", so returning the empty slice when disabled also strips a CSV
+// left over from before the server toggled it off, on the next Reprint.
+func (h *Feature) payoutFiles(ctx context.Context, prog Progress, rows []Payout) []*discordgo.File {
+	if !h.reportCSV.ContractsReportCSV(ctx, prog.ServerID) {
+		return []*discordgo.File{}
+	}
+	return []*discordgo.File{h.payoutCSVFile(ctx, prog, rows)}
 }
 
 // payoutCSVFile wraps the CSV export as a Discord file attachment (a fresh

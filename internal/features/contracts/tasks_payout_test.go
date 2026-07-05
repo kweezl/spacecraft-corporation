@@ -122,6 +122,31 @@ func TestTaskPayout_ComputesSavesAndPosts(t *testing.T) {
 	require.NoError(t, handlerFor(t, f, "contracts.reward.payout")(context.Background(), payoutTask(t, cid, false)))
 }
 
+// TestTaskPayout_CSVDisabledOmitsAttachment: when the server's payout-CSV toggle
+// is off (the default), the report still posts but carries no file attachment.
+func TestTaskPayout_CSVDisabledOmitsAttachment(t *testing.T) {
+	cid := uuid.New()
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	rc := mocks.NewMockReportsConfig(t)
+
+	repo.EXPECT().ProgressByID(mock.Anything, cid).Return(completedPayoutProgress(cid, "thread-9"), nil).Once()
+	repo.EXPECT().Payouts(mock.Anything, cid).Return(nil, nil).Once()
+	gw.EXPECT().MemberDisplayName(guildSnowflake, "u1").Return("Alice", true).Once()
+	gw.EXPECT().MemberDisplayName(guildSnowflake, "u2").Return("Bob", true).Once()
+	repo.EXPECT().SavePayouts(mock.Anything, cid, mock.Anything).Return(nil).Once()
+	rc.EXPECT().ContractsReportsChannelID(mock.Anything, gid).Return(reportsChan, true).Once()
+	gw.EXPECT().PostChannelMessage(reportsChan, mock.Anything, []string{"u1", "u2"},
+		mock.MatchedBy(func(files []*discordgo.File) bool {
+			return len(files) == 0 // CSV disabled → no attachment
+		}), mock.Anything).Return("msg-1", nil).Once()
+	repo.EXPECT().MarkPayoutPosted(mock.Anything, cid, reportsChan, "msg-1", mock.Anything).Return(nil).Once()
+
+	f := newFeatureDeps(t, repo, gw, mocks.NewMockForumConfig(t),
+		featureDeps{reports: rc, reportCSV: staticReportCSV{enabled: false}})
+	require.NoError(t, handlerFor(t, f, "contracts.reward.payout")(context.Background(), payoutTask(t, cid, false)))
+}
+
 func TestTaskPayout_AlreadyPostedIsNoop(t *testing.T) {
 	cid := uuid.New()
 	repo := mocks.NewMockRepository(t)

@@ -128,11 +128,13 @@ func (s *pgSuite) TestSupplyAndMaxItemsColumns() {
 	assert.Empty(t, got.SupplyForumChannelID)
 	assert.Nil(t, got.SupplyRequestLimit)
 	assert.Nil(t, got.ContractsMaxItems)
+	assert.False(t, got.ContractsReportCSV, "payout CSV defaults to off")
 
 	// Set each; all persist independently.
 	require.NoError(t, repo.SetSupplyForumChannelID(ctx, g1, "supply-forum"))
 	require.NoError(t, repo.SetSupplyRequestLimit(ctx, g1, 15))
 	require.NoError(t, repo.SetContractsMaxItems(ctx, g1, 40))
+	require.NoError(t, repo.SetContractsReportCSV(ctx, g1, true))
 	got, err = repo.Get(ctx, g1)
 	require.NoError(t, err)
 	assert.Equal(t, "supply-forum", got.SupplyForumChannelID)
@@ -140,6 +142,7 @@ func (s *pgSuite) TestSupplyAndMaxItemsColumns() {
 	assert.Equal(t, 15, *got.SupplyRequestLimit)
 	require.NotNil(t, got.ContractsMaxItems)
 	assert.Equal(t, 40, *got.ContractsMaxItems)
+	assert.True(t, got.ContractsReportCSV)
 
 	// Independent upsert: changing the theme preserves the new columns.
 	require.NoError(t, repo.SetTheme(ctx, g1, "lore"))
@@ -175,11 +178,13 @@ func (s *pgSuite) TestNewGettersCache() {
 	if _, ok := store.ContractsMaxItems(ctx, g1); ok {
 		t.Fatal("contracts max-items should be unset")
 	}
+	assert.False(t, store.ContractsReportCSV(ctx, g1), "payout CSV defaults to off")
 
 	// Set + invalidate → cached getters see the new values.
 	require.NoError(t, store.SetSupplyForumChannelID(ctx, g1, "sf"))
 	require.NoError(t, store.SetSupplyRequestLimit(ctx, g1, 7))
 	require.NoError(t, store.SetContractsMaxItems(ctx, g1, 30))
+	require.NoError(t, store.SetContractsReportCSV(ctx, g1, true))
 
 	forum, ok := store.SupplyForumChannelID(ctx, g1)
 	assert.True(t, ok)
@@ -190,4 +195,5 @@ func (s *pgSuite) TestNewGettersCache() {
 	maxItems, ok := store.ContractsMaxItems(ctx, g1)
 	assert.True(t, ok)
 	assert.Equal(t, 30, maxItems)
+	assert.True(t, store.ContractsReportCSV(ctx, g1))
 }

@@ -24,6 +24,7 @@ packages:
       ReportsConfig:
       RewardDefaults:
       ItemCap:
+      ReportCSVConfig:
       GameSearch:
       LangResolver:
   github.com/kweezl/spacecraft-corporation/internal/features/supply:

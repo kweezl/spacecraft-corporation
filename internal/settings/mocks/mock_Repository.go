@@ -178,6 +178,54 @@ func (_c *MockRepository_SetContractsMaxItems_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// SetContractsReportCSV provides a mock function with given fields: ctx, serverID, enabled
+func (_m *MockRepository) SetContractsReportCSV(ctx context.Context, serverID uuid.UUID, enabled bool) error {
+	ret := _m.Called(ctx, serverID, enabled)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetContractsReportCSV")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, bool) error); ok {
+		r0 = rf(ctx, serverID, enabled)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetContractsReportCSV_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetContractsReportCSV'
+type MockRepository_SetContractsReportCSV_Call struct {
+	*mock.Call
+}
+
+// SetContractsReportCSV is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - enabled bool
+func (_e *MockRepository_Expecter) SetContractsReportCSV(ctx interface{}, serverID interface{}, enabled interface{}) *MockRepository_SetContractsReportCSV_Call {
+	return &MockRepository_SetContractsReportCSV_Call{Call: _e.mock.On("SetContractsReportCSV", ctx, serverID, enabled)}
+}
+
+func (_c *MockRepository_SetContractsReportCSV_Call) Run(run func(ctx context.Context, serverID uuid.UUID, enabled bool)) *MockRepository_SetContractsReportCSV_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(bool))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetContractsReportCSV_Call) Return(_a0 error) *MockRepository_SetContractsReportCSV_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetContractsReportCSV_Call) RunAndReturn(run func(context.Context, uuid.UUID, bool) error) *MockRepository_SetContractsReportCSV_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetContractsReportsChannelID provides a mock function with given fields: ctx, serverID, channelID
 func (_m *MockRepository) SetContractsReportsChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
 	ret := _m.Called(ctx, serverID, channelID)
