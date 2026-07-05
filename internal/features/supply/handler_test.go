@@ -3,6 +3,7 @@ package supply_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
@@ -96,6 +97,27 @@ func TestTaskCreate_HappyPath(t *testing.T) {
 	repo.EXPECT().SetThreadID(mock.Anything, rid, "thread-77").Return(nil).Once()
 
 	require.NoError(t, invokeTask(t, f, "supply.thread.create", map[string]any{"request_id": rid.String()}))
+}
+
+// TestTaskCreate_DeletesOrphanOnSetThreadIDFailure deletes the just-created
+// thread when the id cannot be recorded, so the retry does not create a
+// duplicate, and surfaces the transient error to retry.
+func TestTaskCreate_DeletesOrphanOnSetThreadIDFailure(t *testing.T) {
+	repo := mocks.NewMockRepository(t)
+	gw := mocks.NewMockGateway(t)
+	f := testFeatureWith(t, repo, gw, func(forum *mocks.MockForumConfig, _ *mocks.MockLimitConfig) {
+		forum.EXPECT().SupplyForumChannelID(mock.Anything, mock.Anything).Return("forum-ch", true)
+	})
+
+	rid := uuid.New()
+	prog := supply.Progress{Request: supply.Request{ID: rid, Title: "need parts", Status: supply.StatusOpen}}
+	repo.EXPECT().ProgressByID(mock.Anything, rid).Return(prog, nil).Once()
+	gw.EXPECT().CreateForumPost("forum-ch", "need parts", mock.Anything).Return("thread-77", nil).Once()
+	repo.EXPECT().SetThreadID(mock.Anything, rid, "thread-77").Return(errors.New("db down")).Once()
+	gw.EXPECT().DeletePost("thread-77").Return(nil).Once()
+
+	err := invokeTask(t, f, "supply.thread.create", map[string]any{"request_id": rid.String()})
+	require.Error(t, err, "transient error must surface so the task retries")
 }
 
 // TestTaskCreate_NoForum fails permanently when no forum is configured.

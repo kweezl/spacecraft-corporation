@@ -62,6 +62,14 @@ func (h *Feature) taskCreate(ctx context.Context, t outbox.Task) error {
 		return err // transient: retry
 	}
 	if err := h.repo.SetThreadID(ctx, p.RequestID, threadID); err != nil {
+		// The thread exists but we could not record its id; a retry would see an
+		// empty ThreadID and create a duplicate. Best-effort delete the orphan so
+		// the retry starts clean, then surface the (transient) error to retry.
+		if delErr := h.gw.DeletePost(threadID); delErr != nil {
+			h.log.Warn("supply: delete orphaned thread after SetThreadID failure",
+				zap.String("request_id", p.RequestID.String()),
+				zap.String("thread_id", threadID), zap.Error(delErr))
+		}
 		return err
 	}
 	prog.ThreadID = threadID
