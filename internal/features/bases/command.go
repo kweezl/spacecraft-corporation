@@ -1,10 +1,21 @@
 package bases
 
-import "github.com/bwmarrin/discordgo"
+import (
+	"github.com/bwmarrin/discordgo"
+
+	"github.com/kweezl/spacecraft-corporation/internal/roman"
+)
 
 // commandName is the single top-level command. It is SubcommandGated, so each
 // leaf path (e.g. "base own register") is granted to roles independently.
 const commandName = "base"
+
+// planetMin/planetMax bound a planet's position within its system. The game
+// numbers planets; we present them as Roman numerals I..X (via roman.Numeral).
+const (
+	planetMin = 1
+	planetMax = 10
+)
 
 // Tier groups: the second path segment. Tier is what the access gate and the SQL
 // ownership predicate both key on, so own/corp/member are separate subcommand
@@ -168,7 +179,7 @@ func planetOpt() *discordgo.ApplicationCommandOption {
 func planetChoices() []*discordgo.ApplicationCommandOptionChoice {
 	out := make([]*discordgo.ApplicationCommandOptionChoice, 0, planetMax)
 	for n := planetMin; n <= planetMax; n++ {
-		out = append(out, &discordgo.ApplicationCommandOptionChoice{Name: toRoman(n), Value: n})
+		out = append(out, &discordgo.ApplicationCommandOptionChoice{Name: roman.Numeral(n), Value: n})
 	}
 	return out
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/kweezl/spacecraft-corporation/internal/discord/gamepick"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
 	"github.com/kweezl/spacecraft-corporation/internal/emoji"
@@ -27,12 +28,14 @@ type Feature struct {
 	forum    ForumConfig
 	reports  ReportsConfig
 	defaults RewardDefaults
+	itemCap  ItemCap
 	access   session.CommandAccess
 	search   GameSearch
 	langs    LangResolver
 	reg      *gamedata.Registry
 	emo      *emoji.Store
 	log      *zap.Logger
+	pick     *gamepick.Picker
 }
 
 // New builds the contracts Feature. access is the permissions gate (contracts
@@ -43,8 +46,25 @@ type Feature struct {
 // item lines render with the catalog icon emojis. defaults supplies the
 // server's default participant reward factor (the prefill for new templates
 // and custom contracts).
-func New(repo Repository, tpls TemplateRepository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, reports ReportsConfig, defaults RewardDefaults, access session.CommandAccess, search GameSearch, langs LangResolver, reg *gamedata.Registry, emo *emoji.Store, log *zap.Logger) *Feature {
-	return &Feature{repo: repo, tpls: tpls, loc: loc, cfg: cfg, gw: gw, forum: forum, reports: reports, defaults: defaults, access: access, search: search, langs: langs, reg: reg, emo: emo, log: log}
+func New(repo Repository, tpls TemplateRepository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, reports ReportsConfig, defaults RewardDefaults, itemCap ItemCap, access session.CommandAccess, search GameSearch, langs LangResolver, reg *gamedata.Registry, emo *emoji.Store, log *zap.Logger) *Feature {
+	h := &Feature{repo: repo, tpls: tpls, loc: loc, cfg: cfg, gw: gw, forum: forum, reports: reports, defaults: defaults, itemCap: itemCap, access: access, search: search, langs: langs, reg: reg, emo: emo, log: log}
+	// The gamedata picker/browser is the shared gamepick package, wired with the
+	// contracts component prefix (so CustomIDs stay byte-identical), its i18n key
+	// prefix, and the five destinations from destinations.go. search/langs convert
+	// implicitly from the contracts-local interfaces to gamepick's.
+	h.pick = gamepick.New(gamepick.Config{
+		Prefix:   componentPrefix,
+		Keys:     "contracts.console",
+		Loc:      loc,
+		Reg:      reg,
+		Emo:      emo,
+		Search:   search,
+		Langs:    langs,
+		Log:      log,
+		OnError:  h.consoleErr,
+		NotFound: ErrNotFound,
+	}, h.pickDestinations()...)
+	return h
 }
 
 // reply renders a key and sends it ephemerally — confirmations and errors don't

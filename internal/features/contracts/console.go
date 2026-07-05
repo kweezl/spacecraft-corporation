@@ -417,13 +417,13 @@ func (h *Feature) routeConsoleComponent(ctx context.Context, r registry.Responde
 	case segTAdd:
 		return h.handleTemplateAddItem(ctx, r, i, serverID, parts)
 	case segBrowse:
-		return h.handleBrowse(ctx, r, i, serverID, parts)
+		return h.pick.HandleBrowse(ctx, r, i, serverID, parts)
 	case segBrowseItems:
-		return h.handleBrowseItems(ctx, r, i, serverID, parts)
+		return h.pick.HandleBrowseItems(ctx, r, i, serverID, parts)
 	case segBrowseSub:
-		return h.handleBrowseSub(ctx, r, i, serverID, parts)
+		return h.pick.HandleBrowseSub(ctx, r, i, serverID, parts)
 	case segBrowseSearch:
-		return h.handleBrowseSearch(ctx, r, i, serverID, parts)
+		return h.pick.HandleBrowseSearch(ctx, r, i, serverID, parts)
 	case segTIEdit:
 		return h.openTemplateItemQtyModal(ctx, r, i, serverID, parts)
 	case segTIDel:
@@ -433,15 +433,15 @@ func (h *Feature) routeConsoleComponent(ctx context.Context, r registry.Responde
 	case segTUse:
 		return h.openUseTemplateModal(ctx, r, i, serverID, parts)
 	case segPick:
-		return h.handlePickSelect(ctx, r, i, serverID, parts)
+		return h.pick.HandlePick(ctx, r, i, serverID, parts)
 	case segCRew:
 		return h.openContractRewardsModal(ctx, r, i, serverID, parts)
 	case segCLoc:
 		return h.handleContractLocation(ctx, r, i, serverID, parts)
 	case segLocBrowse:
-		return h.handleLocBrowse(ctx, r, i, serverID, parts)
+		return h.pick.HandleLocBrowse(ctx, r, i, serverID, parts)
 	case segLocClear:
-		return h.handleLocClear(ctx, r, i, serverID, parts)
+		return h.pick.HandleLocClear(ctx, r, i, serverID, parts)
 	case segFilter:
 		return h.handleFilter(ctx, r, i, serverID)
 	case segListPage:
@@ -506,7 +506,7 @@ func (h *Feature) routeConsoleModal(ctx context.Context, r registry.Responder, i
 	case segMILink:
 		return h.submitLinkItem(ctx, r, i, serverID, parts)
 	case segMBrowseQty:
-		return h.submitBrowseQty(ctx, r, i, serverID, parts)
+		return h.pick.HandleQtySubmit(ctx, r, i, serverID, parts)
 	case segMPEdit:
 		return h.submitParticipant(ctx, r, i, serverID, parts)
 	case segMCancel:

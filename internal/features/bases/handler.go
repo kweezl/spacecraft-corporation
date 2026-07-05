@@ -10,6 +10,7 @@ import (
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
+	"github.com/kweezl/spacecraft-corporation/internal/roman"
 )
 
 // Feature bundles the dependencies the /base command and its pagination
@@ -144,7 +145,7 @@ func (h *Feature) handleRegister(ctx context.Context, r registry.Responder, i *d
 		return fmt.Errorf("register base: %w", err)
 	}
 	return h.reply(ctx, r, i, serverID, "bases.register.ok", map[string]any{
-		"Name": in.Name, "Sector": in.SectorName, "System": in.SystemCode, "Planet": toRoman(in.PlanetNumber),
+		"Name": in.Name, "Sector": in.SectorName, "System": in.SystemCode, "Planet": roman.Numeral(in.PlanetNumber),
 	})
 }
 
