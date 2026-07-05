@@ -49,9 +49,12 @@ type Config struct {
 	ExpiresNotify time.Duration `env:"CONTRACTS_EXPIRES_NOTIFY" envDefault:"1h"`
 	// PageSize is how many contracts one /contract list page shows.
 	PageSize int `env:"CONTRACTS_LIST_PAGE_SIZE" envDefault:"8"`
-	// MaxItems caps the distinct required items per contract.
-	MaxItems int `env:"CONTRACTS_MAX_ITEMS" envDefault:"25"`
 }
+
+// DefaultMaxItems caps the distinct required items per contract when a server has
+// not set its own limit (the former CONTRACTS_MAX_ITEMS default, now a per-server
+// /settings value resolved via ItemCap).
+const DefaultMaxItems = 25
 
 // Status is a contract's lifecycle state. Only "open" accepts mutations; the rest
 // are terminal end states.
@@ -614,6 +617,15 @@ type ReportsConfig interface {
 type RewardDefaults interface {
 	ContractsRewardFactor(ctx context.Context, serverID uuid.UUID) decimal.Decimal
 	SetContractsRewardFactor(ctx context.Context, serverID uuid.UUID, factor decimal.Decimal) error
+}
+
+// ItemCap resolves and sets a server's per-contract distinct-item cap (the
+// former CONTRACTS_MAX_ITEMS env var). ok=false means unset — callers fall back
+// to DefaultMaxItems. Like ForumConfig, the value lives in the core settings
+// store but the control belongs to this feature. Implemented by settings.Store.
+type ItemCap interface {
+	ContractsMaxItems(ctx context.Context, serverID uuid.UUID) (int, bool)
+	SetContractsMaxItems(ctx context.Context, serverID uuid.UUID, limit int) error
 }
 
 // parseDHMMinutes totals the console's three-field (days/hours/minutes) modal

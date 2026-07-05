@@ -130,6 +130,54 @@ func (_c *MockRepository_SetContractsForumChannelID_Call) RunAndReturn(run func(
 	return _c
 }
 
+// SetContractsMaxItems provides a mock function with given fields: ctx, serverID, limit
+func (_m *MockRepository) SetContractsMaxItems(ctx context.Context, serverID uuid.UUID, limit int) error {
+	ret := _m.Called(ctx, serverID, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetContractsMaxItems")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, int) error); ok {
+		r0 = rf(ctx, serverID, limit)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetContractsMaxItems_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetContractsMaxItems'
+type MockRepository_SetContractsMaxItems_Call struct {
+	*mock.Call
+}
+
+// SetContractsMaxItems is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - limit int
+func (_e *MockRepository_Expecter) SetContractsMaxItems(ctx interface{}, serverID interface{}, limit interface{}) *MockRepository_SetContractsMaxItems_Call {
+	return &MockRepository_SetContractsMaxItems_Call{Call: _e.mock.On("SetContractsMaxItems", ctx, serverID, limit)}
+}
+
+func (_c *MockRepository_SetContractsMaxItems_Call) Run(run func(ctx context.Context, serverID uuid.UUID, limit int)) *MockRepository_SetContractsMaxItems_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(int))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetContractsMaxItems_Call) Return(_a0 error) *MockRepository_SetContractsMaxItems_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetContractsMaxItems_Call) RunAndReturn(run func(context.Context, uuid.UUID, int) error) *MockRepository_SetContractsMaxItems_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetContractsReportsChannelID provides a mock function with given fields: ctx, serverID, channelID
 func (_m *MockRepository) SetContractsReportsChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
 	ret := _m.Called(ctx, serverID, channelID)
@@ -270,6 +318,102 @@ func (_c *MockRepository_SetLanguage_Call) Return(_a0 error) *MockRepository_Set
 }
 
 func (_c *MockRepository_SetLanguage_Call) RunAndReturn(run func(context.Context, uuid.UUID, i18n.Language) error) *MockRepository_SetLanguage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetSupplyForumChannelID provides a mock function with given fields: ctx, serverID, channelID
+func (_m *MockRepository) SetSupplyForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
+	ret := _m.Called(ctx, serverID, channelID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetSupplyForumChannelID")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
+		r0 = rf(ctx, serverID, channelID)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetSupplyForumChannelID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSupplyForumChannelID'
+type MockRepository_SetSupplyForumChannelID_Call struct {
+	*mock.Call
+}
+
+// SetSupplyForumChannelID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - channelID string
+func (_e *MockRepository_Expecter) SetSupplyForumChannelID(ctx interface{}, serverID interface{}, channelID interface{}) *MockRepository_SetSupplyForumChannelID_Call {
+	return &MockRepository_SetSupplyForumChannelID_Call{Call: _e.mock.On("SetSupplyForumChannelID", ctx, serverID, channelID)}
+}
+
+func (_c *MockRepository_SetSupplyForumChannelID_Call) Run(run func(ctx context.Context, serverID uuid.UUID, channelID string)) *MockRepository_SetSupplyForumChannelID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetSupplyForumChannelID_Call) Return(_a0 error) *MockRepository_SetSupplyForumChannelID_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetSupplyForumChannelID_Call) RunAndReturn(run func(context.Context, uuid.UUID, string) error) *MockRepository_SetSupplyForumChannelID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetSupplyRequestLimit provides a mock function with given fields: ctx, serverID, limit
+func (_m *MockRepository) SetSupplyRequestLimit(ctx context.Context, serverID uuid.UUID, limit int) error {
+	ret := _m.Called(ctx, serverID, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetSupplyRequestLimit")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uuid.UUID, int) error); ok {
+		r0 = rf(ctx, serverID, limit)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockRepository_SetSupplyRequestLimit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetSupplyRequestLimit'
+type MockRepository_SetSupplyRequestLimit_Call struct {
+	*mock.Call
+}
+
+// SetSupplyRequestLimit is a helper method to define mock.On call
+//   - ctx context.Context
+//   - serverID uuid.UUID
+//   - limit int
+func (_e *MockRepository_Expecter) SetSupplyRequestLimit(ctx interface{}, serverID interface{}, limit interface{}) *MockRepository_SetSupplyRequestLimit_Call {
+	return &MockRepository_SetSupplyRequestLimit_Call{Call: _e.mock.On("SetSupplyRequestLimit", ctx, serverID, limit)}
+}
+
+func (_c *MockRepository_SetSupplyRequestLimit_Call) Run(run func(ctx context.Context, serverID uuid.UUID, limit int)) *MockRepository_SetSupplyRequestLimit_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uuid.UUID), args[2].(int))
+	})
+	return _c
+}
+
+func (_c *MockRepository_SetSupplyRequestLimit_Call) Return(_a0 error) *MockRepository_SetSupplyRequestLimit_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockRepository_SetSupplyRequestLimit_Call) RunAndReturn(run func(context.Context, uuid.UUID, int) error) *MockRepository_SetSupplyRequestLimit_Call {
 	_c.Call.Return(run)
 	return _c
 }

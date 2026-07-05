@@ -79,3 +79,23 @@ func TestOptions_ContractsGraphValidates(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fx.ValidateApp(opts...))
 }
+
+// TestOptions_SupplyGraphValidates proves the supply feature wires with core
+// modules ALONE — no permissions/contracts — since it is Discord-managed and
+// self-scoped (FEATURES=supply must be sufficient).
+func TestOptions_SupplyGraphValidates(t *testing.T) {
+	t.Setenv("FEATURES", "supply")
+	opts, err := Options(false)
+	require.NoError(t, err)
+	require.NoError(t, fx.ValidateApp(opts...))
+}
+
+// TestOptions_SupplyContractsGraphValidates proves supply + contracts coexist:
+// both provide their own narrow GameSearch/LangResolver types, so there is no fx
+// duplicate-provide collision from the shared gamepick package.
+func TestOptions_SupplyContractsGraphValidates(t *testing.T) {
+	t.Setenv("FEATURES", "supply,contracts")
+	opts, err := Options(false)
+	require.NoError(t, err)
+	require.NoError(t, fx.ValidateApp(opts...))
+}

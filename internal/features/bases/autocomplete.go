@@ -7,6 +7,8 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
+
+	"github.com/kweezl/spacecraft-corporation/internal/roman"
 )
 
 // maxChoices is Discord's hard cap on autocomplete suggestions.
@@ -110,7 +112,7 @@ func (h *Feature) suggestProductions(ctx context.Context, o Ownership, opts []*d
 
 // baseLabel is the human-readable label for a base in a picker.
 func baseLabel(b Base) string {
-	return fmt.Sprintf("%s — %s / %s %s", b.Name, b.SectorName, b.SystemCode, toRoman(b.PlanetNumber))
+	return fmt.Sprintf("%s — %s / %s %s", b.Name, b.SectorName, b.SystemCode, roman.Numeral(b.PlanetNumber))
 }
 
 // stringValue reads an option's current value as a string (autocomplete delivers

@@ -56,6 +56,18 @@ func (s staticDefaults) SetContractsRewardFactor(context.Context, uuid.UUID, dec
 	return nil
 }
 
+// staticItemCap is an ItemCap resolving every server to a fixed cap; ok reports
+// whether one is "set" (false → the feature falls back to DefaultMaxItems).
+type staticItemCap struct {
+	limit int
+	set   bool
+}
+
+func (s staticItemCap) ContractsMaxItems(context.Context, uuid.UUID) (int, bool) {
+	return s.limit, s.set
+}
+func (s staticItemCap) SetContractsMaxItems(context.Context, uuid.UUID, int) error { return nil }
+
 // deps bundles the optional Feature dependencies a test may want to override;
 // the zero value gives strict template-repo/search mocks, a zero reward-factor
 // default, no emojis, English.
@@ -64,6 +76,7 @@ type featureDeps struct {
 	search   contracts.GameSearch
 	access   session.CommandAccess
 	defaults contracts.RewardDefaults
+	itemCap  contracts.ItemCap
 	reports  contracts.ReportsConfig
 	emo      *emoji.Store
 	// lang overrides the server's rendered + content language (default en).
@@ -104,7 +117,10 @@ func newFeatureDeps(t *testing.T, repo contracts.Repository, gw contracts.Gatewa
 	if d.reports == nil {
 		d.reports = mocks.NewMockReportsConfig(t)
 	}
-	return contracts.New(repo, d.tpls, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, d.reports, d.defaults, d.access,
+	if d.itemCap == nil {
+		d.itemCap = staticItemCap{} // unset → DefaultMaxItems (25)
+	}
+	return contracts.New(repo, d.tpls, loc, contracts.Config{PageSize: 8}, gw, forum, d.reports, d.defaults, d.itemCap, d.access,
 		d.search, staticLang{lang: d.lang}, testRegistry, d.emo, zap.NewNop())
 }
 
@@ -115,7 +131,7 @@ func newFeatureObserved(t *testing.T, repo contracts.Repository, gw contracts.Ga
 	require.NoError(t, err)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
 	core, logs := observer.New(zapcore.WarnLevel)
-	return contracts.New(repo, mocks.NewMockTemplateRepository(t), loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, mocks.NewMockReportsConfig(t), staticDefaults{}, nil,
+	return contracts.New(repo, mocks.NewMockTemplateRepository(t), loc, contracts.Config{PageSize: 8}, gw, forum, mocks.NewMockReportsConfig(t), staticDefaults{}, staticItemCap{}, nil,
 		mocks.NewMockGameSearch(t), staticLang{lang: i18n.LanguageEN}, testRegistry, nil, zap.New(core)), logs
 }
 

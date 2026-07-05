@@ -8,7 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
 
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/testdb"
 )
 
@@ -109,4 +111,83 @@ func (s *pgSuite) TestReportsChannel() {
 	require.NoError(t, err)
 	assert.Equal(t, "forum-1", got.ContractsForumChannelID)
 	assert.Equal(t, "reports-1", got.ContractsReportsChannelID)
+}
+
+// TestSupplyAndMaxItemsColumns round-trips the supply forum / request limit and
+// the contracts max-items columns: NULL vs value for the *int columns, and that
+// each setter is column-independent.
+func (s *pgSuite) TestSupplyAndMaxItemsColumns() {
+	t := s.T()
+	ctx := context.Background()
+	g1 := testdb.SeedServer(t, s.Pool, "g1")
+	repo := newRepository(s.Pool)
+
+	// Unset: empty forum, nil pointers.
+	got, err := repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.Empty(t, got.SupplyForumChannelID)
+	assert.Nil(t, got.SupplyRequestLimit)
+	assert.Nil(t, got.ContractsMaxItems)
+
+	// Set each; all persist independently.
+	require.NoError(t, repo.SetSupplyForumChannelID(ctx, g1, "supply-forum"))
+	require.NoError(t, repo.SetSupplyRequestLimit(ctx, g1, 15))
+	require.NoError(t, repo.SetContractsMaxItems(ctx, g1, 40))
+	got, err = repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.Equal(t, "supply-forum", got.SupplyForumChannelID)
+	require.NotNil(t, got.SupplyRequestLimit)
+	assert.Equal(t, 15, *got.SupplyRequestLimit)
+	require.NotNil(t, got.ContractsMaxItems)
+	assert.Equal(t, 40, *got.ContractsMaxItems)
+
+	// Independent upsert: changing the theme preserves the new columns.
+	require.NoError(t, repo.SetTheme(ctx, g1, "lore"))
+	got, err = repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.Equal(t, "supply-forum", got.SupplyForumChannelID)
+	require.NotNil(t, got.SupplyRequestLimit)
+	assert.Equal(t, 15, *got.SupplyRequestLimit)
+
+	// The CHECK (> 0) rejects a non-positive limit.
+	require.Error(t, repo.SetSupplyRequestLimit(ctx, g1, 0))
+	require.Error(t, repo.SetContractsMaxItems(ctx, g1, -1))
+}
+
+// TestNewGettersCache exercises the Store's cached getters for the three new
+// columns: a miss reads unset, a set invalidates and re-reads the value.
+func (s *pgSuite) TestNewGettersCache() {
+	t := s.T()
+	ctx := context.Background()
+	g1 := testdb.SeedServer(t, s.Pool, "g1")
+	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
+	require.NoError(t, err)
+	store, err := NewStore(newRepository(s.Pool), tr, zap.NewNop())
+	require.NoError(t, err)
+
+	// Miss: unset.
+	if _, ok := store.SupplyForumChannelID(ctx, g1); ok {
+		t.Fatal("supply forum should be unset")
+	}
+	if _, ok := store.SupplyRequestLimit(ctx, g1); ok {
+		t.Fatal("supply limit should be unset")
+	}
+	if _, ok := store.ContractsMaxItems(ctx, g1); ok {
+		t.Fatal("contracts max-items should be unset")
+	}
+
+	// Set + invalidate → cached getters see the new values.
+	require.NoError(t, store.SetSupplyForumChannelID(ctx, g1, "sf"))
+	require.NoError(t, store.SetSupplyRequestLimit(ctx, g1, 7))
+	require.NoError(t, store.SetContractsMaxItems(ctx, g1, 30))
+
+	forum, ok := store.SupplyForumChannelID(ctx, g1)
+	assert.True(t, ok)
+	assert.Equal(t, "sf", forum)
+	limit, ok := store.SupplyRequestLimit(ctx, g1)
+	assert.True(t, ok)
+	assert.Equal(t, 7, limit)
+	maxItems, ok := store.ContractsMaxItems(ctx, g1)
+	assert.True(t, ok)
+	assert.Equal(t, 30, maxItems)
 }

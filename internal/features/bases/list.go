@@ -12,6 +12,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
+	"github.com/kweezl/spacecraft-corporation/internal/roman"
 	"github.com/kweezl/spacecraft-corporation/internal/uuidv7"
 )
 
@@ -159,7 +160,7 @@ func (h *Feature) entryFields(ctx context.Context, serverID uuid.UUID, b Base) [
 	}
 	identity := h.loc.Render(ctx, serverID, "bases.list.field_base", map[string]any{
 		"Location": h.loc.Render(ctx, serverID, "bases.list.location", map[string]any{
-			"Sector": b.SectorName, "System": b.SystemCode, "Planet": toRoman(b.PlanetNumber),
+			"Sector": b.SectorName, "System": b.SystemCode, "Planet": roman.Numeral(b.PlanetNumber),
 		}),
 		"Owner": owner,
 	})

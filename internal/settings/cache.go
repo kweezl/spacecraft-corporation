@@ -20,11 +20,14 @@ const defaultCacheSize = 1000
 // plus the raw contracts forum channel id (no default — empty means unset) and
 // the default participant reward factor (zero IS the default).
 type resolved struct {
-	theme   string
-	lang    i18n.Language
-	forum   string
-	reports string
-	factor  decimal.Decimal
+	theme            string
+	lang             i18n.Language
+	forum            string
+	reports          string
+	factor           decimal.Decimal
+	supplyForum      string
+	supplyLimit      *int
+	contractsMaxItem *int
 }
 
 // Store fronts the Repository with an in-memory LRU cache and implements
@@ -72,7 +75,11 @@ func (s *Store) resolve(ctx context.Context, serverID uuid.UUID) (resolved, bool
 	if lang == "" || !s.tr.HasLanguage(lang) {
 		lang = defLang
 	}
-	r := resolved{theme: theme, lang: lang, forum: st.ContractsForumChannelID, reports: st.ContractsReportsChannelID, factor: st.ContractsRewardFactor}
+	r := resolved{
+		theme: theme, lang: lang,
+		forum: st.ContractsForumChannelID, reports: st.ContractsReportsChannelID, factor: st.ContractsRewardFactor,
+		supplyForum: st.SupplyForumChannelID, supplyLimit: st.SupplyRequestLimit, contractsMaxItem: st.ContractsMaxItems,
+	}
 	s.cache.Add(serverID, r)
 	return r, true
 }
@@ -103,6 +110,33 @@ func (s *Store) ContractsReportsChannelID(ctx context.Context, serverID uuid.UUI
 func (s *Store) ContractsRewardFactor(ctx context.Context, serverID uuid.UUID) decimal.Decimal {
 	r, _ := s.resolve(ctx, serverID)
 	return r.factor
+}
+
+// SupplyForumChannelID returns the server's configured supply forum channel and
+// whether one is set. Cached on the same resolution as Resolve.
+func (s *Store) SupplyForumChannelID(ctx context.Context, serverID uuid.UUID) (string, bool) {
+	r, _ := s.resolve(ctx, serverID)
+	return r.supplyForum, r.supplyForum != ""
+}
+
+// SupplyRequestLimit returns the server's per-member open-request limit and
+// whether one is set (false = use the feature default). Cached like Resolve.
+func (s *Store) SupplyRequestLimit(ctx context.Context, serverID uuid.UUID) (int, bool) {
+	r, _ := s.resolve(ctx, serverID)
+	if r.supplyLimit == nil {
+		return 0, false
+	}
+	return *r.supplyLimit, true
+}
+
+// ContractsMaxItems returns the server's per-contract item cap and whether one
+// is set (false = use the feature default of 25). Cached like Resolve.
+func (s *Store) ContractsMaxItems(ctx context.Context, serverID uuid.UUID) (int, bool) {
+	r, _ := s.resolve(ctx, serverID)
+	if r.contractsMaxItem == nil {
+		return 0, false
+	}
+	return *r.contractsMaxItem, true
 }
 
 // Get returns the raw stored settings (uncached, for display).
@@ -152,6 +186,36 @@ func (s *Store) SetContractsReportsChannelID(ctx context.Context, serverID uuid.
 // invalidates the server's cached resolution.
 func (s *Store) SetContractsRewardFactor(ctx context.Context, serverID uuid.UUID, factor decimal.Decimal) error {
 	if err := s.repo.SetContractsRewardFactor(ctx, serverID, factor); err != nil {
+		return err
+	}
+	s.cache.Remove(serverID)
+	return nil
+}
+
+// SetSupplyForumChannelID persists the supply forum channel and invalidates the
+// server's cached resolution.
+func (s *Store) SetSupplyForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
+	if err := s.repo.SetSupplyForumChannelID(ctx, serverID, channelID); err != nil {
+		return err
+	}
+	s.cache.Remove(serverID)
+	return nil
+}
+
+// SetSupplyRequestLimit persists the per-member open-request limit and
+// invalidates the server's cached resolution.
+func (s *Store) SetSupplyRequestLimit(ctx context.Context, serverID uuid.UUID, limit int) error {
+	if err := s.repo.SetSupplyRequestLimit(ctx, serverID, limit); err != nil {
+		return err
+	}
+	s.cache.Remove(serverID)
+	return nil
+}
+
+// SetContractsMaxItems persists the per-contract item cap and invalidates the
+// server's cached resolution.
+func (s *Store) SetContractsMaxItems(ctx context.Context, serverID uuid.UUID, limit int) error {
+	if err := s.repo.SetContractsMaxItems(ctx, serverID, limit); err != nil {
 		return err
 	}
 	s.cache.Remove(serverID)

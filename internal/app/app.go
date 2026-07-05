@@ -20,6 +20,7 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
 	"github.com/kweezl/spacecraft-corporation/internal/features/permissions"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
+	"github.com/kweezl/spacecraft-corporation/internal/features/supply"
 	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/instrumentation"
@@ -96,6 +97,8 @@ func selectFeatures(names []feature.Name) ([]fx.Option, error) {
 			opts = append(opts, bases.Module())
 		case feature.Contracts:
 			opts = append(opts, contracts.Module())
+		case feature.Supply:
+			opts = append(opts, supply.Module())
 		default:
 			return nil, fmt.Errorf("no module registered for feature %q", name)
 		}

@@ -23,5 +23,14 @@ packages:
       ForumConfig:
       ReportsConfig:
       RewardDefaults:
+      ItemCap:
+      GameSearch:
+      LangResolver:
+  github.com/kweezl/spacecraft-corporation/internal/features/supply:
+    interfaces:
+      Repository:
+      Gateway:
+      ForumConfig:
+      LimitConfig:
       GameSearch:
       LangResolver:

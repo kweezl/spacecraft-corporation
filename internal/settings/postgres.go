@@ -27,9 +27,11 @@ func (r *pgRepository) Get(ctx context.Context, serverID uuid.UUID) (Settings, e
 	var language string // scan into a plain string; i18n.Language is a named type
 	err := r.pool.QueryRow(ctx,
 		`SELECT COALESCE(theme, ''), COALESCE(language, ''), COALESCE(contracts_forum_channel_id, ''),
-		        COALESCE(contracts_reports_channel_id, ''), COALESCE(contracts_participant_reward_factor, 0)
+		        COALESCE(contracts_reports_channel_id, ''), COALESCE(contracts_participant_reward_factor, 0),
+		        COALESCE(supply_forum_channel_id, ''), supply_request_limit, contracts_max_items
 		 FROM server_settings WHERE servers_id = $1`,
-		serverID).Scan(&s.Theme, &language, &s.ContractsForumChannelID, &s.ContractsReportsChannelID, &s.ContractsRewardFactor)
+		serverID).Scan(&s.Theme, &language, &s.ContractsForumChannelID, &s.ContractsReportsChannelID, &s.ContractsRewardFactor,
+		&s.SupplyForumChannelID, &s.SupplyRequestLimit, &s.ContractsMaxItems)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Settings{}, nil
 	}
@@ -61,6 +63,18 @@ func (r *pgRepository) SetContractsReportsChannelID(ctx context.Context, serverI
 
 func (r *pgRepository) SetContractsRewardFactor(ctx context.Context, serverID uuid.UUID, factor decimal.Decimal) error {
 	return r.upsert(ctx, serverID, "contracts_participant_reward_factor", factor)
+}
+
+func (r *pgRepository) SetSupplyForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
+	return r.upsert(ctx, serverID, "supply_forum_channel_id", channelID)
+}
+
+func (r *pgRepository) SetSupplyRequestLimit(ctx context.Context, serverID uuid.UUID, limit int) error {
+	return r.upsert(ctx, serverID, "supply_request_limit", limit)
+}
+
+func (r *pgRepository) SetContractsMaxItems(ctx context.Context, serverID uuid.UUID, limit int) error {
+	return r.upsert(ctx, serverID, "contracts_max_items", limit)
 }
 
 // upsert sets one column for a server, inserting the row if absent. column is a
