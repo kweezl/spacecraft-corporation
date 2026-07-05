@@ -117,7 +117,7 @@ func TestTaskCreate_DeletesOrphanOnSetThreadIDFailure(t *testing.T) {
 	gw.EXPECT().DeletePost("thread-77").Return(nil).Once()
 
 	err := invokeTask(t, f, "supply.thread.create", map[string]any{"request_id": rid.String()})
-	require.Error(t, err, "transient error must surface so the task retries")
+	require.ErrorContains(t, err, "db down", "the persistence error must surface (not be swallowed) so the task retries")
 }
 
 // TestTaskCreate_NoForum fails permanently when no forum is configured.
