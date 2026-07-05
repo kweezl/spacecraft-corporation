@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/fx"
@@ -34,6 +35,9 @@ func newServer(cfg Config, ready *Readiness, reg *prometheus.Registry, log *zap.
 		httpServer: &http.Server{
 			Addr:    cfg.Addr,
 			Handler: mux,
+			// Bound the header-read phase so a slow-loris client can't hold a
+			// connection open indefinitely against the ops server.
+			ReadHeaderTimeout: 5 * time.Second,
 		},
 		log: log,
 	}

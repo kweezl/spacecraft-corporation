@@ -68,4 +68,8 @@ jobs:
         with:
           go-version: "1.26"
       - run: go install github.com/securego/gosec/v2/cmd/gosec@latest
-      - run: gosec ./...
+        # -exclude-generated: skip machine-emitted db/v* literals (the DO NOT EDIT
+        #   files) — G101 entropy false positives on localized name/desc tables.
+        # -exclude-dir internal/gamedata/gen: the build-time codegen tool is a
+        #   dev/maintainer step over trusted input, never in the bot binary.
+      - run: gosec -exclude-generated -exclude-dir=internal/gamedata/gen ./...
