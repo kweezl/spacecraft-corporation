@@ -1,0 +1,51 @@
+name: CodeQL
+
+# GitHub-native deep security analysis for Go (data-flow / taint tracking beyond
+# what golangci-lint + gosec catch). Free for public repos; results surface in
+# the Security > Code scanning tab. Runs on pushes/PRs to main and weekly so a
+# newly-shipped query set re-scans an unchanged tree.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "27 4 * * 1"  # Mondays 04:27 UTC
+
+# Cancel a superseded run on the same ref (e.g. rapid PR pushes); let scheduled
+# and main-branch runs complete on their own refs.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: only the SARIF upload needs elevated scope.
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write  # upload CodeQL results to code scanning
+      actions: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+        with:
+          languages: go
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@c35d1b164463ee62a100735382aaaa525c5d3496 # codeql-bundle-v2.25.6

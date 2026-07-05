@@ -8,7 +8,9 @@ tone_instructions: >-
 
 reviews:
   # "chill" = fewer, higher-signal comments; "assertive" = more thorough/nitpicky.
-  profile: chill
+  # Assertive surfaces minor style + edge cases too; noise is triaged by the maintainer.
+  profile: assertive
+  # Advisory only: comments, never a blocking "changes requested" review (solo repo).
   request_changes_workflow: false
   high_level_summary: true
   poem: false
@@ -34,11 +36,33 @@ reviews:
         be logged or committed.
     - path: "internal/migrator/migrations/*.sql"
       instructions: >-
-        Goose migrations are embedded via embed.FS and run on startup. Ensure
-        each migration has matching up/down sections.
+        Goose migrations are embedded via embed.FS and applied by the migrator
+        module only in one-shot --migrate mode (never on bot startup). Scaffold
+        via goose with a timestamped name; one CREATE TABLE per file. Ensure each
+        migration has matching up/down sections. New tables use app-supplied
+        UUIDv7 PKs and app-supplied TIMESTAMP (no DEFAULT) columns; servers_id is
+        a UUID FK to servers.id, not the Discord snowflake.
   tools:
     # Reuse the repo's existing golangci-lint config (.golangci.yml).
     golangci-lint:
+      enabled: true
+    # Secret scanning — the repo handles BOT_TOKEN / POSTGRES_PASSWORD.
+    gitleaks:
+      enabled: true
+    # Dockerfile best-practices (multi-stage build/prod/dev targets).
+    hadolint:
+      enabled: true
+    # GitHub Actions workflow linting (.github/workflows/*.yml).
+    actionlint:
+      enabled: true
+    # YAML hygiene (compose files, workflows, this config).
+    yamllint:
+      enabled: true
+    # Markdown lint (README.md, CLAUDE.md).
+    markdownlint:
+      enabled: true
+    # Lightweight SAST across the tree.
+    semgrep:
       enabled: true
 
 chat:
