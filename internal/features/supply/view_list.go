@@ -26,7 +26,7 @@ func (h *Feature) renderListView(ctx context.Context, r registry.Responder, i *d
 		// total shrank since the page token was minted (e.g. concurrent deletion):
 		// re-fetch at the clamped page so entries match the "Page X of Y" header.
 		page = totalPages - 1
-		entries, total, err = h.repo.ListByOwner(ctx, serverID, invokerID(i), statusesFromMask(mask), consolePageSize, page*consolePageSize)
+		entries, _, err = h.repo.ListByOwner(ctx, serverID, invokerID(i), statusesFromMask(mask), consolePageSize, page*consolePageSize)
 		if err != nil {
 			return h.consoleErr(ctx, r, i, serverID, err)
 		}
