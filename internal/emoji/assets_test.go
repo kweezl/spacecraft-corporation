@@ -75,6 +75,19 @@ func TestLoadAssetsEmptyDir(t *testing.T) {
 	assert.Empty(t, out)
 }
 
+func TestLoadAssetsRejectsLFSPointer(t *testing.T) {
+	fsys := fstest.MapFS{
+		"a/SilverNugget.webp": {Data: []byte(
+			"version https://git-lfs.github.com/spec/v1\n" +
+				"oid sha256:66764a4076981356e6290f899f878fba8c222ad42ad67afc1474750615389f77\n" +
+				"size 1584\n")},
+	}
+	_, err := loadAssets(fsys, "a")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Git LFS pointer")
+	assert.Contains(t, err.Error(), "SilverNugget.webp")
+}
+
 // The embedded assets directory must always load (it backs the production path).
 func TestEmbeddedAssetsLoad(t *testing.T) {
 	out, err := loadAssets(assetsFS, assetsRoot)

@@ -1,6 +1,7 @@
 package emoji
 
 import (
+	"bytes"
 	"embed"
 	"encoding/base64"
 	"fmt"
@@ -50,10 +51,25 @@ func loadAssets(fsys fs.FS, root string) (map[string]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("emoji: read %s: %w", e.Name(), err)
 		}
+		if isLFSPointer(raw) {
+			return nil, fmt.Errorf("emoji: %s is a Git LFS pointer, not image content"+
+				" — the asset was embedded unsmudged; run `git lfs pull` at the source"+
+				" and regenerate (make gamedata.gen)", e.Name())
+		}
 		out[name] = "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw)
 	}
 	return out, nil
 }
+
+// lfsPointerPrefix is the first line of a Git LFS pointer file. An asset checked
+// out (or copied from a source) without git-lfs is this short text stub, not the
+// image — base64-encoding one and sending it to Discord fails at upload with a
+// cryptic "Invalid Asset" (50046), so we reject it loudly at load instead.
+var lfsPointerPrefix = []byte("version https://git-lfs.github.com/spec/v1")
+
+// isLFSPointer reports whether b is a Git LFS pointer stub rather than real
+// image bytes.
+func isLFSPointer(b []byte) bool { return bytes.HasPrefix(b, lfsPointerPrefix) }
 
 // validEmojiName reports whether name satisfies Discord's emoji-name rule: 2–32
 // characters, each a letter, digit, or underscore. The allowed set is ASCII, so
