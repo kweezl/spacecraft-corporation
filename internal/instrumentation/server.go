@@ -35,9 +35,13 @@ func newServer(cfg Config, ready *Readiness, reg *prometheus.Registry, log *zap.
 		httpServer: &http.Server{
 			Addr:    cfg.Addr,
 			Handler: mux,
-			// Bound the header-read phase so a slow-loris client can't hold a
-			// connection open indefinitely against the ops server.
+			// Bound every phase so a slow client can't hold a connection open
+			// indefinitely against the ops server (ReadHeaderTimeout also clears
+			// gosec G112). The endpoints are small and fast, so these are generous.
 			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		},
 		log: log,
 	}

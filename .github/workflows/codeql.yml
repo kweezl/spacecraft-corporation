@@ -6,11 +6,17 @@ name: CodeQL
 # newly-shipped query set re-scans an unchanged tree.
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
     - cron: "27 4 * * 1"  # Mondays 04:27 UTC
+
+# Cancel a superseded run on the same ref (e.g. rapid PR pushes); let scheduled
+# and main-branch runs complete on their own refs.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
 
 # Least privilege: only the SARIF upload needs elevated scope.
 permissions:
@@ -25,6 +31,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:

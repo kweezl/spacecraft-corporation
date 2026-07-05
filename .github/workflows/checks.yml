@@ -50,8 +50,15 @@ jobs:
   # live vuln DB, so a newly-published CVE can turn this red on an unchanged tree.
   govulncheck:
     runs-on: ubuntu-latest
+    # Bound the network-dependent `go install` so a hung fetch fails fast instead
+    # of stalling the release pipeline (this suite gates the Docker publish).
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        # Read-only scanner: don't leave the git token in .git/config where the
+        # network-fetched tool could reach it.
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26"
@@ -62,12 +69,17 @@ jobs:
   # in security-relevant spots. Deterministic over a commit.
   gosec:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.26"
-      - run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      # Pinned (not @latest) so scans are deterministic — a new gosec release
+      # can't newly flag existing code and redden an unrelated PR. Bump manually.
+      - run: go install github.com/securego/gosec/v2/cmd/gosec@v2.27.1
         # -exclude-generated: skip machine-emitted db/v* literals (the DO NOT EDIT
         #   files) — G101 entropy false positives on localized name/desc tables.
         # -exclude-dir internal/gamedata/gen: the build-time codegen tool is a
