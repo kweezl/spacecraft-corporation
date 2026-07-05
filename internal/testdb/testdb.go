@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/zap"
 
+	"github.com/kweezl/spacecraft-corporation/internal/db"
 	"github.com/kweezl/spacecraft-corporation/internal/migrator"
 )
 
@@ -85,7 +86,9 @@ func newDatabase(t *testing.T, migrate bool) (*pgxpool.Pool, string) {
 		t.Fatalf("testdb: create database %q: %v", name, err)
 	}
 
-	pool, err := pgxpool.New(ctx, childDSN(t, admin, name))
+	// Through db.NewPool so per-suite pools carry the same type codecs
+	// (shopspring/decimal for NUMERIC) as the bot's own pool.
+	pool, err := db.NewPool(ctx, childDSN(t, admin, name))
 	if err != nil {
 		dropDatabase(t, name)
 		t.Fatalf("testdb: new pool: %v", err)

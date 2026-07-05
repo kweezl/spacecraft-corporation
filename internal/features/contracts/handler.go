@@ -10,6 +10,8 @@ import (
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
+	"github.com/kweezl/spacecraft-corporation/internal/emoji"
+	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
 
@@ -17,21 +19,32 @@ import (
 // reserve/deliver/release panel, and the expiry sweeper share. Constructed via
 // New.
 type Feature struct {
-	repo   Repository
-	loc    *i18n.Localizer
-	cfg    Config
-	gw     Gateway
-	forum  ForumConfig
-	access session.CommandAccess
-	log    *zap.Logger
+	repo     Repository
+	tpls     TemplateRepository
+	loc      *i18n.Localizer
+	cfg      Config
+	gw       Gateway
+	forum    ForumConfig
+	reports  ReportsConfig
+	defaults RewardDefaults
+	access   session.CommandAccess
+	search   GameSearch
+	langs    LangResolver
+	reg      *gamedata.Registry
+	emo      *emoji.Store
+	log      *zap.Logger
 }
 
 // New builds the contracts Feature. access is the permissions gate (contracts
 // requires the permissions feature), used to re-authorize the console actions
 // (against the "contracts" key) and the public panel buttons (against
-// "contracts.use").
-func New(repo Repository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, access session.CommandAccess, log *zap.Logger) *Feature {
-	return &Feature{repo: repo, loc: loc, cfg: cfg, gw: gw, forum: forum, access: access, log: log}
+// "contracts.use"). search/langs/reg/emo back the gamedata picker: item and
+// location choices come from the catalog search in the server's language, and
+// item lines render with the catalog icon emojis. defaults supplies the
+// server's default participant reward factor (the prefill for new templates
+// and custom contracts).
+func New(repo Repository, tpls TemplateRepository, loc *i18n.Localizer, cfg Config, gw Gateway, forum ForumConfig, reports ReportsConfig, defaults RewardDefaults, access session.CommandAccess, search GameSearch, langs LangResolver, reg *gamedata.Registry, emo *emoji.Store, log *zap.Logger) *Feature {
+	return &Feature{repo: repo, tpls: tpls, loc: loc, cfg: cfg, gw: gw, forum: forum, reports: reports, defaults: defaults, access: access, search: search, langs: langs, reg: reg, emo: emo, log: log}
 }
 
 // reply renders a key and sends it ephemerally — confirmations and errors don't

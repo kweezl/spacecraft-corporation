@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -51,9 +53,26 @@ func (c Config) DSN() string {
 	return u.String()
 }
 
+// NewPool builds the app's standard pgx pool for a DSN: every connection
+// registers the shopspring/decimal codec, so NUMERIC columns scan into and bind
+// from decimal.Decimal natively (the app-wide decimal type — money never
+// touches a float or a string). testdb builds its per-suite pools through this
+// too, so tests exercise the same codec the bot runs with.
+func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	cfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+		pgxdecimal.Register(conn.TypeMap())
+		return nil
+	}
+	return pgxpool.NewWithConfig(ctx, cfg)
+}
+
 // New creates a pool and wires Ping (on start) / Close (on stop) into fx.
 func New(lc fx.Lifecycle, cfg Config, log *zap.Logger) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(context.Background(), cfg.DSN())
+	pool, err := NewPool(context.Background(), cfg.DSN())
 	if err != nil {
 		return nil, err
 	}

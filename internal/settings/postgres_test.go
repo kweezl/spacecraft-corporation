@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -51,4 +52,61 @@ func (s *pgSuite) TestRepository() {
 	got, err = repo.Get(ctx, g2)
 	require.NoError(t, err)
 	assert.Equal(t, Settings{}, got)
+}
+
+// TestRewardFactor round-trips the contracts participant reward factor. Decimal
+// comparisons use Equal (representation differs between a zero value and a
+// scanned NUMERIC 0), so this is a separate test from the struct-equality one.
+func (s *pgSuite) TestRewardFactor() {
+	t := s.T()
+	ctx := context.Background()
+	g1 := testdb.SeedServer(t, s.Pool, "g1")
+	repo := newRepository(s.Pool)
+
+	// Unset (no row): reads as zero.
+	got, err := repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.True(t, got.ContractsRewardFactor.IsZero())
+
+	// Set with a fraction; other columns stay unset.
+	require.NoError(t, repo.SetContractsRewardFactor(ctx, g1, decimal.RequireFromString("12.50")))
+	got, err = repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.True(t, got.ContractsRewardFactor.Equal(decimal.RequireFromString("12.5")), "got %s", got.ContractsRewardFactor)
+	assert.Empty(t, got.Theme)
+
+	// Independent column upsert: setting the theme preserves the factor.
+	require.NoError(t, repo.SetTheme(ctx, g1, "lore"))
+	got, err = repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.True(t, got.ContractsRewardFactor.Equal(decimal.RequireFromString("12.5")))
+	assert.Equal(t, "lore", got.Theme)
+
+	// Overwrite back to zero.
+	require.NoError(t, repo.SetContractsRewardFactor(ctx, g1, decimal.Zero))
+	got, err = repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.True(t, got.ContractsRewardFactor.IsZero())
+}
+
+// TestReportsChannel round-trips the contracts reports channel and shows the
+// upsert is column-independent (setting it preserves the forum channel).
+func (s *pgSuite) TestReportsChannel() {
+	t := s.T()
+	ctx := context.Background()
+	g1 := testdb.SeedServer(t, s.Pool, "g1")
+	repo := newRepository(s.Pool)
+
+	// Unset (no row): reads as empty.
+	got, err := repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.Empty(t, got.ContractsReportsChannelID)
+
+	// Set alongside an existing forum channel; both persist independently.
+	require.NoError(t, repo.SetContractsForumChannelID(ctx, g1, "forum-1"))
+	require.NoError(t, repo.SetContractsReportsChannelID(ctx, g1, "reports-1"))
+	got, err = repo.Get(ctx, g1)
+	require.NoError(t, err)
+	assert.Equal(t, "forum-1", got.ContractsForumChannelID)
+	assert.Equal(t, "reports-1", got.ContractsReportsChannelID)
 }

@@ -33,7 +33,7 @@ func (h *Feature) renderListView(ctx context.Context, r registry.Responder, i *d
 		inner = append(inner, divider(), discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.console.list_empty", nil)})
 	} else {
 		for _, e := range entries {
-			inner = append(inner, divider(), h.contractSection(ctx, serverID, e))
+			inner = append(inner, divider(), h.contractSection(ctx, serverID, e, mask, page))
 		}
 		inner = append(inner, divider(), discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.console.list_footer",
 			map[string]any{"Page": page + 1, "Pages": totalPages, "Total": total})})
@@ -45,8 +45,10 @@ func (h *Feature) renderListView(ctx context.Context, r registry.Responder, i *d
 }
 
 // contractSection is one contract row: its details with an "Open" accessory
-// button that drills into the Contract view.
-func (h *Feature) contractSection(ctx context.Context, serverID uuid.UUID, e ListEntry) discordgo.Section {
+// button that drills into the Contract view. The current list filter (mask +
+// page) rides in the Open CustomID so the contract view's Back returns to the
+// same filtered page.
+func (h *Feature) contractSection(ctx context.Context, serverID uuid.UUID, e ListEntry, mask, page int) discordgo.Section {
 	text := "**" + truncate(e.Title, 200) + "**\n" + h.listEntryValue(ctx, serverID, e)
 	if e.ThreadID == "" {
 		text += " · " + h.loc.Render(ctx, serverID, "contracts.console.unpublished", nil)
@@ -56,7 +58,7 @@ func (h *Feature) contractSection(ctx context.Context, serverID uuid.UUID, e Lis
 		Accessory: discordgo.Button{
 			Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_open", nil),
 			Style:    discordgo.PrimaryButton,
-			CustomID: buildID(segView, e.ID.String()),
+			CustomID: buildID(segView, e.ID.String(), intStr(mask), intStr(page)),
 		},
 	}
 }
@@ -130,12 +132,16 @@ func (h *Feature) handleListPage(ctx context.Context, r registry.Responder, i *d
 	return h.renderListView(ctx, r, i, serverID, argInt(parts, 0), argInt(parts, 1), true)
 }
 
+// handleOpenContract opens a contract (from the list's Open button or the item
+// view's Back). The optional trailing parts carry the list filter context to
+// return to; absent (e.g. from item Back) they fall back to the default filter.
 func (h *Feature) handleOpenContract(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	cid, ok := argUUID(parts, 0)
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
 	}
-	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
+	mask, page := listCtx(parts, 1)
+	return h.renderContractViewFrom(ctx, r, i, serverID, cid, 0, true, mask, page)
 }
 
 // pageCount is the number of pages for a total at consolePageSize (at least 1).

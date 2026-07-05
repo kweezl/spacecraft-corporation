@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
@@ -31,6 +32,12 @@ func (h *Feature) postComponents(ctx context.Context, serverID uuid.UUID, p Prog
 	}
 	inner := []discordgo.MessageComponent{discordgo.TextDisplay{Content: truncate(header, embedDescMax)}}
 
+	// Rewards + delivery location, when the contract carries any (typically copied
+	// from a template; also editable on custom contracts).
+	if facts := h.contractFacts(ctx, serverID, p.Contract); facts != "" {
+		inner = append(inner, divider(), discordgo.TextDisplay{Content: truncate(facts, embedDescMax)})
+	}
+
 	if len(p.Items) == 0 {
 		inner = append(inner, divider(), discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.embed.no_items", nil)})
 	} else {
@@ -41,7 +48,13 @@ func (h *Feature) postComponents(ctx context.Context, serverID uuid.UUID, p Prog
 			shown = shown[:postItemsMax]
 		}
 		for _, it := range shown {
-			block := "**" + truncate(it.Name, embedTitleMax) + "**\n" + h.itemFieldValue(ctx, serverID, it)
+			// Gamedata items lead with the catalog emoji icon + live-localized name;
+			// legacy free-text items render their stored name as-is.
+			name := truncate(it.Name, embedTitleMax)
+			if it.GDID != "" {
+				name = truncate(h.itemDisplay(ctx, serverID, it.GDID, it.GDVersion), embedTitleMax)
+			}
+			block := "**" + name + "**\n" + h.itemFieldValue(ctx, serverID, it)
 			inner = append(inner, discordgo.TextDisplay{Content: truncate(block, embedDescMax)})
 		}
 		if overflow > 0 {
@@ -111,6 +124,44 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 		value += line
 	}
 	return truncate(value, embedFieldValueMax)
+}
+
+// contractFacts renders a contract's rewards + delivery-location block, one line
+// per set fact, "" when none are set (both card and console skip the block).
+func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contract) string {
+	var lines []string
+	var rewards []string
+	if creditsSet(c.RewardCredits) {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_credits", map[string]any{"Amount": c.RewardCredits.String()}))
+	}
+	if c.RewardReputation != nil && *c.RewardReputation > 0 {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_reputation", map[string]any{"Amount": *c.RewardReputation}))
+	}
+	if c.RewardLicencePoints != nil && *c.RewardLicencePoints > 0 {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_licence", map[string]any{"Amount": *c.RewardLicencePoints}))
+	}
+	// The factor only means something when there are credits to split.
+	if creditsSet(c.RewardCredits) && c.ParticipantRewardFactor.IsPositive() {
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_factor", map[string]any{"Factor": c.ParticipantRewardFactor.String()}))
+	}
+	if len(rewards) > 0 {
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.rewards_line", map[string]any{
+			"Rewards": strings.Join(rewards, " · "),
+		}))
+	}
+	if c.LocationGDID != "" {
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.location_line", map[string]any{
+			"Location": h.spaceObjectDisplay(ctx, serverID, c.LocationGDID, c.LocationGDVersion),
+		}))
+	}
+	// An officer marked the participant payouts as handed out (completed
+	// contracts only — the mark is guarded on status).
+	if c.PayoutsPaidAt != nil {
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.payout.paid", map[string]any{
+			"Mention": "<@" + c.PayoutsPaidByUserID + ">",
+		}))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // statusLine renders the one-line status: time-left for open contracts, the

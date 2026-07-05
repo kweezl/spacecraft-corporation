@@ -114,10 +114,16 @@ type Discord interface {
 	// ChannelDelete removes a channel/thread (used to drop a stale-format forum
 	// post before recreating it in the current format).
 	ChannelDelete(channelID string) (*discordgo.Channel, error)
+	// Channel fetches one channel/thread (used to read a contract thread's
+	// archived state before posting the payout comment into it).
+	Channel(channelID string) (*discordgo.Channel, error)
 	// InteractionResponseEdit edits an interaction's original reply via the
 	// webhook identified by the interaction's app id + token (used to deliver an
 	// async outcome after the initial ack).
 	InteractionResponseEdit(i *discordgo.Interaction, edit *discordgo.WebhookEdit) (*discordgo.Message, error)
+	// GuildMember resolves one member of a guild (state cache first, REST
+	// fallback) — used to snapshot display names for the contracts payout report.
+	GuildMember(guildID, userID string) (*discordgo.Member, error)
 
 	// Application emoji operations (used by the emoji module's startup sync).
 	// Application emojis belong to the bot's application, not a guild, so they

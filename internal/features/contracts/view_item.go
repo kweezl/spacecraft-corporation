@@ -12,11 +12,12 @@ import (
 
 // renderItemView renders (or updates) the Item view as Components V2: a Container
 // headed by the contract name then the item name + progress and a numbered
-// participant list for the page, then a [Back][Prev][Next] row, a custom-only
-// [Edit][Remove item] row, and one [Edit] row per participant (the number ties a
-// line to its button; it opens the participant-manage modal). Edit/remove need
-// keyCustom; participant management needs keyManage; both also require the
-// contract to be open. The handlers re-check regardless (gateMutation).
+// participant list for the page, then a [Back][Prev][Next] row, an
+// [Edit][Remove item] row (plus [Link to game data] on a legacy free-text item),
+// and one [Edit] row per participant (the number ties a line to its button; it
+// opens the participant-manage modal). Edit/remove/link and participant
+// management all need the manager key (keyManage) and require the contract to be
+// open. The handlers re-check regardless (gateMutation).
 func (h *Feature) renderItemView(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, itemID uuid.UUID, page int, update bool) error {
 	prog, err := h.repo.ProgressByItemScoped(ctx, serverID, itemID)
 	if err != nil {
@@ -49,13 +50,20 @@ func (h *Feature) renderItemView(ctx context.Context, r registry.Responder, i *d
 	}
 	pageParts := item.Participants[start:end]
 
+	// Gamedata-linked items display their live-localized catalog name (+ icon);
+	// legacy free-text items show their stored name.
+	name := item.Name
+	if item.GDID != "" {
+		name = h.itemDisplay(ctx, serverID, item.GDID, item.GDVersion)
+	}
 	header := "## " + h.loc.Render(ctx, serverID, "contracts.embed.title", map[string]any{"Title": prog.Title}) +
-		"\n### " + h.loc.Render(ctx, serverID, "contracts.console.item_title", map[string]any{"Name": item.Name}) +
+		"\n### " + h.loc.Render(ctx, serverID, "contracts.console.item_title", map[string]any{"Name": name}) +
 		"\n" + h.itemProgress(ctx, serverID, item)
 
 	open := prog.Status == StatusOpen
-	canEditItem := open && h.may(ctx, i, serverID, keyCustom)
-	canManage := open && h.may(ctx, i, serverID, keyManage)
+	manage := h.may(ctx, i, serverID, keyManage)
+	canEditItem := open && manage
+	canManage := open && manage
 
 	inner := []discordgo.MessageComponent{discordgo.TextDisplay{Content: truncate(header, 4000)}}
 	switch {
@@ -81,7 +89,7 @@ func (h *Feature) renderItemView(ctx context.Context, r registry.Responder, i *d
 
 	inner = append(inner, divider(), h.itemNavRow(ctx, serverID, item.ID, prog.ID, page, totalPages))
 	if canEditItem {
-		inner = append(inner, h.itemEditRow(ctx, serverID, item.ID))
+		inner = append(inner, h.itemEditRow(ctx, serverID, item))
 	}
 	components := []discordgo.MessageComponent{discordgo.Container{Components: inner}}
 	return h.respondView(i, r, components, update)
@@ -112,12 +120,22 @@ func (h *Feature) itemNavRow(ctx context.Context, serverID uuid.UUID, itemID, ci
 	return discordgo.ActionsRow{Components: btns}
 }
 
-// itemEditRow is the custom-only [Edit][Remove item] row.
-func (h *Feature) itemEditRow(ctx context.Context, serverID uuid.UUID, itemID uuid.UUID) discordgo.MessageComponent {
-	return discordgo.ActionsRow{Components: []discordgo.MessageComponent{
-		discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_change_name", nil), Style: discordgo.SecondaryButton, CustomID: buildID(segIEdit, itemID.String())},
-		discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_remove_item", nil), Style: discordgo.DangerButton, CustomID: buildID(segIDel, itemID.String())},
-	}}
+// itemEditRow is the [Edit][Remove item] row; a legacy free-text item also gets
+// [Link to game data] — the assisted migration for pre-gamedata contracts.
+func (h *Feature) itemEditRow(ctx context.Context, serverID uuid.UUID, item Item) discordgo.MessageComponent {
+	id := item.ID.String()
+	btns := []discordgo.MessageComponent{
+		discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_change_name", nil), Style: discordgo.SecondaryButton, CustomID: buildID(segIEdit, id)},
+		discordgo.Button{Label: h.loc.Render(ctx, serverID, "contracts.console.btn_remove_item", nil), Style: discordgo.DangerButton, CustomID: buildID(segIDel, id)},
+	}
+	if item.GDID == "" {
+		btns = append(btns, discordgo.Button{
+			Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_link_item", nil),
+			Style:    discordgo.PrimaryButton,
+			CustomID: buildID(segILink, id),
+		})
+	}
+	return discordgo.ActionsRow{Components: btns}
 }
 
 // participantLine renders one participant's figures (the numbered text shared by

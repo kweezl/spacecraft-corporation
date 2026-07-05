@@ -130,6 +130,72 @@ func (l *Live) CommentPost(threadID, content string, mentionUserIDs []string) er
 	return err
 }
 
+// PostChannelMessage sends a message to a plain channel (the contracts reports
+// channel), mentioning mentionUserIDs (passed through AllowedMentions so they
+// actually ping), with optional file attachments and message components (an
+// ActionsRow of buttons). It returns the new message id so a later Reprint /
+// Mark-paid can edit the payout report in place.
+func (l *Live) PostChannelMessage(channelID, content string, mentionUserIDs []string, files []*discordgo.File, components []discordgo.MessageComponent) (string, error) {
+	s := l.get()
+	if s == nil {
+		return "", ErrNotConnected
+	}
+	msg, err := s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content:         content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{Users: mentionUserIDs},
+		Files:           files,
+		Components:      components,
+	})
+	if err != nil {
+		return "", err
+	}
+	return msg.ID, nil
+}
+
+// EditChannelMessage edits an already-posted channel message's content and
+// components in place (the payout report after a Reprint or a Mark-paid). When
+// files is non-nil the existing attachments are replaced by them (an empty
+// Attachments list drops the old ones, and Files adds the new) — so a Reprint
+// after a language change refreshes the CSV. With nil files the Attachments field
+// is left absent, so Discord keeps the existing attachment.
+func (l *Live) EditChannelMessage(channelID, messageID, content string, files []*discordgo.File, components []discordgo.MessageComponent) error {
+	s := l.get()
+	if s == nil {
+		return ErrNotConnected
+	}
+	edit := discordgo.NewMessageEdit(channelID, messageID)
+	edit.Content = &content
+	edit.Components = &components
+	if files != nil {
+		edit.Attachments = &[]*discordgo.MessageAttachment{}
+		edit.Files = files
+	}
+	_, err := s.ChannelMessageEditComplex(edit)
+	return err
+}
+
+// MemberDisplayName resolves a guild member's display name: nick, else global
+// name, else username. ok is false when the member can't be resolved (left the
+// server, or no live session) — callers fall back to the raw user id.
+func (l *Live) MemberDisplayName(guildID, userID string) (string, bool) {
+	s := l.get()
+	if s == nil {
+		return "", false
+	}
+	m, err := s.GuildMember(guildID, userID)
+	if err != nil || m == nil || m.User == nil {
+		return "", false
+	}
+	switch {
+	case m.Nick != "":
+		return m.Nick, true
+	case m.User.GlobalName != "":
+		return m.User.GlobalName, true
+	default:
+		return m.User.Username, true
+	}
+}
+
 // ApplicationEmojis lists the bot application's emojis. Returns ErrNotConnected
 // before the gateway session exists.
 func (l *Live) ApplicationEmojis() ([]*discordgo.Emoji, error) {

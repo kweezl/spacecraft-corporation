@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -23,6 +24,14 @@ const (
 )
 
 func ptrTime(t time.Time) *time.Time { return &t }
+
+// dec / decPtr build decimals for test fixtures.
+func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }
+
+func decPtr(s string) *decimal.Decimal {
+	d := dec(s)
+	return &d
+}
 
 type contractsSuite struct {
 	testdb.Suite
@@ -69,7 +78,7 @@ func (s *contractsSuite) itemID(ctx context.Context, g uuid.UUID, threadID, name
 }
 
 func (s *contractsSuite) addItem(ctx context.Context, g uuid.UUID, threadID, name string, qty, maxItems int, actor string) error {
-	return s.repo.AddItemByID(ctx, g, s.cidOf(ctx, g, threadID), name, qty, maxItems, actor)
+	return s.repo.AddItemByID(ctx, g, s.cidOf(ctx, g, threadID), name, "", "", nil, qty, maxItems, actor)
 }
 
 func (s *contractsSuite) cancel(ctx context.Context, g uuid.UUID, threadID, actor string) error {
@@ -363,6 +372,231 @@ func (s *contractsSuite) TestSetDeadline_ClearAndSet() {
 	p, err = repo.ProgressByIDScoped(ctx, g, cid)
 	require.NoError(t, err)
 	require.NotNil(t, p.Deadline)
+}
+
+func (s *contractsSuite) TestAddItem_GDID() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	cid := s.newContract(ctx, g, thread)
+
+	require.NoError(t, repo.AddItemByID(ctx, g, cid, "Steel Ingot", "SteelIngot", "v1", nil, 500, 25, mgr))
+
+	// Same gdid under a different name snapshot -> ErrItemExists (catalog identity).
+	require.ErrorIs(t, repo.AddItemByID(ctx, g, cid, "Стальной слиток", "SteelIngot", "v1", nil, 10, 25, mgr), ErrItemExists)
+	// Same name snapshot under a different gdid -> ErrItemExists (panel identity).
+	require.ErrorIs(t, repo.AddItemByID(ctx, g, cid, "steel ingot", "OtherItem", "v1", nil, 10, 25, mgr), ErrItemExists)
+	// A legacy free-text item coexists with gdid items.
+	require.NoError(t, repo.AddItemByID(ctx, g, cid, "Handwritten", "", "", nil, 5, 25, mgr))
+
+	p, err := repo.Progress(ctx, g, thread)
+	require.NoError(t, err)
+	require.Len(t, p.Items, 2)
+	assert.Equal(t, "SteelIngot", p.Items[0].GDID)
+	assert.Equal(t, "v1", p.Items[0].GDVersion)
+	assert.Equal(t, "Steel Ingot", p.Items[0].Name)
+	assert.Empty(t, p.Items[1].GDID, "legacy item has no gdid")
+	assert.Empty(t, p.Items[1].GDVersion)
+}
+
+// TestMemberOutstanding_CarriesGDID covers Update A: the deliver/release picker
+// query returns each outstanding item's gamedata link (empty for a free-text
+// item) so the op modal can show the catalog icon.
+func (s *contractsSuite) TestMemberOutstanding_CarriesGDID() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	cid := s.newContract(ctx, g, thread)
+
+	require.NoError(t, repo.AddItemByID(ctx, g, cid, "Steel Ingot", "SteelIngot", "v1", nil, 500, 25, mgr))
+	require.NoError(t, repo.AddItemByID(ctx, g, cid, "Handwritten", "", "", nil, 50, 25, mgr))
+	require.NoError(t, repo.Participate(ctx, g, thread, "Steel Ingot", u1, 100))
+	require.NoError(t, repo.Participate(ctx, g, thread, "Handwritten", u1, 20))
+
+	items, err := repo.MemberOutstanding(ctx, g, thread, u1)
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	byName := map[string]MemberItem{}
+	for _, m := range items {
+		byName[m.Name] = m
+	}
+	assert.Equal(t, "SteelIngot", byName["Steel Ingot"].GDID)
+	assert.Equal(t, "v1", byName["Steel Ingot"].GDVersion)
+	assert.Empty(t, byName["Handwritten"].GDID, "a free-text item carries no gdid")
+	assert.Empty(t, byName["Handwritten"].GDVersion)
+}
+
+func (s *contractsSuite) TestAddItem_AliasDuplicate() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	cid := s.newContract(ctx, g, thread)
+
+	// A pre-gamedata free-text item, typed in English.
+	require.NoError(t, repo.AddItemByID(ctx, g, cid, "Hydraulic Actuator", "", "", nil, 100, 25, mgr))
+
+	// Adding the same game item with a DIFFERENT-language snapshot is caught by
+	// the alias set (the handler passes the catalog names in every language).
+	aliases := []string{"Actuator", "Hydraulic Actuator", "Hydraulikaktor"}
+	require.ErrorIs(t,
+		repo.AddItemByID(ctx, g, cid, "Гидравлический актуатор", "Actuator", "v1", aliases, 10, 25, mgr),
+		ErrItemExists)
+
+	// An unrelated item with disjoint aliases still goes in.
+	require.NoError(t, repo.AddItemByID(ctx, g, cid, "Steel Ingot", "SteelIngot", "v1", []string{"SteelIngot", "Steel Ingot"}, 10, 25, mgr))
+}
+
+func (s *contractsSuite) TestLinkItemGDID() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	cid := s.newContract(ctx, g, thread)
+
+	// Two pre-gamedata free-text items.
+	require.NoError(t, s.addItem(ctx, g, thread, "Actuator (typed)", 100, 25, mgr))
+	require.NoError(t, s.addItem(ctx, g, thread, "Steel Ingot", 50, 25, mgr))
+	itemID := s.itemID(ctx, g, thread, "Actuator (typed)")
+
+	// Linking stamps the gdid pair, keeps the stored name (panel identity), and
+	// enqueues a card refresh.
+	got, err := repo.LinkItemGDID(ctx, g, itemID, "Actuator", "v1", []string{"Actuator", "Hydraulic Actuator"}, mgr)
+	require.NoError(t, err)
+	assert.Equal(t, cid, got)
+	p, err := repo.Progress(ctx, g, thread)
+	require.NoError(t, err)
+	linked := p.Items[0]
+	assert.Equal(t, "Actuator (typed)", linked.Name, "the stored name snapshot is untouched")
+	assert.Equal(t, "Actuator", linked.GDID)
+	assert.Equal(t, "v1", linked.GDVersion)
+	var tasks int
+	require.NoError(t, s.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM outbox_tasks WHERE kind = $1 AND chronometric_id = $2`, taskRefresh, cid).Scan(&tasks))
+	assert.GreaterOrEqual(t, tasks, 1, "linking refreshes the forum card")
+
+	// Relinking the same item to a different gdid is allowed (fixing a wrong link).
+	_, err = repo.LinkItemGDID(ctx, g, itemID, "OtherThing", "v1", []string{"OtherThing"}, mgr)
+	require.NoError(t, err)
+
+	// Linking the OTHER item to a gdid already on the contract → duplicate.
+	otherID := s.itemID(ctx, g, thread, "Steel Ingot")
+	_, err = repo.LinkItemGDID(ctx, g, otherID, "OtherThing", "v1", []string{"OtherThing"}, mgr)
+	require.ErrorIs(t, err, ErrItemExists)
+	// Linking it to a gdid whose alias matches the first item's name → duplicate.
+	_, err = repo.LinkItemGDID(ctx, g, otherID, "Fresh", "v1", []string{"Fresh", "actuator (TYPED)"}, mgr)
+	require.ErrorIs(t, err, ErrItemExists)
+
+	// Cross-server / forged ids resolve to nothing; closed contracts refuse.
+	g2 := testdb.SeedServer(t, s.Pool, "g2")
+	_, err = repo.LinkItemGDID(ctx, g2, itemID, "X", "v1", nil, mgr)
+	require.ErrorIs(t, err, ErrNotFound)
+	require.NoError(t, s.cancel(ctx, g, thread, mgr))
+	_, err = repo.LinkItemGDID(ctx, g, otherID, "X", "v1", nil, mgr)
+	require.ErrorIs(t, err, ErrClosed)
+}
+
+func (s *contractsSuite) TestCreate_WithItemsRewardsAndTemplateLink() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	tid, err := repo.(TemplateRepository).CreateTemplate(ctx, g, "Weekly Steel", "desc", decimal.Zero, mgr)
+	require.NoError(t, err)
+
+	rep, lic := 5, 2
+	id, err := repo.Create(ctx, CreateInput{
+		ServerID: g, Kind: KindTemplate, Title: "From Tpl", Description: "d",
+		RewardCredits: decPtr("1250.50"), RewardReputation: &rep, RewardLicencePoints: &lic,
+		ParticipantRewardFactor: dec("33.33"),
+		LocationGDID:            "Station_Cairn", LocationGDVersion: "v1", TemplateID: &tid,
+		Items: []CreateItemInput{
+			{Name: "Steel Ingot", GDID: "SteelIngot", GDVersion: "v1", Qty: 500},
+			{Name: "Copper Wire", GDID: "CopperWire", GDVersion: "v1", Qty: 100},
+		},
+		CreatedByUserID: mgr,
+	})
+	require.NoError(t, err)
+
+	p, err := repo.ProgressByIDScoped(ctx, g, id)
+	require.NoError(t, err)
+	assert.Equal(t, KindTemplate, p.Kind)
+	require.NotNil(t, p.RewardCredits)
+	assert.True(t, p.RewardCredits.Equal(dec("1250.50")), "credits round-trip exactly as decimals, got %s", p.RewardCredits)
+	require.NotNil(t, p.RewardReputation)
+	assert.Equal(t, 5, *p.RewardReputation)
+	require.NotNil(t, p.RewardLicencePoints)
+	assert.Equal(t, 2, *p.RewardLicencePoints)
+	assert.True(t, p.ParticipantRewardFactor.Equal(dec("33.33")), "factor round-trips, got %s", p.ParticipantRewardFactor)
+	assert.Equal(t, "Station_Cairn", p.LocationGDID)
+	assert.Equal(t, "v1", p.LocationGDVersion)
+	require.NotNil(t, p.TemplateID)
+	assert.Equal(t, tid, *p.TemplateID)
+	require.Len(t, p.Items, 2)
+	assert.Equal(t, "SteelIngot", p.Items[0].GDID)
+
+	// Contract + items + exactly one create-thread task committed atomically.
+	var tasks int
+	require.NoError(t, s.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM outbox_tasks WHERE kind = $1 AND chronometric_id = $2`,
+		taskCreateThread, id).Scan(&tasks))
+	assert.Equal(t, 1, tasks)
+
+	// A plain custom create leaves everything unset.
+	id2, err := repo.Create(ctx, CreateInput{ServerID: g, Kind: KindCustom, Title: "Plain", CreatedByUserID: mgr})
+	require.NoError(t, err)
+	p2, err := repo.ProgressByIDScoped(ctx, g, id2)
+	require.NoError(t, err)
+	assert.Nil(t, p2.RewardCredits)
+	assert.Nil(t, p2.RewardReputation)
+	assert.Nil(t, p2.RewardLicencePoints)
+	assert.True(t, p2.ParticipantRewardFactor.IsZero())
+	assert.Empty(t, p2.LocationGDID)
+	assert.Nil(t, p2.TemplateID)
+	assert.Empty(t, p2.Items)
+}
+
+func (s *contractsSuite) TestUpdateRewards() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	cid := s.newContract(ctx, g, thread)
+
+	rep := 3
+	require.NoError(t, repo.UpdateRewards(ctx, g, cid, decPtr("99.90"), dec("15.5"), &rep, nil, mgr))
+	p, err := repo.ProgressByIDScoped(ctx, g, cid)
+	require.NoError(t, err)
+	require.NotNil(t, p.RewardCredits)
+	assert.True(t, p.RewardCredits.Equal(dec("99.90")), "got %s", p.RewardCredits)
+	assert.True(t, p.ParticipantRewardFactor.Equal(dec("15.5")), "factor updates with the rewards, got %s", p.ParticipantRewardFactor)
+	require.NotNil(t, p.RewardReputation)
+	assert.Equal(t, 3, *p.RewardReputation)
+	assert.Nil(t, p.RewardLicencePoints)
+
+	// Clearing: nil values null the columns; the factor drops to zero (NOT NULL).
+	require.NoError(t, repo.UpdateRewards(ctx, g, cid, nil, decimal.Zero, nil, nil, mgr))
+	p, err = repo.ProgressByIDScoped(ctx, g, cid)
+	require.NoError(t, err)
+	assert.Nil(t, p.RewardCredits)
+	assert.Nil(t, p.RewardReputation)
+	assert.True(t, p.ParticipantRewardFactor.IsZero())
+
+	// Open-guard: a cancelled contract refuses the mutation.
+	require.NoError(t, s.cancel(ctx, g, thread, mgr))
+	require.ErrorIs(t, repo.UpdateRewards(ctx, g, cid, decPtr("1"), decimal.Zero, nil, nil, mgr), ErrClosed)
+}
+
+func (s *contractsSuite) TestSetDeliveryLocation() {
+	t := s.T()
+	repo, ctx, g := s.seed()
+	cid := s.newContract(ctx, g, thread)
+
+	require.NoError(t, repo.SetDeliveryLocation(ctx, g, cid, "Station_Cairn", "v1", mgr))
+	p, err := repo.ProgressByIDScoped(ctx, g, cid)
+	require.NoError(t, err)
+	assert.Equal(t, "Station_Cairn", p.LocationGDID)
+	assert.Equal(t, "v1", p.LocationGDVersion)
+
+	// Clearing with an empty gdid drops the version too (the pair CHECK).
+	require.NoError(t, repo.SetDeliveryLocation(ctx, g, cid, "", "v1", mgr))
+	p, err = repo.ProgressByIDScoped(ctx, g, cid)
+	require.NoError(t, err)
+	assert.Empty(t, p.LocationGDID)
+	assert.Empty(t, p.LocationGDVersion)
+
+	require.NoError(t, s.cancel(ctx, g, thread, mgr))
+	require.ErrorIs(t, repo.SetDeliveryLocation(ctx, g, cid, "X", "v1", mgr), ErrClosed)
 }
 
 func (s *contractsSuite) TestProgressScoped_ForgedIDs() {

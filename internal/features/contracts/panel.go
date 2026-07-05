@@ -12,6 +12,7 @@ import (
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
+	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
 )
 
 // The button panel lets a member participate/deliver/release straight from the
@@ -157,6 +158,10 @@ func (h *Feature) handlePanelButton(ctx context.Context, r registry.Responder, i
 type itemAvail struct {
 	name  string
 	avail int
+	// gdid/gdVersion carry the item's gamedata link so the modal option can show
+	// its catalog icon; both empty for a free-text item (plain option).
+	gdid      string
+	gdVersion string
 }
 
 // eligibleItems lists the items a member may act on for an op, with the live
@@ -176,7 +181,7 @@ func (h *Feature) eligibleItems(ctx context.Context, serverID uuid.UUID, threadI
 			if m.Outstanding() <= 0 {
 				continue
 			}
-			out = append(out, itemAvail{name: m.Name, avail: m.Outstanding()})
+			out = append(out, itemAvail{name: m.Name, avail: m.Outstanding(), gdid: m.GDID, gdVersion: m.GDVersion})
 			if len(out) >= maxSelectOptions {
 				break
 			}
@@ -195,7 +200,7 @@ func (h *Feature) eligibleItems(ctx context.Context, serverID uuid.UUID, threadI
 		if it.Remaining() <= 0 {
 			continue
 		}
-		out = append(out, itemAvail{name: it.Name, avail: it.Remaining()})
+		out = append(out, itemAvail{name: it.Name, avail: it.Remaining(), gdid: it.GDID, gdVersion: it.GDVersion})
 		if len(out) >= maxSelectOptions {
 			break
 		}
@@ -242,7 +247,7 @@ func (h *Feature) openOpModal(ctx context.Context, r registry.Responder, i *disc
 	prefill := len(items) == 1
 	opts := make([]discordgo.SelectMenuOption, 0, len(items))
 	for idx, it := range items {
-		o := h.itemOption(ctx, serverID, it.name, descKey, map[string]any{amountKey: it.avail})
+		o := h.itemOption(ctx, serverID, it.name, descKey, map[string]any{amountKey: it.avail}, it.gdid, it.gdVersion)
 		if prefill && idx == 0 { // pre-select the default so the modal is submit-and-go
 			o.Default = true
 		}
@@ -298,13 +303,19 @@ func (h *Feature) defaultedItem(ctx context.Context, serverID uuid.UUID, threadI
 // itemOption builds one select option. The item name is both the label and the
 // value (the repository keys mutations by name); both are clamped to Discord's
 // 100-rune option cap. Item names longer than that won't round-trip, but they are
-// far beyond any real in-game item name.
-func (h *Feature) itemOption(ctx context.Context, serverID uuid.UUID, name, descKey string, data map[string]any) discordgo.SelectMenuOption {
-	return discordgo.SelectMenuOption{
+// far beyond any real in-game item name. A gamedata-linked item (gdid set) also
+// carries its catalog icon as the option emoji, resolved from the stamped catalog
+// version; free-text items and items whose icon is absent render plain.
+func (h *Feature) itemOption(ctx context.Context, serverID uuid.UUID, name, descKey string, data map[string]any, gdid, gdVersion string) discordgo.SelectMenuOption {
+	o := discordgo.SelectMenuOption{
 		Label:       truncate(name, 100),
 		Value:       truncate(name, 100),
 		Description: truncate(h.loc.Render(ctx, serverID, descKey, data), 100),
 	}
+	if gdid != "" {
+		o.Emoji = h.optionEmojiFor(gamedata.GDID(gdid), gdVersion)
+	}
+	return o
 }
 
 // handleQtyModal runs the mutation when the modal is submitted: it re-authorizes
@@ -391,12 +402,12 @@ func (h *Feature) applyOp(ctx context.Context, serverID uuid.UUID, p pendingOp, 
 	return "", fmt.Errorf("contracts: unknown pending op %q", p.op)
 }
 
-// authorized re-checks the interacting member against the public panel's
-// grantable key (panelAccessKey = "contracts.use"): administrators bypass;
-// otherwise the member needs a role granted that key (DefaultDeny). With the
-// permissions feature absent (access nil) gating is off entirely, like the
-// session's gate. op is unused for the check (one coarse panel key) but kept for
-// symmetry with the call sites.
+// authorized re-checks the interacting member against the public panel's access:
+// administrators bypass; otherwise the member needs a role granted the
+// participant key (panelAccessKey = "contracts.use") OR the contract-manager key
+// (keyManage) — a manager may self-serve on the panel too. With the permissions
+// feature absent (access nil) gating is off entirely, like the session's gate. op
+// is unused for the check but kept for symmetry with the call sites.
 func (h *Feature) authorized(ctx context.Context, i *discordgo.InteractionCreate, serverID uuid.UUID, _ string) (bool, error) {
 	if i.Member != nil && i.Member.Permissions&discordgo.PermissionAdministrator != 0 {
 		return true, nil
@@ -408,12 +419,18 @@ func (h *Feature) authorized(ctx context.Context, i *discordgo.InteractionCreate
 	if i.Member != nil {
 		roles = i.Member.Roles
 	}
-	return h.access.IsAllowed(ctx, session.AccessRequest{
-		ServerID:    serverID,
-		Command:     panelAccessKey,
-		UserRoles:   roles,
-		DefaultDeny: true,
-	})
+	for _, key := range []string{panelAccessKey, keyManage} {
+		ok, err := h.access.IsAllowed(ctx, session.AccessRequest{
+			ServerID:    serverID,
+			Command:     key,
+			UserRoles:   roles,
+			DefaultDeny: true,
+		})
+		if err != nil || ok {
+			return ok, err
+		}
+	}
+	return false, nil
 }
 
 // pendingOp bundles the resolved mutation parameters passed to applyOp.

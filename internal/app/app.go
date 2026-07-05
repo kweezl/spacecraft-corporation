@@ -20,6 +20,7 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
 	"github.com/kweezl/spacecraft-corporation/internal/features/permissions"
 	"github.com/kweezl/spacecraft-corporation/internal/features/ping"
+	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/instrumentation"
 	"github.com/kweezl/spacecraft-corporation/internal/logger"
@@ -62,6 +63,9 @@ func coreModules() []fx.Option {
 		// emoji: name-keyed access to the bot's application emojis, synced at
 		// startup (depends on session's Live for the gateway).
 		emoji.Module(),
+		// gamedata: compiled-in, versioned game reference data (items, contract
+		// templates, ...). No I/O — the Registry is ready as soon as it is built.
+		gamedata.Module(),
 	}
 }
 

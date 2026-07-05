@@ -7,6 +7,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -15,8 +16,10 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/session"
+	"github.com/kweezl/spacecraft-corporation/internal/emoji"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts/mocks"
+	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
 	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 )
 
@@ -24,16 +27,85 @@ var gid = uuid.New()
 
 const thread = "thread-1"
 
+// testRegistry is the real compiled-in gamedata (pure data, no I/O), shared by
+// every handler test.
+var testRegistry = func() *gamedata.Registry {
+	reg, err := gamedata.Load(nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	return reg
+}()
+
+// staticLang resolves every server to a fixed language (the picker's analog of
+// i18n.StaticResolver).
+type staticLang struct{ lang i18n.Language }
+
+func (s staticLang) Resolve(context.Context, uuid.UUID) (string, i18n.Language) {
+	return "standard", s.lang
+}
+
+// staticDefaults is a RewardDefaults resolving every server to a fixed factor
+// (writes are no-op accepted).
+type staticDefaults struct{ factor decimal.Decimal }
+
+func (s staticDefaults) ContractsRewardFactor(context.Context, uuid.UUID) decimal.Decimal {
+	return s.factor
+}
+func (s staticDefaults) SetContractsRewardFactor(context.Context, uuid.UUID, decimal.Decimal) error {
+	return nil
+}
+
+// deps bundles the optional Feature dependencies a test may want to override;
+// the zero value gives strict template-repo/search mocks, a zero reward-factor
+// default, no emojis, English.
+type featureDeps struct {
+	tpls     contracts.TemplateRepository
+	search   contracts.GameSearch
+	access   session.CommandAccess
+	defaults contracts.RewardDefaults
+	reports  contracts.ReportsConfig
+	emo      *emoji.Store
+	// lang overrides the server's rendered + content language (default en).
+	lang i18n.Language
+}
+
 func newFeature(t *testing.T, repo contracts.Repository, gw contracts.Gateway, forum contracts.ForumConfig) *contracts.Feature {
-	return newFeatureAccess(t, repo, gw, forum, nil)
+	return newFeatureDeps(t, repo, gw, forum, featureDeps{})
 }
 
 func newFeatureAccess(t *testing.T, repo contracts.Repository, gw contracts.Gateway, forum contracts.ForumConfig, access session.CommandAccess) *contracts.Feature {
+	return newFeatureDeps(t, repo, gw, forum, featureDeps{access: access})
+}
+
+// newFeatureReports builds a Feature with a specific ReportsConfig (the payout
+// task + reprint paths resolve the reports channel through it).
+func newFeatureReports(t *testing.T, repo contracts.Repository, gw contracts.Gateway, reports contracts.ReportsConfig) *contracts.Feature {
+	return newFeatureDeps(t, repo, gw, mocks.NewMockForumConfig(t), featureDeps{reports: reports})
+}
+
+func newFeatureDeps(t *testing.T, repo contracts.Repository, gw contracts.Gateway, forum contracts.ForumConfig, d featureDeps) *contracts.Feature {
 	t.Helper()
+	if d.lang == "" {
+		d.lang = i18n.LanguageEN
+	}
 	tr, err := i18n.New(i18n.Config{DefaultLanguage: "en", DefaultTheme: "standard"})
 	require.NoError(t, err)
-	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
-	return contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, access, zap.NewNop())
+	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: d.lang})
+	if d.tpls == nil {
+		d.tpls = mocks.NewMockTemplateRepository(t)
+	}
+	if d.search == nil {
+		d.search = mocks.NewMockGameSearch(t)
+	}
+	if d.defaults == nil {
+		d.defaults = staticDefaults{}
+	}
+	if d.reports == nil {
+		d.reports = mocks.NewMockReportsConfig(t)
+	}
+	return contracts.New(repo, d.tpls, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, d.reports, d.defaults, d.access,
+		d.search, staticLang{lang: d.lang}, testRegistry, d.emo, zap.NewNop())
 }
 
 // newFeatureObserved is newFeature with a log observer, for asserting warnings.
@@ -43,7 +115,8 @@ func newFeatureObserved(t *testing.T, repo contracts.Repository, gw contracts.Ga
 	require.NoError(t, err)
 	loc := i18n.NewLocalizer(tr, i18n.StaticResolver{Theme: "standard", Lang: "en"})
 	core, logs := observer.New(zapcore.WarnLevel)
-	return contracts.New(repo, loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, nil, zap.New(core)), logs
+	return contracts.New(repo, mocks.NewMockTemplateRepository(t), loc, contracts.Config{PageSize: 8, MaxItems: 25}, gw, forum, mocks.NewMockReportsConfig(t), staticDefaults{}, nil,
+		mocks.NewMockGameSearch(t), staticLang{lang: i18n.LanguageEN}, testRegistry, nil, zap.New(core)), logs
 }
 
 // fakeAccess grants exactly the keys in its set; everything else is denied. It
@@ -198,11 +271,14 @@ func TestConsole_CommandAccessIsDiscordManaged(t *testing.T) {
 	assert.Equal(t, "contracts", cmd.Def.Name)
 	assert.True(t, cmd.DiscordManaged, "who can open /contracts is configured in Discord, not granted by the bot")
 	assert.False(t, cmd.DefaultDeny, "the bot does not coarse-gate /contracts")
-	// The fine-grained create/edit keys and the public panel key remain grantable.
+	// Two grantable keys remain: the participant panel key and the single manager
+	// key gating every console modification. The old per-kind keys are gone.
 	assert.Contains(t, cmd.ExtraAccessKeys, "contracts.use")
-	assert.Contains(t, cmd.ExtraAccessKeys, "contracts.custom")
-	assert.Contains(t, cmd.ExtraAccessKeys, "contracts.template")
-	assert.Contains(t, cmd.ExtraAccessKeys, "contracts.republish")
+	assert.Contains(t, cmd.ExtraAccessKeys, "contracts.manage")
+	assert.NotContains(t, cmd.ExtraAccessKeys, "contracts.custom")
+	assert.NotContains(t, cmd.ExtraAccessKeys, "contracts.template")
+	assert.NotContains(t, cmd.ExtraAccessKeys, "contracts.templates")
+	assert.NotContains(t, cmd.ExtraAccessKeys, "contracts.republish")
 }
 
 func TestConsole_OpensDashboard(t *testing.T) {
@@ -230,11 +306,20 @@ func TestConsole_DashboardOpensList(t *testing.T) {
 	assert.True(t, r.updated, "opening the list edits the console in place")
 }
 
-func TestConsole_TemplateIsWIP(t *testing.T) {
+func TestConsole_TemplateOpensPickList(t *testing.T) {
+	tpls := mocks.NewMockTemplateRepository(t)
+	tid := uuid.New()
+	tpls.EXPECT().ListTemplates(mock.Anything, gid, "", 3, 0).
+		Return([]contracts.TemplateListEntry{{ID: tid, Title: "Weekly Steel", ItemCount: 2}}, 1, nil).Once()
+
 	r := &capture{}
-	f := newFeature(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t))
+	f := newFeatureDeps(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), featureDeps{tpls: tpls})
 	require.NoError(t, f.Component().Handler(context.Background(), r, component("", member("officer"), "contract:tmpl"), gid))
-	assert.NotEmpty(t, r.content, "the template button gives an ephemeral WIP notice")
+	require.NotEmpty(t, r.components)
+	assert.True(t, r.updated, "the template button opens the pick list in place")
+	ids := buttonIDs(r.components)
+	assert.True(t, has(ids, "contract:tuse:"+tid.String()), "each template row carries a Use accessory")
+	assert.True(t, has(ids, "contract:tsearch:p"), "the pick list has a search button")
 }
 
 func TestConsole_OpenContract(t *testing.T) {
@@ -297,22 +382,25 @@ func TestConsole_DashboardHidesCreateButtonsWithoutPerm(t *testing.T) {
 	repo := mocks.NewMockRepository(t)
 	repo.EXPECT().Counts(mock.Anything, gid).Return(contracts.Counts{}, nil).Twice()
 
-	// Granted only the custom key: custom-create shows, template-create hidden.
+	// A manager sees every authoring button (custom + template + library); the list
+	// button always shows.
 	r := &capture{}
-	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.custom"))
+	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.manage"))
 	run(t, f, r, consoleCmd(member("officer")))
 	ids := buttonIDs(r.components)
-	assert.True(t, has(ids, "contract:create"), "custom-create button shown when granted")
-	assert.False(t, has(ids, "contract:tmpl"), "template-create button hidden without grant")
+	assert.True(t, has(ids, "contract:create"), "custom-create shown for a manager")
+	assert.True(t, has(ids, "contract:tmpl"), "template-create shown for a manager")
+	assert.True(t, has(ids, "contract:tlist:0:"), "templates-library shown for a manager")
 	assert.True(t, has(ids, "contract:golist"), "list button is always shown")
 
-	// Granted nothing: neither create button shows, only the list button.
+	// A non-manager sees none of the authoring buttons, only the list button.
 	r2 := &capture{}
-	f2 := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant())
+	f2 := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.use"))
 	run(t, f2, r2, consoleCmd(member("nobody")))
 	ids2 := buttonIDs(r2.components)
 	assert.False(t, has(ids2, "contract:create"))
 	assert.False(t, has(ids2, "contract:tmpl"))
+	assert.False(t, has(ids2, "contract:tlist:0:"))
 	assert.True(t, has(ids2, "contract:golist"))
 }
 
@@ -335,34 +423,37 @@ func TestConsole_AdminBypassesCreateGate(t *testing.T) {
 	assert.Equal(t, "contract:m_create", r.modalCustomID, "administrators bypass the create gate")
 }
 
-func TestConsole_TemplateContractBlocksItemEdit(t *testing.T) {
+func TestConsole_AddItemRequiresManagerKey(t *testing.T) {
+	// Add-item opens the gamedata browser for a contract manager; a non-manager is
+	// denied before the browser opens. Kind no longer affects the key.
 	cid := uuid.New()
-	repo := mocks.NewMockRepository(t)
-	// Adding an item resolves the contract kind first; a template contract refuses
-	// item changes outright (before any permission/AddItem call).
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindTemplate, nil).Once()
-
 	r := &capture{}
-	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.template"))
+	f := newFeatureAccess(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.manage"))
 	require.NoError(t, f.Component().Handler(context.Background(), r, component("", member("officer"), "contract:cadd:"+cid.String()), gid))
-	assert.NotEmpty(t, r.content, "template item edit is refused with a notice")
-	assert.Empty(t, r.modalCustomID, "no add-item modal is opened for a template contract")
+	assert.True(t, r.updated, "the item browser opens for a manager")
+	require.NotEmpty(t, r.components)
+
+	// A participant (non-manager) is denied the same click.
+	r2 := &capture{}
+	f2 := newFeatureAccess(t, mocks.NewMockRepository(t), mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.use"))
+	require.NoError(t, f2.Component().Handler(context.Background(), r2, component("", member("participant"), "contract:cadd:"+cid.String()), gid))
+	assert.NotEmpty(t, r2.content, "a non-manager gets an ephemeral denial")
+	assert.False(t, r2.updated, "the browser does not open")
 }
 
-func TestConsole_TemplateContractEditAllowed(t *testing.T) {
+func TestConsole_EditModalRequiresManagerKey(t *testing.T) {
 	cid := uuid.New()
 	dl := time.Now().Add(2 * time.Hour)
 	repo := mocks.NewMockRepository(t)
-	repo.EXPECT().KindByID(mock.Anything, gid, cid).Return(contracts.KindTemplate, nil).Once()
-	// Editing a template is allowed (deadline only); the modal opener loads it.
+	// The manager key opens the edit modal (no kind resolution); the opener loads it.
 	repo.EXPECT().ProgressByIDScoped(mock.Anything, gid, cid).Return(contracts.Progress{
 		Contract: contracts.Contract{ID: cid, ServerID: gid, Status: contracts.StatusOpen, Kind: contracts.KindTemplate, Deadline: &dl, LastRefreshedAt: time.Now()},
 	}, nil).Once()
 
 	r := &capture{}
-	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.template"))
+	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.manage"))
 	require.NoError(t, f.Component().Handler(context.Background(), r, component("", member("officer"), "contract:cedit:"+cid.String()), gid))
-	assert.Equal(t, "contract:m_cedit:"+cid.String(), r.modalCustomID, "edit modal opens for a template contract")
+	assert.Equal(t, "contract:m_cedit:"+cid.String(), r.modalCustomID, "edit modal opens for a manager")
 }
 
 func TestConsole_ItemViewParticipantEditIsInline(t *testing.T) {
@@ -387,14 +478,14 @@ func TestConsole_ItemViewParticipantEditIsInline(t *testing.T) {
 func TestConsole_ParticipantManageRequiresManagePerm(t *testing.T) {
 	cid := uuid.New()
 	itemID := uuid.New()
-	// keyManage is a fixed-key gate (no kind resolution), so a member without it is
-	// refused before any repository call.
+	// Participant management needs the manager key; a participant (contracts.use)
+	// is refused before any repository call.
 	repo := mocks.NewMockRepository(t)
 
 	r := &capture{}
-	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.custom"))
+	f := newFeatureAccess(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), grant("contracts.use"))
 	require.NoError(t, f.Component().Handler(context.Background(), r,
-		component("", member("officer"), "contract:pedit:"+itemID.String()+":"+cid.String()), gid))
+		component("", member("participant"), "contract:pedit:"+itemID.String()+":"+cid.String()), gid))
 	assert.NotEmpty(t, r.content, "denied without contracts.manage")
 	assert.Empty(t, r.modalCustomID, "no participant modal opened")
 }

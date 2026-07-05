@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kweezl/spacecraft-corporation/internal/emoji"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts"
 	"github.com/kweezl/spacecraft-corporation/internal/features/contracts/mocks"
 )
@@ -153,6 +154,50 @@ func TestPanel_ParticipateMultiItem_Modal(t *testing.T) {
 	repo.EXPECT().Participate(mock.Anything, gid, thread, "Steel", "u1", 50).Return(nil).Once()
 	dispatch(t, f, r, modalSubmit(thread, m, r.modalCustomID, "Steel", "50"))
 	assert.Contains(t, r.content, "Steel")
+}
+
+// TestPanel_ModalOptionIcons covers Update A: a gamedata-linked item's modal
+// option carries its catalog icon emoji (resolved from the stamped version), while
+// a free-text item renders plain. "Actuator" is a real catalog item whose icon
+// name the test emoji store carries.
+func TestPanel_ModalOptionIcons(t *testing.T) {
+	emo := emoji.StaticStore(map[string]string{"Actuator": "<:Actuator:1234567890>"})
+
+	t.Run("participate options show gdid icons, free-text plain", func(t *testing.T) {
+		repo := mocks.NewMockRepository(t)
+		f := newFeatureDeps(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), featureDeps{emo: emo})
+		r := &capture{}
+		m := member("u1")
+		prog := contracts.Progress{
+			Contract: contracts.Contract{ServerID: gid, ThreadID: thread, Status: contracts.StatusOpen},
+			Items: []contracts.Item{
+				{Name: "Steel", GDID: "Actuator", RequiredQty: 100},
+				{Name: "Mystery Ore", RequiredQty: 50}, // free-text, no gdid
+			},
+		}
+		repo.EXPECT().Progress(mock.Anything, gid, thread).Return(prog, nil).Once()
+		dispatch(t, f, r, component(thread, m, "contract:panel:participate"))
+		opts := sentModalSelect(t, r.modalComponents).Options
+		require.Len(t, opts, 2)
+		require.NotNil(t, opts[0].Emoji, "the gamedata item's option carries its catalog icon")
+		assert.Equal(t, "Actuator", opts[0].Emoji.Name)
+		assert.Equal(t, "1234567890", opts[0].Emoji.ID)
+		assert.Nil(t, opts[1].Emoji, "a free-text item's option renders plain")
+	})
+
+	t.Run("deliver options carry the gdid icon from MemberOutstanding", func(t *testing.T) {
+		repo := mocks.NewMockRepository(t)
+		f := newFeatureDeps(t, repo, mocks.NewMockGateway(t), mocks.NewMockForumConfig(t), featureDeps{emo: emo})
+		r := &capture{}
+		m := member("u1")
+		out := []contracts.MemberItem{{Name: "Steel", GDID: "Actuator", Reserved: 10}}
+		repo.EXPECT().MemberOutstanding(mock.Anything, gid, thread, "u1").Return(out, nil).Once()
+		dispatch(t, f, r, component(thread, m, "contract:panel:deliver"))
+		opts := sentModalSelect(t, r.modalComponents).Options
+		require.Len(t, opts, 1)
+		require.NotNil(t, opts[0].Emoji, "the reserved item's icon rides through MemberOutstanding")
+		assert.Equal(t, "Actuator", opts[0].Emoji.Name)
+	})
 }
 
 // TestPanel_DeliverSingleItem_OpensModal covers the deliver path: with one

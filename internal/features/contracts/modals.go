@@ -2,13 +2,13 @@ package contracts
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 )
@@ -26,6 +26,16 @@ const (
 	inMinutes = "minutes"
 	inQty     = "qty"
 	inConfirm = "confirm"
+	// inQuery is the gamedata search field (item / space-object pickers).
+	inQuery = "query"
+	// The four reward fields (contract + template rewards modals).
+	inCredits    = "credits"
+	inReputation = "reputation"
+	inLicence    = "licence"
+	inFactor     = "factor"
+
+	rewardFieldMaxLen = 13 // NUMERIC(14,2): up to 10 digits + separator + 2
+	factorFieldMaxLen = 6  // NUMERIC(5,2): "100.00"
 )
 
 // labelInput builds a Label-wrapped text input (the modal layout the panel uses).
@@ -38,6 +48,25 @@ func (h *Feature) labelInput(ctx context.Context, serverID uuid.UUID, labelKey, 
 			Value:     value,
 			Required:  boolPtr(required),
 			MaxLength: maxLen,
+		},
+	}
+}
+
+// searchInput is a gamedata/title search field: a Label-wrapped text input whose
+// description spells out the search-then-pick flow — Discord modals have NO live
+// autocomplete (that exists only on slash-command options), so matches can only
+// appear after the modal is submitted. hintKey picks the per-flow explanation.
+func (h *Feature) searchInput(ctx context.Context, serverID uuid.UUID, hintKey, value string, required bool) discordgo.Label {
+	return discordgo.Label{
+		Label:       h.loc.Render(ctx, serverID, "contracts.console.lbl_search", nil),
+		Description: truncate(h.loc.Render(ctx, serverID, hintKey, nil), 100),
+		Component: discordgo.TextInput{
+			CustomID:    inQuery,
+			Style:       discordgo.TextInputShort,
+			Value:       value,
+			Placeholder: truncate(h.loc.Render(ctx, serverID, "contracts.console.search_placeholder", nil), 100),
+			Required:    boolPtr(required),
+			MaxLength:   100,
 		},
 	}
 }
@@ -60,8 +89,8 @@ func (h *Feature) modalTitle(ctx context.Context, serverID uuid.UUID, key string
 
 func (h *Feature) openCreateModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
 	// Custom create captures all up-front fields (name, description, deadline);
-	// items are added afterward from the contract view. The future template path
-	// will instead pick a template and prompt only for the deadline.
+	// items are added afterward from the contract view. The template path instead
+	// picks a template and confirms title + deadline (template_modals.go).
 	comps := append([]discordgo.MessageComponent{
 		h.labelInput(ctx, serverID, "contracts.console.lbl_name", inName, discordgo.TextInputShort, "", true, titleMaxLen),
 		h.labelInput(ctx, serverID, "contracts.console.lbl_description", inDesc, discordgo.TextInputParagraph, "", false, descriptionMaxLen),
@@ -84,9 +113,13 @@ func (h *Feature) submitCreate(ctx context.Context, r registry.Responder, i *dis
 	}
 	// No AppID/Token: the console navigates to the new contract itself, so the
 	// worker must NOT edit this interaction's response (it would clobber the view).
+	// The participant reward factor prefills from the server default (copied, so a
+	// later default change never touches this contract; editable in the rewards
+	// modal like the rest).
 	cid, err := h.repo.Create(ctx, CreateInput{
 		ServerID: serverID, Kind: KindCustom, Title: title, Description: strings.TrimSpace(modalTextValue(data, inDesc)),
-		Deadline: deadline, CreatedByUserID: invokerID(i),
+		Deadline: deadline, ParticipantRewardFactor: h.defaults.ContractsRewardFactor(ctx, serverID),
+		CreatedByUserID: invokerID(i),
 	})
 	if err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
@@ -94,7 +127,7 @@ func (h *Feature) submitCreate(ctx context.Context, r registry.Responder, i *dis
 	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
 }
 
-// --- edit (name + description + deadline; template: deadline only) ---
+// --- edit (name + description + deadline) ---
 
 func (h *Feature) openEditModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	cid, ok := argUUID(parts, 0)
@@ -110,16 +143,12 @@ func (h *Feature) openEditModal(ctx context.Context, r registry.Responder, i *di
 		dd, hrs, mins := splitDHM(time.Until(*prog.Deadline))
 		d, hh, m = strconv.Itoa(dd), strconv.Itoa(hrs), strconv.Itoa(mins)
 	}
-	// A template contract's items are fixed, so its edit form is the deadline only;
-	// a custom contract edits name + description + deadline in one form.
-	var comps []discordgo.MessageComponent
-	if prog.Kind == KindCustom {
-		comps = append(comps,
-			h.labelInput(ctx, serverID, "contracts.console.lbl_name", inName, discordgo.TextInputShort, prog.Title, true, titleMaxLen),
-			h.labelInput(ctx, serverID, "contracts.console.lbl_description", inDesc, discordgo.TextInputParagraph, prog.Description, false, descriptionMaxLen),
-		)
-	}
-	comps = append(comps, h.dhmInputs(ctx, serverID, d, hh, m)...)
+	// Both kinds edit name + description + deadline: a template contract is fully
+	// editable — the template only supplied its defaults.
+	comps := append([]discordgo.MessageComponent{
+		h.labelInput(ctx, serverID, "contracts.console.lbl_name", inName, discordgo.TextInputShort, prog.Title, true, titleMaxLen),
+		h.labelInput(ctx, serverID, "contracts.console.lbl_description", inDesc, discordgo.TextInputParagraph, prog.Description, false, descriptionMaxLen),
+	}, h.dhmInputs(ctx, serverID, d, hh, m)...)
 	return r.RespondModal(i.Interaction, buildID(segMCEdit, cid.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_edit_title"), comps)
 }
 
@@ -128,26 +157,18 @@ func (h *Feature) submitEdit(ctx context.Context, r registry.Responder, i *disco
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
 	}
-	kind, err := h.repo.KindByID(ctx, serverID, cid)
-	if err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
 	data := i.ModalSubmitData()
 	deadline, derr := parseDHM(modalTextValue(data, inDays), modalTextValue(data, inHours), modalTextValue(data, inMinutes))
 	if derr != nil {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_deadline", nil))
 	}
-	// Custom contracts also rewrite title + description; template contracts have
-	// only a deadline to set.
-	if kind == KindCustom {
-		title := normalizeItem(modalTextValue(data, inName))
-		if title == "" {
-			return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_name", nil))
-		}
-		desc := strings.TrimSpace(modalTextValue(data, inDesc))
-		if err := h.repo.UpdateDetails(ctx, serverID, cid, title, desc, invokerID(i)); err != nil {
-			return h.consoleErr(ctx, r, i, serverID, err)
-		}
+	title := normalizeItem(modalTextValue(data, inName))
+	if title == "" {
+		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_name", nil))
+	}
+	desc := strings.TrimSpace(modalTextValue(data, inDesc))
+	if err := h.repo.UpdateDetails(ctx, serverID, cid, title, desc, invokerID(i)); err != nil {
+		return h.consoleErr(ctx, r, i, serverID, err)
 	}
 	if err := h.repo.SetDeadline(ctx, serverID, cid, deadline, invokerID(i)); err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
@@ -155,18 +176,16 @@ func (h *Feature) submitEdit(ctx context.Context, r registry.Responder, i *disco
 	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
 }
 
-// --- add item ---
+// --- add item (category browser or search → pick → quantity; browse.go) ---
 
-func (h *Feature) openAddItemModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+// handleAddItem opens the item picker for a contract: the console message
+// becomes the category browser (a Search button on it covers type-first users).
+func (h *Feature) handleAddItem(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	cid, ok := argUUID(parts, 0)
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
 	}
-	comps := []discordgo.MessageComponent{
-		h.labelInput(ctx, serverID, "contracts.console.lbl_item_name", inName, discordgo.TextInputShort, "", true, 100),
-		h.labelInput(ctx, serverID, "contracts.console.lbl_qty", inQty, discordgo.TextInputShort, "", true, 12),
-	}
-	return r.RespondModal(i.Interaction, buildID(segMCAdd, cid.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_additem_title"), comps)
+	return h.renderBrowseCategories(ctx, r, i, serverID, pickContractItem, cid)
 }
 
 func (h *Feature) submitAddItem(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
@@ -174,23 +193,15 @@ func (h *Feature) submitAddItem(ctx context.Context, r registry.Responder, i *di
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
 	}
-	data := i.ModalSubmitData()
-	name := normalizeItem(modalTextValue(data, inName))
-	qty, qerr := parseQty(modalTextValue(data, inQty))
-	if name == "" || qerr != nil {
+	query := strings.TrimSpace(modalTextValue(i.ModalSubmitData(), inQuery))
+	if query == "" {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_item", nil))
 	}
-	err := h.repo.AddItemByID(ctx, serverID, cid, name, qty, h.cfg.MaxItems, invokerID(i))
-	if errors.Is(err, ErrMaxItems) {
-		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.max_items", map[string]any{"Limit": h.cfg.MaxItems}))
-	}
-	if err != nil {
-		return h.consoleErr(ctx, r, i, serverID, err)
-	}
-	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
+	return h.runPick(ctx, r, i, serverID, pickContractItem, cid, query)
 }
 
-// --- item edit (name + quantity) ---
+// --- item edit (quantity; the name is free-text-only — a gamedata item's name
+// is catalog-owned) ---
 
 func (h *Feature) openItemEditModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
 	itemID, ok := argUUID(parts, 0)
@@ -201,17 +212,18 @@ func (h *Feature) openItemEditModal(ctx context.Context, r registry.Responder, i
 	if err != nil {
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
-	name, qty := "", ""
+	name, qty, gd := "", "", false
 	for _, it := range prog.Items {
 		if it.ID == itemID {
-			name, qty = it.Name, strconv.Itoa(it.RequiredQty)
+			name, qty, gd = it.Name, strconv.Itoa(it.RequiredQty), it.GDID != ""
 			break
 		}
 	}
-	comps := []discordgo.MessageComponent{
-		h.labelInput(ctx, serverID, "contracts.console.lbl_item_name", inName, discordgo.TextInputShort, name, true, 100),
-		h.labelInput(ctx, serverID, "contracts.console.lbl_qty", inQty, discordgo.TextInputShort, qty, true, 12),
+	var comps []discordgo.MessageComponent
+	if !gd {
+		comps = append(comps, h.labelInput(ctx, serverID, "contracts.console.lbl_item_name", inName, discordgo.TextInputShort, name, true, 100))
 	}
+	comps = append(comps, h.labelInput(ctx, serverID, "contracts.console.lbl_qty", inQty, discordgo.TextInputShort, qty, true, 12))
 	return r.RespondModal(i.Interaction, buildID(segMIEdit, itemID.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_item_edit_title"), comps)
 }
 
@@ -220,8 +232,26 @@ func (h *Feature) submitItemEdit(ctx context.Context, r registry.Responder, i *d
 	if !ok {
 		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
 	}
+	// A gamedata item's modal has no name field; keep its stored snapshot (the
+	// public panel's identity) and only change the quantity.
+	prog, err := h.repo.ProgressByItemScoped(ctx, serverID, itemID)
+	if err != nil {
+		return h.consoleErr(ctx, r, i, serverID, err)
+	}
+	current := ""
+	for _, it := range prog.Items {
+		if it.ID == itemID {
+			if it.GDID != "" {
+				current = it.Name
+			}
+			break
+		}
+	}
 	data := i.ModalSubmitData()
-	name := normalizeItem(modalTextValue(data, inName))
+	name := current
+	if name == "" {
+		name = normalizeItem(modalTextValue(data, inName))
+	}
 	qty, qerr := parseQty(modalTextValue(data, inQty))
 	if name == "" || qerr != nil {
 		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_item", nil))
@@ -230,6 +260,124 @@ func (h *Feature) submitItemEdit(ctx context.Context, r registry.Responder, i *d
 		return h.consoleErr(ctx, r, i, serverID, err)
 	}
 	return h.renderItemView(ctx, r, i, serverID, itemID, 0, true)
+}
+
+// --- rewards + delivery location (contract view) ---
+
+// rewardInputs builds the four reward fields, prefilled (shared with the
+// template rewards modal). Four of Discord's five modal inputs — one slot left.
+func (h *Feature) rewardInputs(ctx context.Context, serverID uuid.UUID, credits, reputation, licence, factor string) []discordgo.MessageComponent {
+	return []discordgo.MessageComponent{
+		h.labelInput(ctx, serverID, "contracts.console.lbl_credits", inCredits, discordgo.TextInputShort, credits, false, rewardFieldMaxLen),
+		h.labelInput(ctx, serverID, "contracts.console.lbl_reputation", inReputation, discordgo.TextInputShort, reputation, false, 10),
+		h.labelInput(ctx, serverID, "contracts.console.lbl_licence", inLicence, discordgo.TextInputShort, licence, false, 10),
+		h.labelInput(ctx, serverID, "contracts.console.lbl_factor", inFactor, discordgo.TextInputShort, factor, false, factorFieldMaxLen),
+	}
+}
+
+// rewardIntStr prefills an optional int reward field ("" for unset).
+func rewardIntStr(v *int) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.Itoa(*v)
+}
+
+// creditsStr prefills the credits field ("" for unset).
+func creditsStr(d *decimal.Decimal) string {
+	if d == nil {
+		return ""
+	}
+	return d.String()
+}
+
+// factorStr prefills the participant-reward-factor field ("" for zero — a blank
+// reads as "none" better than "0").
+func factorStr(d decimal.Decimal) string {
+	if d.IsZero() {
+		return ""
+	}
+	return d.String()
+}
+
+func (h *Feature) openContractRewardsModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+	cid, ok := argUUID(parts, 0)
+	if !ok {
+		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
+	}
+	prog, err := h.repo.ProgressByIDScoped(ctx, serverID, cid)
+	if err != nil {
+		return h.consoleErr(ctx, r, i, serverID, err)
+	}
+	comps := h.rewardInputs(ctx, serverID, creditsStr(prog.RewardCredits), rewardIntStr(prog.RewardReputation), rewardIntStr(prog.RewardLicencePoints), factorStr(prog.ParticipantRewardFactor))
+	return r.RespondModal(i.Interaction, buildID(segMCRew, cid.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_rewards_title"), comps)
+}
+
+func (h *Feature) submitContractRewards(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+	cid, ok := argUUID(parts, 0)
+	if !ok {
+		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
+	}
+	data := i.ModalSubmitData()
+	credits, cerr := parseCredits(modalTextValue(data, inCredits))
+	reputation, rerr := parseRewardInt(modalTextValue(data, inReputation))
+	licence, lerr := parseRewardInt(modalTextValue(data, inLicence))
+	factor, ferr := parseFactor(modalTextValue(data, inFactor))
+	if cerr != nil || rerr != nil || lerr != nil || ferr != nil {
+		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_reward", nil))
+	}
+	if err := h.repo.UpdateRewards(ctx, serverID, cid, credits, factor, reputation, licence, invokerID(i)); err != nil {
+		return h.consoleErr(ctx, r, i, serverID, err)
+	}
+	return h.renderContractView(ctx, r, i, serverID, cid, 0, true)
+}
+
+// handleContractLocation opens the delivery-location picker: every space object
+// fits one select, so the flow is modal-free (browse.go).
+func (h *Feature) handleContractLocation(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+	cid, ok := argUUID(parts, 0)
+	if !ok {
+		return h.consoleErr(ctx, r, i, serverID, ErrNotFound)
+	}
+	return h.renderLocationBrowser(ctx, r, i, serverID, pickContractLoc, cid)
+}
+
+// --- link a legacy item to gamedata (search → picker) ---
+
+func (h *Feature) openLinkItemModal(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+	itemID, ok := argUUID(parts, 0)
+	if !ok {
+		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
+	}
+	// Prefill the search with the item's stored free-text name — usually already
+	// close to the catalog name.
+	prog, err := h.repo.ProgressByItemScoped(ctx, serverID, itemID)
+	if err != nil {
+		return h.consoleErr(ctx, r, i, serverID, err)
+	}
+	query := ""
+	for _, it := range prog.Items {
+		if it.ID == itemID {
+			query = it.Name
+			break
+		}
+	}
+	comps := []discordgo.MessageComponent{
+		h.searchInput(ctx, serverID, "contracts.console.search_hint", truncate(query, 100), true),
+	}
+	return r.RespondModal(i.Interaction, buildID(segMILink, itemID.String()), h.modalTitle(ctx, serverID, "contracts.console.modal_link_title"), comps)
+}
+
+func (h *Feature) submitLinkItem(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID, parts []string) error {
+	itemID, ok := argUUID(parts, 0)
+	if !ok {
+		return h.consoleErr(ctx, r, i, serverID, ErrItemNotFound)
+	}
+	query := strings.TrimSpace(modalTextValue(i.ModalSubmitData(), inQuery))
+	if query == "" {
+		return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.bad_item", nil))
+	}
+	return h.runPick(ctx, r, i, serverID, pickItemLink, itemID, query)
 }
 
 // --- destructive confirmations (cancel contract / remove item) ---

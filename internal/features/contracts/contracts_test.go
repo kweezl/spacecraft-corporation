@@ -7,6 +7,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -66,6 +67,135 @@ func TestParseDHM(t *testing.T) {
 	for _, c := range [][3]string{{"x", "", ""}, {"-1", "", ""}, {"", "1.5", ""}} {
 		_, err := parseDHM(c[0], c[1], c[2])
 		assert.ErrorIs(t, err, ErrBadDuration, "parseDHM(%v) should error", c)
+	}
+}
+
+func TestParseDHMMinutes(t *testing.T) {
+	cases := []struct {
+		d, h, m string
+		want    int
+	}{
+		{"", "", "", 0},
+		{"0", "0", "0", 0},
+		{"1", "2", "3", 26*60 + 3},
+		{"", "5", "", 5 * 60},
+		{"2", "", "", 2 * 24 * 60},
+	}
+	for _, c := range cases {
+		got, err := parseDHMMinutes(c.d, c.h, c.m)
+		require.NoError(t, err)
+		assert.Equalf(t, c.want, got, "parseDHMMinutes(%q,%q,%q)", c.d, c.h, c.m)
+	}
+	for _, c := range [][3]string{{"x", "", ""}, {"-1", "", ""}, {"", "1.5", ""}} {
+		_, err := parseDHMMinutes(c[0], c[1], c[2])
+		assert.ErrorIs(t, err, ErrBadDuration, "parseDHMMinutes(%v) should error", c)
+	}
+}
+
+func TestDHMStrings(t *testing.T) {
+	d, h, m := dhmStrings(26*60 + 3)
+	assert.Equal(t, []string{"1", "2", "3"}, []string{d, h, m})
+
+	// Zero minutes prefill as all-blank (reads as "none" in the modal), and the
+	// round-trip through parseDHMMinutes lands back on zero.
+	d, h, m = dhmStrings(0)
+	assert.Equal(t, []string{"", "", ""}, []string{d, h, m})
+	got, err := parseDHMMinutes(d, h, m)
+	require.NoError(t, err)
+	assert.Zero(t, got)
+
+	// A positive value round-trips exactly.
+	d, h, m = dhmStrings(3*24*60 + 11*60 + 10)
+	got, err = parseDHMMinutes(d, h, m)
+	require.NoError(t, err)
+	assert.Equal(t, 3*24*60+11*60+10, got)
+}
+
+func TestParseCredits(t *testing.T) {
+	// Blank clears the reward.
+	for _, in := range []string{"", "  "} {
+		got, err := parseCredits(in)
+		require.NoErrorf(t, err, "parseCredits(%q)", in)
+		assert.Nilf(t, got, "parseCredits(%q)", in)
+	}
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"0", "0"},
+		{"12", "12"},
+		{"12.50", "12.5"},
+		{"12,50", "12.5"}, // comma accepted as the separator
+		{"12.5", "12.5"},
+		{"1234567890.99", "1234567890.99"},
+	}
+	for _, c := range cases {
+		got, err := parseCredits(c.in)
+		require.NoErrorf(t, err, "parseCredits(%q)", c.in)
+		require.NotNilf(t, got, "parseCredits(%q)", c.in)
+		assert.Truef(t, got.Equal(decimal.RequireFromString(c.want)), "parseCredits(%q) = %s, want %s", c.in, got, c.want)
+	}
+	for _, in := range []string{"-1", "1.234", "x", "1e3", "12345678901", ".5", "1.", "1,2,3"} {
+		_, err := parseCredits(in)
+		assert.ErrorIsf(t, err, ErrBadReward, "parseCredits(%q) should error", in)
+	}
+}
+
+func TestParseFactor(t *testing.T) {
+	// Blank means zero (the column is NOT NULL — there is no "unset").
+	for _, in := range []string{"", "  "} {
+		got, err := parseFactor(in)
+		require.NoErrorf(t, err, "parseFactor(%q)", in)
+		assert.Truef(t, got.IsZero(), "parseFactor(%q) = %s", in, got)
+	}
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"0", "0"},
+		{"100", "100"},
+		{"100.00", "100"},
+		{"33,33", "33.33"}, // comma accepted as the separator
+		{"12.5", "12.5"},
+		{"0.01", "0.01"},
+	}
+	for _, c := range cases {
+		got, err := parseFactor(c.in)
+		require.NoErrorf(t, err, "parseFactor(%q)", c.in)
+		assert.Truef(t, got.Equal(decimal.RequireFromString(c.want)), "parseFactor(%q) = %s, want %s", c.in, got, c.want)
+	}
+	for _, in := range []string{"-1", "101", "100.01", "1.234", "x", "1e3", ".5", "1.", "1,2,3"} {
+		_, err := parseFactor(in)
+		assert.ErrorIsf(t, err, ErrBadReward, "parseFactor(%q) should error", in)
+	}
+}
+
+func TestCreditsSet(t *testing.T) {
+	pos := decimal.RequireFromString("0.01")
+	zero := decimal.Zero
+	assert.True(t, creditsSet(&pos))
+	assert.False(t, creditsSet(&zero), "zero counts as no reward")
+	assert.False(t, creditsSet(nil))
+}
+
+func TestParseRewardInt(t *testing.T) {
+	got, err := parseRewardInt("")
+	require.NoError(t, err)
+	assert.Nil(t, got, "blank clears the reward")
+
+	got, err = parseRewardInt(" 42 ")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, 42, *got)
+
+	got, err = parseRewardInt("0")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Zero(t, *got)
+
+	for _, in := range []string{"-1", "x", "1.5"} {
+		_, err := parseRewardInt(in)
+		assert.ErrorIsf(t, err, ErrBadReward, "parseRewardInt(%q) should error", in)
 	}
 }
 

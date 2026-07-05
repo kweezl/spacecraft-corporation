@@ -8,7 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/shopspring/decimal"
 
+	"github.com/kweezl/spacecraft-corporation/internal/i18n"
 	"github.com/kweezl/spacecraft-corporation/internal/uuidv7"
 )
 
@@ -22,12 +24,21 @@ func newRepository(pool *pgxpool.Pool) Repository {
 
 func (r *pgRepository) Get(ctx context.Context, serverID uuid.UUID) (Settings, error) {
 	var s Settings
+	var language string // scan into a plain string; i18n.Language is a named type
 	err := r.pool.QueryRow(ctx,
-		`SELECT COALESCE(theme, ''), COALESCE(language, ''), COALESCE(contracts_forum_channel_id, '')
+		`SELECT COALESCE(theme, ''), COALESCE(language, ''), COALESCE(contracts_forum_channel_id, ''),
+		        COALESCE(contracts_reports_channel_id, ''), COALESCE(contracts_participant_reward_factor, 0)
 		 FROM server_settings WHERE servers_id = $1`,
-		serverID).Scan(&s.Theme, &s.Language, &s.ContractsForumChannelID)
+		serverID).Scan(&s.Theme, &language, &s.ContractsForumChannelID, &s.ContractsReportsChannelID, &s.ContractsRewardFactor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Settings{}, nil
+	}
+	s.Language = i18n.Language(language)
+	// Canonicalize an unset/zero factor to the Decimal zero value: a scanned
+	// NUMERIC 0 carries a different internal representation (allocated big.Int),
+	// which would make otherwise-equal Settings values compare unequal.
+	if s.ContractsRewardFactor.IsZero() {
+		s.ContractsRewardFactor = decimal.Decimal{}
 	}
 	return s, err
 }
@@ -36,18 +47,27 @@ func (r *pgRepository) SetTheme(ctx context.Context, serverID uuid.UUID, theme s
 	return r.upsert(ctx, serverID, "theme", theme)
 }
 
-func (r *pgRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language string) error {
-	return r.upsert(ctx, serverID, "language", language)
+func (r *pgRepository) SetLanguage(ctx context.Context, serverID uuid.UUID, language i18n.Language) error {
+	return r.upsert(ctx, serverID, "language", string(language))
 }
 
 func (r *pgRepository) SetContractsForumChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
 	return r.upsert(ctx, serverID, "contracts_forum_channel_id", channelID)
 }
 
-// upsert sets one column (theme or language) for a server, inserting the row if
-// absent. column is a trusted constant (never user input). id and timestamps are
-// app-supplied (no DB defaults); on update only the column and updated_at change.
-func (r *pgRepository) upsert(ctx context.Context, serverID uuid.UUID, column, value string) error {
+func (r *pgRepository) SetContractsReportsChannelID(ctx context.Context, serverID uuid.UUID, channelID string) error {
+	return r.upsert(ctx, serverID, "contracts_reports_channel_id", channelID)
+}
+
+func (r *pgRepository) SetContractsRewardFactor(ctx context.Context, serverID uuid.UUID, factor decimal.Decimal) error {
+	return r.upsert(ctx, serverID, "contracts_participant_reward_factor", factor)
+}
+
+// upsert sets one column for a server, inserting the row if absent. column is a
+// trusted constant (never user input); value is bound as a parameter (string or
+// decimal — pgx encodes both). id and timestamps are app-supplied (no DB
+// defaults); on update only the column and updated_at change.
+func (r *pgRepository) upsert(ctx context.Context, serverID uuid.UUID, column string, value any) error {
 	id, err := uuidv7.New()
 	if err != nil {
 		return err

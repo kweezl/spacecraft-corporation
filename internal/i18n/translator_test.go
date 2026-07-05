@@ -61,14 +61,14 @@ func TestRender_UnknownKeyReturnsKey(t *testing.T) {
 func TestCatalog(t *testing.T) {
 	tr := newTranslator(t)
 	assert.Equal(t, []string{"lore", "standard"}, tr.Themes())
-	assert.Equal(t, []string{"en", "ru"}, tr.Languages())
+	assert.Equal(t, []i18n.Language{"en", "ru"}, tr.Languages())
 	assert.True(t, tr.HasTheme("lore"))
 	assert.False(t, tr.HasTheme("ghost"))
 	assert.True(t, tr.HasLanguage("ru"))
 	assert.False(t, tr.HasLanguage("xx"))
 	theme, lang := tr.Defaults()
 	assert.Equal(t, "standard", theme)
-	assert.Equal(t, "en", lang)
+	assert.Equal(t, i18n.LanguageEN, lang)
 }
 
 func TestLocalizer_RendersForResolvedServer(t *testing.T) {

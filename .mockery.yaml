@@ -18,5 +18,10 @@ packages:
   github.com/kweezl/spacecraft-corporation/internal/features/contracts:
     interfaces:
       Repository:
+      TemplateRepository:
       Gateway:
       ForumConfig:
+      ReportsConfig:
+      RewardDefaults:
+      GameSearch:
+      LangResolver:

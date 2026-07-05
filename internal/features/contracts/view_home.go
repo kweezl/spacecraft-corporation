@@ -36,10 +36,9 @@ func (h *Feature) renderHomeView(ctx context.Context, r registry.Responder, i *d
 		})
 	}
 
-	// List first, then the create buttons — all inside the card. Create buttons
-	// only appear for members who hold the matching permission; the handlers
-	// re-check regardless (gateMutation). An empty creation row is omitted (Discord
-	// rejects an empty row).
+	// List first, then the create buttons — all inside the card. The create row
+	// only appears for contract managers; the handlers re-check regardless
+	// (gateMutation).
 	inner = append(inner, divider(), discordgo.ActionsRow{Components: []discordgo.MessageComponent{
 		discordgo.Button{
 			Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_list", nil),
@@ -48,31 +47,28 @@ func (h *Feature) renderHomeView(ctx context.Context, r registry.Responder, i *d
 		},
 	}})
 
-	var create []discordgo.MessageComponent
-	if h.may(ctx, i, serverID, keyTemplate) {
-		create = append(create, discordgo.Button{
-			Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_new_template", nil),
-			Style:    discordgo.SecondaryButton,
-			CustomID: buildID(segTemplate),
-		})
-	}
-	if h.may(ctx, i, serverID, keyCustom) {
-		create = append(create, discordgo.Button{
-			Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_new_custom", nil),
-			Style:    discordgo.SuccessButton,
-			CustomID: buildID(segCreate),
-		})
-	}
-	if len(create) > 0 {
-		inner = append(inner, discordgo.ActionsRow{Components: create})
+	// Create / library buttons show only to contract managers (the single manager
+	// key now governs every authoring action); everyone else sees list-only.
+	if h.may(ctx, i, serverID, keyManage) {
+		inner = append(inner, discordgo.ActionsRow{Components: []discordgo.MessageComponent{
+			discordgo.Button{
+				Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_new_template", nil),
+				Style:    discordgo.SecondaryButton,
+				CustomID: buildID(segTemplate),
+			},
+			discordgo.Button{
+				Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_new_custom", nil),
+				Style:    discordgo.SuccessButton,
+				CustomID: buildID(segCreate),
+			},
+			discordgo.Button{
+				Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_templates", nil),
+				Style:    discordgo.SecondaryButton,
+				CustomID: buildID(segTList, "0", ""),
+			},
+		}})
 	}
 
 	components := []discordgo.MessageComponent{discordgo.Container{Components: inner}}
 	return h.respondView(i, r, components, update)
-}
-
-// handleTemplateWIP replies that template-based contracts are not built yet,
-// without disturbing the dashboard message (ephemeral notice).
-func (h *Feature) handleTemplateWIP(ctx context.Context, r registry.Responder, i *discordgo.InteractionCreate, serverID uuid.UUID) error {
-	return r.RespondEphemeral(i.Interaction, h.loc.Render(ctx, serverID, "contracts.console.template_wip", nil))
 }
