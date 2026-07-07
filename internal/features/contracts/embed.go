@@ -8,7 +8,22 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+
+	"github.com/kweezl/spacecraft-corporation/internal/numfmt"
 )
+
+// groupedCredits renders a credits value with space-grouped thousands at the
+// configured payout precision (CONTRACT_PAYOUT_DECIMALS), matching the payout
+// report. groupedInt does the same for whole-number figures — reward points and
+// item quantities (delivered/reserved/required, counts) — that carry no
+// fractional part. Both are display only; never use them for a value that must
+// round-trip (modal input defaults, CustomIDs, CSV cells stay plain).
+func (h *Feature) groupedCredits(d decimal.Decimal) string {
+	return numfmt.Grouped(d, h.cfg.PayoutDecimals)
+}
+
+func groupedInt(n int) string { return numfmt.Grouped(decimal.NewFromInt(int64(n)), 0) }
 
 // postItemsMax bounds how many item blocks the forum-post card renders; the rest
 // collapse into a localized "+N more". It keeps the message within Discord's
@@ -58,7 +73,7 @@ func (h *Feature) postComponents(ctx context.Context, serverID uuid.UUID, p Prog
 			inner = append(inner, discordgo.TextDisplay{Content: truncate(block, embedDescMax)})
 		}
 		if overflow > 0 {
-			inner = append(inner, discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.embed.items_more", map[string]any{"Count": overflow})})
+			inner = append(inner, discordgo.TextDisplay{Content: h.loc.Render(ctx, serverID, "contracts.embed.items_more", map[string]any{"Count": groupedInt(overflow)})})
 		}
 	}
 
@@ -98,10 +113,10 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 		itemKey = "contracts.embed.item_line_done"
 	}
 	value := h.loc.Render(ctx, serverID, itemKey, map[string]any{
-		"Delivered": it.DeliveredQty,
-		"Reserved":  it.OutstandingReserved(),
-		"Required":  it.RequiredQty,
-		"Remaining": it.Remaining(),
+		"Delivered": groupedInt(it.DeliveredQty),
+		"Reserved":  groupedInt(it.OutstandingReserved()),
+		"Required":  groupedInt(it.RequiredQty),
+		"Remaining": groupedInt(it.Remaining()),
 	})
 	for i, part := range it.Participants {
 		// Show what the member still owes (outstanding), not their gross
@@ -113,12 +128,12 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 		}
 		line := "\n" + h.loc.Render(ctx, serverID, key, map[string]any{
 			"User":        part.UserID,
-			"Outstanding": part.Outstanding(),
-			"Delivered":   part.Delivered,
+			"Outstanding": groupedInt(part.Outstanding()),
+			"Delivered":   groupedInt(part.Delivered),
 		})
 		if utf8.RuneCountInString(value)+utf8.RuneCountInString(line) > embedFieldValueMax-embedOverflowReserve {
 			value += "\n" + h.loc.Render(ctx, serverID, "contracts.embed.participants_more",
-				map[string]any{"Count": len(it.Participants) - i})
+				map[string]any{"Count": groupedInt(len(it.Participants) - i)})
 			break
 		}
 		value += line
@@ -130,24 +145,41 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 // per set fact, "" when none are set (both card and console skip the block).
 func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contract) string {
 	var lines []string
+	// Each reward renders on its own line, prefixed with its in-game icon (absent
+	// emoji degrades to plain text), under a localized header.
 	var rewards []string
 	if creditsSet(c.RewardCredits) {
-		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_credits", map[string]any{"Amount": c.RewardCredits.String()}))
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_credits", map[string]any{
+			"Icon":   iconPrefix(h.emojiToken(emojiCorpoCredits)),
+			"Amount": h.groupedCredits(*c.RewardCredits),
+		}))
 	}
 	if c.RewardReputation != nil && *c.RewardReputation > 0 {
-		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_reputation", map[string]any{"Amount": *c.RewardReputation}))
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_reputation", map[string]any{
+			"Icon":   iconPrefix(h.emojiToken(emojiCorpoReputation)),
+			"Amount": groupedInt(*c.RewardReputation),
+		}))
 	}
 	if c.RewardLicencePoints != nil && *c.RewardLicencePoints > 0 {
-		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_licence", map[string]any{"Amount": *c.RewardLicencePoints}))
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_licence", map[string]any{
+			"Icon":   iconPrefix(h.emojiToken(emojiLicensePoints)),
+			"Amount": groupedInt(*c.RewardLicencePoints),
+		}))
 	}
-	// The factor only means something when there are credits to split.
+	// The members' share is meaningful only when there are credits to split; show
+	// the credits members receive (same formula as the payout pool) with the
+	// personal-credits icon, plus the split percent.
 	if creditsSet(c.RewardCredits) && c.ParticipantRewardFactor.IsPositive() {
-		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_factor", map[string]any{"Factor": c.ParticipantRewardFactor.String()}))
+		share := c.RewardCredits.Mul(c.ParticipantRewardFactor).Shift(-2)
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_members", map[string]any{
+			"Icon":   iconPrefix(h.emojiToken(emojiMemberCredits)),
+			"Amount": h.groupedCredits(share),
+			"Factor": c.ParticipantRewardFactor.String(),
+		}))
 	}
 	if len(rewards) > 0 {
-		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.rewards_line", map[string]any{
-			"Rewards": strings.Join(rewards, " · "),
-		}))
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.rewards_header", nil))
+		lines = append(lines, rewards...)
 	}
 	if c.LocationGDID != "" {
 		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.location_line", map[string]any{

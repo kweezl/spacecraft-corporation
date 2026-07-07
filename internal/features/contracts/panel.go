@@ -247,7 +247,7 @@ func (h *Feature) openOpModal(ctx context.Context, r registry.Responder, i *disc
 	prefill := len(items) == 1
 	opts := make([]discordgo.SelectMenuOption, 0, len(items))
 	for idx, it := range items {
-		o := h.itemOption(ctx, serverID, it.name, descKey, map[string]any{amountKey: it.avail}, it.gdid, it.gdVersion)
+		o := h.itemOption(ctx, serverID, it.name, descKey, map[string]any{amountKey: groupedInt(it.avail)}, it.gdid, it.gdVersion)
 		if prefill && idx == 0 { // pre-select the default so the modal is submit-and-go
 			o.Default = true
 		}
@@ -381,7 +381,7 @@ func (h *Feature) applyOp(ctx context.Context, serverID uuid.UUID, p pendingOp, 
 			return "", err
 		}
 		return h.loc.Render(ctx, serverID, "contracts.reserve.ok",
-			map[string]any{"Item": p.item, "Qty": qty}), nil
+			map[string]any{"Item": p.item, "Qty": groupedInt(qty)}), nil
 	case opDeliver:
 		complete, err := h.repo.Deliver(ctx, p.serverID, p.threadID, p.item, p.userID, qty)
 		if err != nil {
@@ -391,13 +391,13 @@ func (h *Feature) applyOp(ctx context.Context, serverID uuid.UUID, p pendingOp, 
 		if complete {
 			key = "contracts.deliver.completed"
 		}
-		return h.loc.Render(ctx, serverID, key, map[string]any{"Item": p.item, "Qty": qty}), nil
+		return h.loc.Render(ctx, serverID, key, map[string]any{"Item": p.item, "Qty": groupedInt(qty)}), nil
 	case opRelease:
 		if err := h.repo.Release(ctx, p.serverID, p.threadID, p.item, p.userID, qty, p.userID); err != nil {
 			return "", err
 		}
 		return h.loc.Render(ctx, serverID, "contracts.release.ok",
-			map[string]any{"Item": p.item, "Qty": qty}), nil
+			map[string]any{"Item": p.item, "Qty": groupedInt(qty)}), nil
 	}
 	return "", fmt.Errorf("contracts: unknown pending op %q", p.op)
 }

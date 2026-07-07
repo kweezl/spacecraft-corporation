@@ -91,7 +91,7 @@ func (h *Feature) tplControlsRow(ctx context.Context, serverID uuid.UUID, i *dis
 // accessory (Edit drills into the edit page, Use opens the instantiate confirm).
 func (h *Feature) templateSection(ctx context.Context, serverID uuid.UUID, mode string, e TemplateListEntry) discordgo.Section {
 	text := "**" + truncate(e.Title, 200) + "**\n" +
-		h.loc.Render(ctx, serverID, "contracts.console.tpl_entry", map[string]any{"Items": e.ItemCount})
+		h.loc.Render(ctx, serverID, "contracts.console.tpl_entry", map[string]any{"Items": groupedInt(e.ItemCount)})
 	accessory := discordgo.Button{
 		Label:    h.loc.Render(ctx, serverID, "contracts.console.btn_tpl_use", nil),
 		Style:    discordgo.SuccessButton,

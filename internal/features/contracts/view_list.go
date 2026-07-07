@@ -68,11 +68,11 @@ func (h *Feature) contractSection(ctx context.Context, serverID uuid.UUID, e Lis
 func (h *Feature) listEntryValue(ctx context.Context, serverID uuid.UUID, e ListEntry) string {
 	return h.loc.Render(ctx, serverID, "contracts.console.list_entry", map[string]any{
 		"Status":       h.statusLine(ctx, serverID, Progress{Contract: e.Contract}),
-		"Participants": e.ParticipantCount,
-		"Items":        e.ItemCount,
-		"Reserved":     e.TotalReserved,
-		"Delivered":    e.TotalDelivered,
-		"Required":     e.TotalRequired,
+		"Participants": groupedInt(e.ParticipantCount),
+		"Items":        groupedInt(e.ItemCount),
+		"Reserved":     groupedInt(e.TotalReserved),
+		"Delivered":    groupedInt(e.TotalDelivered),
+		"Required":     groupedInt(e.TotalRequired),
 	})
 }
 

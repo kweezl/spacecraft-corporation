@@ -148,7 +148,7 @@ func (h *Feature) participantLine(ctx context.Context, serverID uuid.UUID, p Par
 		key = "contracts.console.participant_line_done"
 	}
 	return h.loc.Render(ctx, serverID, key, map[string]any{
-		"Index": index, "User": p.UserID, "Outstanding": p.Outstanding(), "Delivered": p.Delivered,
+		"Index": index, "User": p.UserID, "Outstanding": groupedInt(p.Outstanding()), "Delivered": groupedInt(p.Delivered),
 	})
 }
 

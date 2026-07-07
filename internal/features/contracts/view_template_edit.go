@@ -65,25 +65,40 @@ func (h *Feature) renderTemplateEditView(ctx context.Context, r registry.Respond
 // templateFacts renders the template's default-value lines: rewards (only the
 // non-zero ones), the deadline duration, and the delivery location.
 func (h *Feature) templateFacts(ctx context.Context, serverID uuid.UUID, t Template) string {
+	// Each reward on its own line, prefixed with its in-game icon, under a header
+	// (mirrors the contract post's contractFacts).
 	var rewards []string
 	if t.RewardCredits.IsPositive() {
-		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_credits", map[string]any{"Amount": t.RewardCredits.String()}))
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_credits", map[string]any{
+			"Icon":   iconPrefix(h.emojiToken(emojiCorpoCredits)),
+			"Amount": h.groupedCredits(t.RewardCredits),
+		}))
 	}
 	if t.RewardReputation > 0 {
-		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_reputation", map[string]any{"Amount": t.RewardReputation}))
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_reputation", map[string]any{
+			"Icon":   iconPrefix(h.emojiToken(emojiCorpoReputation)),
+			"Amount": groupedInt(t.RewardReputation),
+		}))
 	}
 	if t.RewardLicencePoints > 0 {
-		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_licence", map[string]any{"Amount": t.RewardLicencePoints}))
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_licence", map[string]any{
+			"Icon":   iconPrefix(h.emojiToken(emojiLicensePoints)),
+			"Amount": groupedInt(t.RewardLicencePoints),
+		}))
 	}
-	// The factor only means something when there are credits to split.
+	// The members' share is meaningful only when there are credits to split.
 	if t.RewardCredits.IsPositive() && t.ParticipantRewardFactor.IsPositive() {
-		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_factor", map[string]any{"Factor": t.ParticipantRewardFactor.String()}))
+		share := t.RewardCredits.Mul(t.ParticipantRewardFactor).Shift(-2)
+		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_members", map[string]any{
+			"Icon":   iconPrefix(h.emojiToken(emojiMemberCredits)),
+			"Amount": h.groupedCredits(share),
+			"Factor": t.ParticipantRewardFactor.String(),
+		}))
 	}
 	lines := make([]string, 0, 3)
 	if len(rewards) > 0 {
-		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.rewards_line", map[string]any{
-			"Rewards": strings.Join(rewards, " · "),
-		}))
+		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.embed.rewards_header", nil))
+		lines = append(lines, rewards...)
 	}
 	if t.DeadlineMinutes > 0 {
 		lines = append(lines, h.loc.Render(ctx, serverID, "contracts.console.tpl_duration_line", map[string]any{
@@ -106,7 +121,7 @@ func (h *Feature) templateFacts(ctx context.Context, serverID uuid.UUID, t Templ
 // with an Edit accessory opening the qty modal (the current qty rides the
 // CustomID so the modal can prefill without a by-item read).
 func (h *Feature) templateItemSection(ctx context.Context, serverID uuid.UUID, it TemplateItem) discordgo.Section {
-	text := "**" + truncate(h.itemDisplay(ctx, serverID, it.GDID, it.GDVersion), 200) + "** × " + intStr(it.Qty)
+	text := "**" + truncate(h.itemDisplay(ctx, serverID, it.GDID, it.GDVersion), 200) + "** × " + groupedInt(it.Qty)
 	return discordgo.Section{
 		Components: []discordgo.MessageComponent{discordgo.TextDisplay{Content: truncate(text, 4000)}},
 		Accessory: discordgo.Button{
