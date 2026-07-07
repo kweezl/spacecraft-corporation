@@ -221,7 +221,7 @@ func (h *Feature) notifyContent(ctx context.Context, prog Progress, ids []string
 	list := strings.Join(mentions, " ")
 	if len(ids) > len(mentioned) {
 		list += " " + h.loc.Render(ctx, prog.ServerID, "contracts.notify.and_more",
-			map[string]any{"Count": len(ids) - len(mentioned)})
+			map[string]any{"Count": groupedInt(len(ids) - len(mentioned))})
 	}
 	content := h.loc.Render(ctx, prog.ServerID, "contracts.notify.closing_soon", map[string]any{
 		"Mentions": list,

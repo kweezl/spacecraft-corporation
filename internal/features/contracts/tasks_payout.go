@@ -183,7 +183,7 @@ func (h *Feature) payoutDecimals(prog Progress) int32 {
 func payoutFigures(prog Progress, rows []Payout, decimals int32) (pool, remainder decimal.Decimal, zeroValue bool) {
 	pool = decimal.Decimal{}
 	if prog.RewardCredits != nil {
-		pool = prog.RewardCredits.Mul(prog.ParticipantRewardFactor).Shift(-2).Truncate(decimals)
+		pool = participantPool(*prog.RewardCredits, prog.ParticipantRewardFactor).Truncate(decimals)
 	}
 	distributed := decimal.Decimal{}
 	zeroValue = pool.IsPositive()
@@ -208,8 +208,23 @@ func (h *Feature) payoutContent(ctx context.Context, prog Progress, rows []Payou
 	pool, remainder, zeroValue := payoutFigures(prog, rows, dec)
 	sid := prog.ServerID
 
+	// Corporation credits stay with the corp (icon: CorpoCredits); the participant
+	// pool and per-member lines are the personal credits members receive (icon:
+	// Credits). Absent emojis degrade to plain text.
+	corpIcon := iconPrefix(h.emojiToken(emojiCorpoCredits))
+	memberIcon := iconPrefix(h.emojiToken(emojiMemberCredits))
+
 	var b strings.Builder
+	// The gross corporation reward, above the participant split.
+	if creditsSet(prog.RewardCredits) {
+		b.WriteString(h.loc.Render(ctx, sid, "contracts.payout.corp_credits", map[string]any{
+			"Icon":   corpIcon,
+			"Amount": numfmt.Grouped(*prog.RewardCredits, dec),
+		}))
+		b.WriteString("\n")
+	}
 	b.WriteString(h.loc.Render(ctx, sid, "contracts.payout.header", map[string]any{
+		"Icon":   memberIcon,
 		"Pool":   numfmt.Grouped(pool, dec),
 		"Factor": prog.ParticipantRewardFactor.String(),
 	}))
@@ -225,6 +240,7 @@ func (h *Feature) payoutContent(ctx context.Context, prog Progress, rows []Payou
 			}
 			b.WriteString("\n")
 			b.WriteString(h.loc.Render(ctx, sid, "contracts.payout.line", map[string]any{
+				"Icon":    memberIcon,
 				"Mention": "<@" + r.UserID + ">",
 				"Amount":  numfmt.Grouped(r.Amount, dec),
 			}))
@@ -232,6 +248,7 @@ func (h *Feature) payoutContent(ctx context.Context, prog Progress, rows []Payou
 		if remainder.IsPositive() {
 			b.WriteString("\n")
 			b.WriteString(h.loc.Render(ctx, sid, "contracts.payout.remainder", map[string]any{
+				"Icon":   corpIcon,
 				"Amount": numfmt.Grouped(remainder, dec),
 			}))
 		}

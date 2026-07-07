@@ -49,6 +49,15 @@ type payoutResult struct {
 	Priceless []string
 }
 
+// participantPool is the gross credits distributed among participants: the
+// contract's credit reward scaled by the participant factor (a percent, hence
+// Shift(-2)). It is the members' total share before the per-member split and
+// before truncation to the payout precision — the single source of truth for the
+// payout computation, the payout report, and the reward preview (embed/template).
+func participantPool(credits, factor decimal.Decimal) decimal.Decimal {
+	return credits.Mul(factor).Shift(-2)
+}
+
 // computePayout splits a completed contract's participant pool across its
 // deliverers, proportional to the VALUE each delivered. Pure — no I/O, no
 // clock.
@@ -70,7 +79,7 @@ type payoutResult struct {
 // and they are listed in Priceless. If EVERY item is priceless, den is zero —
 // the result is flagged ZeroValue with zero amounts instead of dividing by zero.
 func computePayout(credits, factor decimal.Decimal, items []payoutItem, decimals int32) payoutResult {
-	res := payoutResult{Pool: credits.Mul(factor).Shift(-2).Truncate(decimals)}
+	res := payoutResult{Pool: participantPool(credits, factor).Truncate(decimals)}
 
 	den := decimal.Decimal{}
 	nums := map[string]decimal.Decimal{} // user id → delivered value

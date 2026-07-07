@@ -95,7 +95,7 @@ func (h *Feature) openParticipantModal(ctx context.Context, r registry.Responder
 		outCap = 0
 	}
 	figures := map[string]any{
-		"Outstanding": p.Outstanding(), "Delivered": p.Delivered, "OutCap": outCap,
+		"Outstanding": groupedInt(p.Outstanding()), "Delivered": groupedInt(p.Delivered), "OutCap": groupedInt(outCap),
 	}
 	opts := h.participantActionOptions(ctx, serverID, p, figures)
 	title := h.loc.Render(ctx, serverID, "contracts.console.modal_participant_title",

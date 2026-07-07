@@ -69,6 +69,31 @@ func (h *Feature) optionEmoji(gdid gamedata.GDID) *discordgo.ComponentEmoji {
 	return h.pick.OptionEmoji(gdid)
 }
 
+// Emoji names for the currency icons rendered on reward lines. The three
+// corporation currencies reuse the gamedata reward GDIDs (their IconName equals
+// the GDID); emojiMemberCredits is the personal-credits icon paid out to
+// members — a distinct in-game currency that is never a contract reward item, so
+// it has no gamedata GDID and is named directly.
+const (
+	emojiCorpoCredits    = string(gamedata.GDCorpoCredits)
+	emojiCorpoReputation = string(gamedata.GDCorpoReputation)
+	emojiLicensePoints   = string(gamedata.GDLicensePoints)
+	emojiMemberCredits   = "Credits"
+)
+
+// emojiToken resolves an emoji name to a ready-to-send token, "" when the bot
+// carries no such emoji (tests, pre-sync, or the asset not uploaded to the app).
+func (h *Feature) emojiToken(name string) string { return h.pick.EmojiToken(name) }
+
+// iconPrefix turns an emoji token into a line prefix — "<token> " when present,
+// "" when absent — so reward lines degrade gracefully to plain text.
+func iconPrefix(token string) string {
+	if token == "" {
+		return ""
+	}
+	return token + " "
+}
+
 func (h *Feature) optionEmojiFor(gdid gamedata.GDID, version string) *discordgo.ComponentEmoji {
 	return h.pick.OptionEmojiFor(gdid, version)
 }
