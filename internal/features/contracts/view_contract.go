@@ -34,7 +34,7 @@ func (h *Feature) renderContractViewFrom(ctx context.Context, r registry.Respond
 	if prog.Description != "" {
 		header += "\n\n" + prog.Description
 	}
-	if facts := h.contractFacts(ctx, serverID, prog.Contract); facts != "" {
+	if facts := h.contractFacts(ctx, serverID, prog.Contract, h.payoutDecimals(prog)); facts != "" {
 		header += "\n\n" + facts
 	}
 	inner := []discordgo.MessageComponent{discordgo.TextDisplay{Content: truncate(header, 4000)}}

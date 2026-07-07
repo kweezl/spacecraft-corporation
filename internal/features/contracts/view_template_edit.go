@@ -10,6 +10,7 @@ import (
 
 	"github.com/kweezl/spacecraft-corporation/internal/discord/registry"
 	"github.com/kweezl/spacecraft-corporation/internal/gamedata"
+	"github.com/kweezl/spacecraft-corporation/internal/numfmt"
 )
 
 // renderTemplateEditView renders (or updates) one template's edit page: a header
@@ -66,12 +67,14 @@ func (h *Feature) renderTemplateEditView(ctx context.Context, r registry.Respond
 // non-zero ones), the deadline duration, and the delivery location.
 func (h *Feature) templateFacts(ctx context.Context, serverID uuid.UUID, t Template) string {
 	// Each reward on its own line, prefixed with its in-game icon, under a header
-	// (mirrors the contract post's contractFacts).
+	// (mirrors the contract post's contractFacts). A template has no frozen payout
+	// precision, so credits format at the current config.
+	dec := h.cfg.PayoutDecimals
 	var rewards []string
 	if t.RewardCredits.IsPositive() {
 		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_credits", map[string]any{
 			"Icon":   iconPrefix(h.emojiToken(emojiCorpoCredits)),
-			"Amount": h.groupedCredits(t.RewardCredits),
+			"Amount": numfmt.Grouped(t.RewardCredits, dec),
 		}))
 	}
 	if t.RewardReputation > 0 {
@@ -88,10 +91,10 @@ func (h *Feature) templateFacts(ctx context.Context, serverID uuid.UUID, t Templ
 	}
 	// The members' share is meaningful only when there are credits to split.
 	if t.RewardCredits.IsPositive() && t.ParticipantRewardFactor.IsPositive() {
-		share := t.RewardCredits.Mul(t.ParticipantRewardFactor).Shift(-2)
+		share := participantPool(t.RewardCredits, t.ParticipantRewardFactor)
 		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_members", map[string]any{
 			"Icon":   iconPrefix(h.emojiToken(emojiMemberCredits)),
-			"Amount": h.groupedCredits(share),
+			"Amount": numfmt.Grouped(share, dec),
 			"Factor": t.ParticipantRewardFactor.String(),
 		}))
 	}

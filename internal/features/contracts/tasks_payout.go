@@ -183,7 +183,7 @@ func (h *Feature) payoutDecimals(prog Progress) int32 {
 func payoutFigures(prog Progress, rows []Payout, decimals int32) (pool, remainder decimal.Decimal, zeroValue bool) {
 	pool = decimal.Decimal{}
 	if prog.RewardCredits != nil {
-		pool = prog.RewardCredits.Mul(prog.ParticipantRewardFactor).Shift(-2).Truncate(decimals)
+		pool = participantPool(*prog.RewardCredits, prog.ParticipantRewardFactor).Truncate(decimals)
 	}
 	distributed := decimal.Decimal{}
 	zeroValue = pool.IsPositive()

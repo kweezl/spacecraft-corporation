@@ -13,16 +13,12 @@ import (
 	"github.com/kweezl/spacecraft-corporation/internal/numfmt"
 )
 
-// groupedCredits renders a credits value with space-grouped thousands at the
-// configured payout precision (CONTRACT_PAYOUT_DECIMALS), matching the payout
-// report. groupedInt does the same for whole-number figures — reward points and
-// item quantities (delivered/reserved/required, counts) — that carry no
-// fractional part. Both are display only; never use them for a value that must
-// round-trip (modal input defaults, CustomIDs, CSV cells stay plain).
-func (h *Feature) groupedCredits(d decimal.Decimal) string {
-	return numfmt.Grouped(d, h.cfg.PayoutDecimals)
-}
-
+// groupedInt renders a whole-number figure with space-grouped thousands —
+// reward points and item quantities (delivered/reserved/required, counts) that
+// carry no fractional part. Credit amounts are formatted with numfmt.Grouped at
+// the resolved payout precision instead. All are display only; never use them
+// for a value that must round-trip (modal input defaults, CustomIDs, CSV cells
+// stay plain).
 func groupedInt(n int) string { return numfmt.Grouped(decimal.NewFromInt(int64(n)), 0) }
 
 // postItemsMax bounds how many item blocks the forum-post card renders; the rest
@@ -49,7 +45,7 @@ func (h *Feature) postComponents(ctx context.Context, serverID uuid.UUID, p Prog
 
 	// Rewards + delivery location, when the contract carries any (typically copied
 	// from a template; also editable on custom contracts).
-	if facts := h.contractFacts(ctx, serverID, p.Contract); facts != "" {
+	if facts := h.contractFacts(ctx, serverID, p.Contract, h.payoutDecimals(p)); facts != "" {
 		inner = append(inner, divider(), discordgo.TextDisplay{Content: truncate(facts, embedDescMax)})
 	}
 
@@ -143,7 +139,10 @@ func (h *Feature) itemFieldValue(ctx context.Context, serverID uuid.UUID, it Ite
 
 // contractFacts renders a contract's rewards + delivery-location block, one line
 // per set fact, "" when none are set (both card and console skip the block).
-func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contract) string {
+// decimals is the contract's resolved payout precision (frozen value when the
+// payouts were computed, else the current config) so the credit preview and
+// members' share match the payout report; callers pass h.payoutDecimals(prog).
+func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contract, decimals int32) string {
 	var lines []string
 	// Each reward renders on its own line, prefixed with its in-game icon (absent
 	// emoji degrades to plain text), under a localized header.
@@ -151,7 +150,7 @@ func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contr
 	if creditsSet(c.RewardCredits) {
 		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_credits", map[string]any{
 			"Icon":   iconPrefix(h.emojiToken(emojiCorpoCredits)),
-			"Amount": h.groupedCredits(*c.RewardCredits),
+			"Amount": numfmt.Grouped(*c.RewardCredits, decimals),
 		}))
 	}
 	if c.RewardReputation != nil && *c.RewardReputation > 0 {
@@ -170,10 +169,10 @@ func (h *Feature) contractFacts(ctx context.Context, serverID uuid.UUID, c Contr
 	// the credits members receive (same formula as the payout pool) with the
 	// personal-credits icon, plus the split percent.
 	if creditsSet(c.RewardCredits) && c.ParticipantRewardFactor.IsPositive() {
-		share := c.RewardCredits.Mul(c.ParticipantRewardFactor).Shift(-2)
+		share := participantPool(*c.RewardCredits, c.ParticipantRewardFactor)
 		rewards = append(rewards, h.loc.Render(ctx, serverID, "contracts.embed.reward_members", map[string]any{
 			"Icon":   iconPrefix(h.emojiToken(emojiMemberCredits)),
-			"Amount": h.groupedCredits(share),
+			"Amount": numfmt.Grouped(share, decimals),
 			"Factor": c.ParticipantRewardFactor.String(),
 		}))
 	}

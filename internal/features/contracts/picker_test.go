@@ -89,9 +89,9 @@ func TestContractFactsAndCardItems(t *testing.T) {
 		RewardReputation: &rep,
 		LocationGDID:     "Station_Cairn",
 	}
-	// Credits render space-grouped at the configured payout precision. This Feature
-	// uses CONTRACT_PAYOUT_DECIMALS=0, so cents are dropped (1250.50 → "1 250").
-	facts := h.contractFacts(ctx, pickGid, c)
+	// Credits render space-grouped at the contract's resolved payout precision.
+	// At 0 decimals cents are dropped (1250.50 → "1 250").
+	facts := h.contractFacts(ctx, pickGid, c, 0)
 	assert.Contains(t, facts, "1 250", "credits grouped with a thousands separator")
 	assert.NotContains(t, facts, "1250", "grouped, not run together")
 	assert.NotContains(t, facts, ".50", "cents dropped at CONTRACT_PAYOUT_DECIMALS=0")
@@ -103,16 +103,16 @@ func TestContractFactsAndCardItems(t *testing.T) {
 	// percent. At 0 decimals 1250.50 × 20% = 250.10 truncates to "250".
 	withFactor := c
 	withFactor.ParticipantRewardFactor = dec("20")
-	mf := h.contractFacts(ctx, pickGid, withFactor)
+	mf := h.contractFacts(ctx, pickGid, withFactor, 0)
 	assert.NotContains(t, mf, ".10", "members' share cents dropped at 0 decimals")
 	assert.Contains(t, mf, "20%", "members' share shows the split percent")
 
-	// CONTRACT_PAYOUT_DECIMALS=2 keeps the cents (and still groups thousands).
-	facts2 := pickerFeatureDec(t, 2).contractFacts(ctx, pickGid, c)
+	// A resolved precision of 2 keeps the cents (and still groups thousands).
+	facts2 := h.contractFacts(ctx, pickGid, c, 2)
 	assert.Contains(t, facts2, "1 250.50", "credits keep cents at 2 decimals")
 
-	assert.Empty(t, h.contractFacts(ctx, pickGid, Contract{}), "no facts block when nothing is set")
-	assert.Empty(t, h.contractFacts(ctx, pickGid, Contract{RewardCredits: decPtr("0.00")}), "zero credits count as unset")
+	assert.Empty(t, h.contractFacts(ctx, pickGid, Contract{}, 0), "no facts block when nothing is set")
+	assert.Empty(t, h.contractFacts(ctx, pickGid, Contract{RewardCredits: decPtr("0.00")}, 0), "zero credits count as unset")
 
 	// The forum card renders gamedata items via the catalog (live-localized) and
 	// legacy free-text items verbatim.
