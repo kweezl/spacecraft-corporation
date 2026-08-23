@@ -10,11 +10,11 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jackc/pgx-shopspring-decimal v0.0.0-20220624020537-1d36b5a1853e
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/pressly/goose/v3 v3.27.2
-	github.com/prometheus/client_golang v1.23.2
+	github.com/pressly/goose/v3 v3.27.3
+	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/shopspring/decimal v1.4.0
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.1
 	go.uber.org/fx v1.24.0
 	go.uber.org/zap v1.28.0
 )
@@ -42,7 +42,6 @@ require (
 	github.com/blevesearch/zapx/v16 v16.3.4 // indirect
 	github.com/blevesearch/zapx/v17 v17.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -55,18 +54,16 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/common v0.66.1 // indirect
-	github.com/prometheus/procfs v0.20.1 // indirect
-	github.com/sethvargo/go-retry v0.3.0 // indirect
+	github.com/prometheus/common v0.70.1 // indirect
+	github.com/prometheus/procfs v0.21.1 // indirect
+	github.com/sethvargo/go-retry v0.4.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	go.etcd.io/bbolt v1.4.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.yaml.in/yaml/v2 v2.4.2 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
